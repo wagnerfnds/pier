@@ -218,7 +218,8 @@ struct InlineStatusView: View {
 
     var body: some View {
         if snap.needsYou > 0 {
-            Label("\(snap.needsYou) \(snap.needsYou == 1 ? "precisa" : "precisam") de você" + (snap.working > 0 ? " · \(snap.working) rodando" : ""),
+            Label((snap.needsYou == 1 ? String(localized: "1 precisa de você") : String(localized: "\(snap.needsYou) precisam de você"))
+                  + (snap.working > 0 ? " · " + String(localized: "\(snap.working) rodando") : ""),
                   systemImage: "exclamationmark.bubble.fill")
         } else if snap.working > 0 {
             Label("\(snap.working) \(snap.working == 1 ? "agente trabalhando" : "agentes trabalhando")", systemImage: "circle.dotted")

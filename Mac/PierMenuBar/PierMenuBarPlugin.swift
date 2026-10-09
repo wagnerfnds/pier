@@ -211,7 +211,16 @@ public final class PierMenuBarPlugin: NSObject {
         case "state": break
         case "menu": return "menu[" + makeMenu().items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: " | ") + "]"
         default:
-            if command.hasPrefix("panel:") {
+            if command == "hidewindow" {
+                // Screenshots of the surfaces alone: the app's window leaves the screen (its surfaces stay).
+                for w in NSApp.windows where w.canBecomeMain { w.orderOut(nil) }
+            } else if command.hasPrefix("snapshot:") {
+                // `snapshot:<dir>`: the tab and the open panel as PNGs (no screen capture); `pointat:render:<dir>` draws
+                // the point-at-it overlay offscreen as `pointat.png`, without dimming any screen.
+                return surface?.snapshot(to: String(command.dropFirst(9))) ?? "no surface"
+            } else if command.hasPrefix("pointat:render:") {
+                return RegionPicker.renderDemo(to: String(command.dropFirst(15)))
+            } else if command.hasPrefix("panel:") {
                 let name = String(command.dropFirst(6))
                 if name == "close" { surface?.panelController.close() } else { surface?.panelController.show(screen(named: name)) }
             } else {

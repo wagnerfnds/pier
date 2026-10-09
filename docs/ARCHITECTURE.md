@@ -262,7 +262,14 @@ follows it); only an exit (`ended`) ends the activity. Debug `-openLink pier://�
 `-startTab inbox|board|projects|settings`, `-seedSections 1`, `-snapshotTo <file.png> [-snapshotAfter <s>]`, `-homeCustomize 1`, `-homeScrollTo <widget>`, `-sessionExpandAll 1`,
 `-sessionDetails 1`, `-sessionTerminal 1`, `-openInstallHelp 1` (the onboarding's "Ainda sem pierd na box?" sheet),
 `-runIntent postNotif|notifAction|notifDelivered …` (App/Intents/DebugIntentRunner.swift), `-openLink <pier://…>`,
-`-debugStartActivity 1`, `-widgetGallery home|lock|activity|island|all`; Mac: `-macSurfaceDebug <commands>`, `-macFakeShot <png>`.
+`-debugStartActivity 1`, `-widgetGallery home|lock|activity|island|all`, `-openTalk 1 [-talkText "…" -talkRoute 1]`,
+`-openPalette 1`, `-openFaxina 1`; Mac: `-macSurfaceDebug <commands>`, `-macFakeShot <png>`, `-macWindowSize 1280x800`.
+`-uiTestShowcase 1` (with the mock) swaps the fixture data for an English showcase dataset (`App/Debug/UITestShowcase.swift`:
+four projects, a permission, a question with a recommended choice, a finished turn with a diff and next steps, agents at
+work, a chat, pull requests, CI, git activity, dev servers, the AI touches' answers) for screenshots; the widget gallery and
+`-seedSections 1` follow it. `UITests/PierUITests/ShowcaseShots.swift` (skipped unless `TEST_RUNNER_SHOWCASE_SHOTS=<dir>`)
+writes the system-UI shots: the Lock Screen and the island with a Live Activity, a notification with its choice buttons,
+the iPad in landscape.
 `-uiTestMock 1` swaps the paired boxes for one in-memory box (`App/Debug/UITestMock.swift`, fixtures generated from
 `Packages/PierKit/Tests/PierKitTests/Fixtures` into `App/Debug/UITestMockFixtures.swift`): no network, keychain or push.
 It answers like pierd for the endpoints the app uses and is stateful for send, answer and create task. `-uiTestExtras 1`,
@@ -334,8 +341,10 @@ Revisar button is tapped by position in that test.
   Debug: `-macSurfaceDebug "hover,panel:inbox,pick:1,…"` (one command every 1.5 s: hover, unhover, option, labels,
   collapse, toast, magnify:<y>, panel:<inbox|agents|agent:<id>|task|chat|project|talk|close>, page:<n>, pick:<n>,
   reply:<text>, undo, optiontap, pointat, pointat:auto, probe, menu, state — `state` logs the canvas, the openness, every
-  button's frame and the panel's stack), `-macFakeShot <png>` stands in for the screen, `-uiTestEmpty 1` a box with no
-  session.
+  button's frame and the panel's stack; screenshots without Screen Recording: `snapshot:<dir>` writes `tab.png` and
+  `panel.png` drawn from the views at 2× with alpha, `pointat:render:<dir>` the point-at-it overlay as `pointat.png`,
+  `offscreen` keeps the tab and the panel laying out but off the screen, `hidewindow` orders the app's window out),
+  `-macFakeShot <png>` stands in for the screen, `-uiTestEmpty 1` a box with no session.
 - **The side panel (Mac)**: `SidePanelController` (`SidePanel.swift`, `PanelScreens.swift`, `InboxCardPanel.swift`,
   `MarkdownText.swift`) — a dark panel beside the tab, its pointer aimed at the tab's Inbox button, dark in both
   appearances (`PanelStyle`: #141416 / #1C1C1E, hairlines, radius 26, bold white titles, gray secondary text, keycaps,

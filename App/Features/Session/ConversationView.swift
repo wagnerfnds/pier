@@ -147,7 +147,7 @@ struct LiveDraftRow: View {
             HStack(spacing: 8) {
                 PulsingDot()
                 ShimmerText(text: word)
-                if let step = vm.step, !step.isEmpty, step != "Pensando…" || vm.draft?.status == nil {
+                if let step = vm.step, !step.isEmpty, step != StepText.thinking || vm.draft?.status == nil {
                     Text("· \(step)").font(.footnote).foregroundStyle(Theme.textFaint).lineLimit(1)
                 }
                 Spacer(minLength: 4)

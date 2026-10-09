@@ -80,6 +80,12 @@ final class MockBox: PierTransport, @unchecked Sendable {
     fileprivate var prs = MockPRs()
 
     init() {
+        // `-uiTestShowcase 1`: the showcase dataset (English, or Portuguese with the app in Portuguese) instead of everything below (UITestShowcase.swift).
+        if UITestShowcase.enabled {
+            sessions = UITestShowcase.sessions()
+            transcripts = UITestShowcase.transcripts()
+            return
+        }
         sessions = [
             Self.session(Self.waitingSession, location: "sandbox", dir: "/home/ubuntu/code/sandbox", state: "waiting",
                          title: "Create a probe directory for the build check",
@@ -308,6 +314,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
         }
         let p = path.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
         guard p.first == "v1", p.count >= 2 else { return notFound }
+        if UITestShowcase.enabled, let r = showcaseRoute(method, p, query, body) { return r }   // the showcase block at the end of the file
         if MockPRs.enabled, let r = pullRequestRoute(method, p, body) { return r }
         if let r = talkRoute(method, p, body) { return r }   // Falar's router (block at the end of the file)
         if let r = pairInviteRoute(method, p) { return r }   // "Levar para o iPhone" (block at the end of the file)
@@ -436,6 +443,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
         let name = p[2]
         guard let si = index(name) else { return notFound }
         let req = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? JSON) ?? [:]
+        if UITestShowcase.enabled, let r = showcaseSessionRoute(method, name, p, query, req) { return r }
         if p.count == 3 {
             switch method {
             case .delete: sessions.remove(at: si); return (200, Data("{}".utf8))
@@ -457,6 +465,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
             page["start"] = 0
             page["file"] = "mock-\(name)"
             page["gen"] = "1.0"
+            if UITestShowcase.enabled, let extra = UITestShowcase.transcriptExtras(name: name) { for (k, v) in extra { page[k] = v } }
             if name == Self.backgroundSession {
                 let since = Int64(Date().addingTimeInterval(-200).timeIntervalSince1970 * 1000)
                 page["signals"] = ["mode": "auto", "background": [["tool": "toolu_bg1", "task": "b1", "kind": "shell",
@@ -725,4 +734,79 @@ extension MockBox {
     }
 }
 // MARK: - end of pair invites ------------------------------------------------------------------------------------------
+// MARK: - Showcase (`-uiTestShowcase 1`) --------------------------------------------------------------------------------
+// The English dataset for screenshots (UITestShowcase.swift): its projects, worktrees, review, dev servers, pull requests,
+// CI and git activity, the screens the cards read, and the answers the AI touches would give. What it does not name falls
+// through to the generic routes above (sessions, transcripts, send, create task, chats).
+
+extension MockBox {
+    fileprivate func showcaseRoute(_ method: BoxClient.Method, _ p: [String], _ query: [String: String], _ body: Data?) -> (Int, Data)? {
+        let req = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? JSON) ?? [:]
+        switch (method, p[1]) {
+        case (.get, "locations") where p.count == 2: return (200, Data(UITestShowcase.locations.utf8))
+        case (.get, "locations") where p.count == 7 && p[6] == "touched": return (200, Self.json(UITestShowcase.touched(location: p[2], worktree: p[4])))
+        case (.get, "worktrees"):
+            let all = UITestShowcase.worktrees(location: query["location"])
+            return (200, Self.json(all.filter { !removedWorktrees.contains("\($0["location"] ?? "")/\($0["name"] ?? "")") }))
+        case (.get, "review"): return (200, Data(UITestShowcase.review.utf8))
+        case (.get, "services"): return (200, Data(UITestShowcase.services.utf8))
+        case (.post, "exec"): return showcaseExec((req["command"] as? String) ?? "")
+        default: return nil
+        }
+    }
+
+    /// The box's `exec`: the markers come first (their commands name the model too), then git / gh.
+    private func showcaseExec(_ cmd: String) -> (Int, Data)? {
+        if cmd.contains(NextSteps.marker) { return ok(UITestShowcase.nextSteps) }
+        if cmd.contains(AITitle.marker) { return ok("\"\(UITestShowcase.aiTitle(prompt: MockPRs.sentText(cmd)))\"\n") }
+        if cmd.contains(TalkRouter.marker) {
+            return ok("```json\n" + String(decoding: Self.json(UITestShowcase.talkDecision(prompt: MockPRs.sentText(cmd))), as: UTF8.self) + "\n```\n")
+        }
+        if cmd.contains("PIER_MAIN_OK") { return ok("PIER_MAIN_OK 9c2e41a\n") }
+        if cmd.contains("--model haiku") { return ok(UITestShowcase.aiDraft) }
+        if cmd.contains("pier-home:prs") { return ok(String(decoding: Self.json(UITestShowcase.homePRs()), as: UTF8.self) + "\n") }
+        if cmd.contains("pier-home:ci") { return ok(UITestShowcase.ciOutput()) }
+        if cmd.contains("pier-home:git") { return ok(UITestShowcase.gitActivity(command: cmd)) }
+        if cmd.hasPrefix("gh pr view "), let n = Int(cmd.dropFirst("gh pr view ".count).prefix { $0.isNumber }) {
+            return ok(String(decoding: Self.json(UITestShowcase.prView(number: n)), as: UTF8.self) + "\n")
+        }
+        if cmd.contains("pier-pr:diff") { return ok(UITestShowcase.prDiff) }
+        if cmd.contains("diff") { return ok(UITestShowcase.diff(for: cmd)) }
+        return nil
+    }
+
+    /// Per session: the screens (menus, the raw terminal), a tool's detail, diffs, and the answers to the permission and
+    /// the question; the rest (transcripts, messages, interrupt) is the generic code.
+    fileprivate func showcaseSessionRoute(_ method: BoxClient.Method, _ name: String, _ p: [String], _ query: [String: String], _ req: JSON) -> (Int, Data)? {
+        guard p.count >= 4, let si = index(name) else { return nil }
+        let waiting = (sessions[si]["agent_state"] as? String) == "waiting"
+        switch (method, p[3]) {
+        case (.get, "screen"):
+            guard let s = UITestShowcase.screen(name: name, waiting: waiting) else { return nil }
+            return (200, Self.json(["screen": s]))
+        case (.get, "transcript") where p.count == 6:
+            return (200, Self.json(UITestShowcase.toolDetail(name: name)))
+        case (.get, "diff"):
+            let file = query["file"] ?? query["path"] ?? ""
+            return (200, Self.json(["diff": UITestShowcase.diff(for: file), "file": file]))
+        case (.post, "keys") where name == UITestShowcase.permission && waiting:
+            scheduleReply(name, text: UITestShowcase.permissionReply, after: 1.2)
+            return (200, Data("{}".utf8))
+        case (.post, "send") where name == UITestShowcase.question && waiting:
+            let text = (req["text"] as? String) ?? ""
+            guard let n = Int(text), (1...UITestShowcase.questionChoices.count).contains(n) else { return (409, Data(#"{"error":"Claude is waiting for a choice"}"#.utf8)) }
+            let pick = UITestShowcase.questionChoices[n - 1]
+            scheduleReply(name, text: UITestShowcase.questionReply(pick), after: 1.0)
+            return (200, Self.json(["answered": [pick]]))
+        case (.post, "answer") where name == UITestShowcase.question:
+            let picks = ((req["answers"] as? [JSON])?.first?["picks"] as? [String]) ?? []
+            guard let pick = picks.first else { return (409, Data(#"{"error":"that option isn't on screen"}"#.utf8)) }
+            scheduleReply(name, text: UITestShowcase.questionReply(pick), after: 1.0)
+            return (200, Self.json(["answered": [pick]]))
+        default:
+            return nil
+        }
+    }
+}
+// MARK: - end of showcase ----------------------------------------------------------------------------------------------
 #endif

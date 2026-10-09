@@ -352,13 +352,17 @@ final class MarkdownView: NSView {
         text.isEditable = false
         text.isSelectable = true
         text.drawsBackground = false
-        text.textContainerInset = .zero
+        // The same 2 pt the panel's labels (text field cells) draw their text in from, so body text, headings and rows
+        // line up on one left edge.
+        text.textContainerInset = NSSize(width: Self.inset, height: 0)
         text.textContainer?.lineFragmentPadding = 0
         text.isVerticallyResizable = false
         text.isHorizontallyResizable = false
         addSubview(text)
     }
     required init?(coder: NSCoder) { nil }
+
+    private static let inset: CGFloat = 2
 
     func set(markdown: String) {
         attributed = MarkdownText.render(markdown)
@@ -367,7 +371,7 @@ final class MarkdownView: NSView {
 
     func height(for width: CGFloat) -> CGFloat {
         guard attributed.length > 0 else { return 0 }
-        text.textContainer?.containerSize = NSSize(width: width, height: 100_000)
+        text.textContainer?.containerSize = NSSize(width: width - Self.inset * 2, height: 100_000)
         text.layoutManager?.ensureLayout(for: text.textContainer!)
         let h = text.layoutManager?.usedRect(for: text.textContainer!).height ?? 0
         return min(ceil(h) + 2, 320)
@@ -376,7 +380,7 @@ final class MarkdownView: NSView {
     override func layout() {
         super.layout()
         text.frame = bounds
-        text.textContainer?.containerSize = NSSize(width: bounds.width, height: 100_000)
+        text.textContainer?.containerSize = NSSize(width: bounds.width - Self.inset * 2, height: 100_000)
     }
 }
 

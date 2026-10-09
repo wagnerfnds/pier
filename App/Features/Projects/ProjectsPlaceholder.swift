@@ -114,7 +114,20 @@ struct ProjectsRoot: View {
     /// left on the simulator are replaced).
     static func seedSectionsIfRequested(prefs: LocalPrefs, boxes: [BoxConnection]) {
         let entries = ProjectGrouping.entries(in: boxes)
-        guard UserDefaults.standard.bool(forKey: "seedSections"), prefs.sections.map(\.name) != ["Acme", "Atlas"], !entries.isEmpty else { return }
+        guard UserDefaults.standard.bool(forKey: "seedSections"), !entries.isEmpty else { return }
+        if UITestShowcase.enabled {
+            // The showcase's four projects in two sections (screenshots of the sidebar and the Projects tab).
+            let names = [UITestShowcase.t("Product", "Produto"), UITestShowcase.t("Platform", "Plataforma")]
+            guard prefs.sections.map(\.name) != names else { return }
+            for s in prefs.sections { prefs.removeSection(s.id) }
+            prefs.addSection(names[0]); prefs.addSection(names[1])
+            for e in entries {
+                let n = e.location.name
+                prefs.assign(project: e.key, to: n == "storefront" || n == "mobile-app" ? prefs.sections[0].id : prefs.sections[1].id)
+            }
+            return
+        }
+        guard prefs.sections.map(\.name) != ["Acme", "Atlas"] else { return }
         for s in prefs.sections { prefs.removeSection(s.id) }
         prefs.addSection("Acme"); prefs.addSection("Atlas")
         for e in entries {

@@ -34,6 +34,27 @@ import ScreenCaptureKit
         NSCursor.crosshair.push()
     }
 
+    /// Screenshots without a screen: the overlay as it looks mid-drag (the dimming, a 720 × 320 selection with its size
+    /// label) drawn offscreen into `<dir>/pointat.png` at 2×, with alpha, over nothing at all.
+    static func renderDemo(to dir: String) -> String {
+        let size = NSSize(width: 1440, height: 900), scale: CGFloat = 2
+        let view = OverlayView(frame: NSRect(origin: .zero, size: size))
+        view.showLocal(NSRect(x: (size.width - 720) / 2, y: (size.height - 320) / 2, width: 720, height: 320))
+        // Not in any window, so it is drawn straight into a bitmap (its drawing is all in `draw`).
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return "pointat: no bitmap" }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        view.draw(view.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = rep.representation(using: .png, properties: [:]) else { return "pointat: nothing drawn" }
+        let url = URL(fileURLWithPath: dir)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        do { try png.write(to: url.appendingPathComponent("pointat.png")); return "pointat: pointat.png" } catch { return "pointat: \(error)" }
+    }
+
     /// Screenshots: draws the selection by itself, then takes the picture.
     func demo(rect: NSRect, on screen: NSScreen, after: TimeInterval = 1.2) {
         guard let o = overlays.first(where: { $0.screen == screen }) else { return }
@@ -157,6 +178,9 @@ final class OverlayView: NSView {
         rect = NSRect(x: r.minX - window.frame.minX, y: r.minY - window.frame.minY, width: r.width, height: r.height)
         needsDisplay = true
     }
+
+    /// A selection in the view's own coordinates (offscreen rendering, no window).
+    func showLocal(_ r: NSRect) { rect = r; needsDisplay = true }
 
     override func mouseDown(with event: NSEvent) {
         start = convert(event.locationInWindow, from: nil)

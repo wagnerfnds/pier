@@ -69,10 +69,10 @@ extension WState {
     }
     var title: String {
         switch self {
-        case .needsYou: "Precisa de você"
-        case .working: "Trabalhando"
-        case .done: "Sua vez"
-        case .ready: "Pronto"
+        case .needsYou: String(localized: "Precisa de você")
+        case .working: String(localized: "Trabalhando")
+        case .done: String(localized: "Sua vez")
+        case .ready: String(localized: "Pronto")
         }
     }
     var symbol: String {

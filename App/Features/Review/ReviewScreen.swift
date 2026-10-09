@@ -149,7 +149,7 @@ struct ReviewScreen: View {
                     if item.baseAhead > 0 { Pill(text: "\(item.baseAhead) commit\(item.baseAhead == 1 ? "" : "s") à frente", color: Theme.accent) }
                     if item.ahead > 0 { Pill(text: "↑\(item.ahead)", color: Theme.green) }
                     if item.behind > 0 { Pill(text: "↓\(item.behind)", color: Theme.orange) }
-                    if !item.files.isEmpty { Pill(text: "\(item.files.count) arquivo\(item.files.count == 1 ? "" : "s") pendente\(item.files.count == 1 ? "" : "s")", color: Theme.gray) }
+                    if !item.files.isEmpty { Pill(text: item.files.count == 1 ? String(localized: "1 arquivo pendente") : String(localized: "\(item.files.count) arquivos pendentes"), color: Theme.gray) }
                 }
             }
         }

@@ -6,12 +6,34 @@ import UIKit
 /// Recording permission (CI, agents); works in the simulator too.
 enum WindowSnapshot {
     @MainActor static func runIfRequested() {
+        resizeIfRequested()
         guard let path = UserDefaults.standard.string(forKey: "snapshotTo") else { return }
         let after = UserDefaults.standard.double(forKey: "snapshotAfter")
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(after > 0 ? after : 6))
             write(to: URL(fileURLWithPath: path))
         }
+    }
+
+    /// `-macWindowSize 1280x800` (Mac Catalyst): the window at that size before the snapshot, so screenshots have a
+    /// known frame whatever the last run left behind.
+    @MainActor private static func resizeIfRequested() {
+        #if targetEnvironment(macCatalyst)
+        guard let spec = UserDefaults.standard.string(forKey: "macWindowSize") else { return }
+        let parts = spec.lowercased().split(separator: "x").compactMap { Double($0) }
+        guard parts.count == 2 else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+            // Pinning both restrictions is what reliably sizes a Catalyst window; the geometry request alone is advisory.
+            let size = CGSize(width: parts[0], height: parts[1])
+            scene.sizeRestrictions?.minimumSize = size
+            scene.sizeRestrictions?.maximumSize = size
+            let screen = scene.screen.bounds
+            let frame = CGRect(x: (screen.width - size.width) / 2, y: (screen.height - size.height) / 2, width: size.width, height: size.height)
+            scene.requestGeometryUpdate(.Mac(systemFrame: frame)) { error in log("snapshot: resize \(error)") }
+        }
+        #endif
     }
 
     @MainActor static func write(to url: URL) {

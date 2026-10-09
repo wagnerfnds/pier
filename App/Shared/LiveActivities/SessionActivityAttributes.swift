@@ -28,11 +28,11 @@ enum ActivityPhase: String, Codable, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .starting: "Iniciando"
-        case .running: "Trabalhando"
-        case .waiting: "Precisa de você"
-        case .finished: "Sua vez"
-        case .ended: "Encerrada"
+        case .starting: String(localized: "Iniciando")
+        case .running: String(localized: "Trabalhando")
+        case .waiting: String(localized: "Precisa de você")
+        case .finished: String(localized: "Sua vez")
+        case .ended: String(localized: "Encerrada")
         }
     }
 }

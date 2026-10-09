@@ -2085,6 +2085,16 @@
         }
       }
     },
+    "Atualizando a lista de tarefas…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updating the to-do list…"
+          }
+        }
+      }
+    },
     "Atualizar %lld main(s)" : {
       "localizations" : {
         "en" : {
@@ -2295,12 +2305,32 @@
         }
       }
     },
+    "Buscando %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching %@…"
+          }
+        }
+      }
+    },
     "Buscando a branch do PR…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetching the PR's branch…"
+          }
+        }
+      }
+    },
+    "Buscando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching…"
           }
         }
       }
@@ -2935,6 +2965,16 @@
         }
       }
     },
+    "Delegando a um subagente…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delegating to a subagent…"
+          }
+        }
+      }
+    },
     "Delegou %lld tarefas" : {
       "localizations" : {
         "en" : {
@@ -3231,6 +3271,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Can be merged, but some checks are failing."
+          }
+        }
+      }
+    },
+    "Editando %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editing %@…"
+          }
+        }
+      }
+    },
+    "Editando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editing…"
           }
         }
       }
@@ -4037,6 +4097,26 @@
         }
       }
     },
+    "Explorando %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exploring %@…"
+          }
+        }
+      }
+    },
+    "Explorando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exploring…"
+          }
+        }
+      }
+    },
     "Falar" : {
       "localizations" : {
         "en" : {
@@ -4693,6 +4773,16 @@
         }
       }
     },
+    "Lendo %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading %@…"
+          }
+        }
+      }
+    },
     "Lendo a resposta…" : {
       "localizations" : {
         "en" : {
@@ -4709,6 +4799,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reading the options on screen…"
+          }
+        }
+      }
+    },
+    "Lendo…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading…"
           }
         }
       }
@@ -7311,6 +7411,16 @@
         }
       }
     },
+    "Pensando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thinking…"
+          }
+        }
+      }
+    },
     "Pequeno" : {
       "localizations" : {
         "en" : {
@@ -7501,6 +7611,16 @@
         }
       }
     },
+    "Pesquisando na web…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching the web…"
+          }
+        }
+      }
+    },
     "Peça ao seu agente" : {
       "localizations" : {
         "en" : {
@@ -7677,6 +7797,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prompts"
+          }
+        }
+      }
+    },
+    "Iniciando" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting"
+          }
+        }
+      }
+    },
+    "1 arquivo pendente" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 pending file"
+          }
+        }
+      }
+    },
+    "%lld arquivos pendentes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld pending files"
           }
         }
       }
@@ -8287,6 +8437,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Running"
+          }
+        }
+      }
+    },
+    "Rodando %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Running %@…"
+          }
+        }
+      }
+    },
+    "Rodando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Running…"
           }
         }
       }
@@ -9283,6 +9453,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A new session would stop at the agent's login prompt."
+          }
+        }
+      }
+    },
+    "Usando %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Using %@…"
           }
         }
       }

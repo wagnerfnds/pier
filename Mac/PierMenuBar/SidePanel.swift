@@ -78,8 +78,11 @@ extension PanelScreenView {
     /// The screen the app asked for (a task just started): applied on the next render.
     private var pendingStarted: String?
 
-    var isOpen: Bool { navigator.isOpen && panel.isVisible }
+    var isOpen: Bool { navigator.isOpen && (panel.isVisible || offscreen) }
     var topScreen: PanelScreen? { navigator.top }
+    /// Screenshots (`offscreen` debug command): the panel renders and lays out as usual but is never ordered on screen,
+    /// so `snapshot:` draws it without anything showing on the person's display.
+    var offscreen = false
 
     init(send: @escaping (String) -> Void) {
         self.send = send
@@ -144,7 +147,7 @@ extension PanelScreenView {
         guard navigator.isOpen else { return }
         render()
         place()
-        if !panel.isVisible {
+        if !panel.isVisible && !offscreen {
             panel.alphaValue = SurfaceStyle.reduceMotion ? 1 : 0
             panel.orderFrontRegardless()   // no key status: the person's app keeps the keyboard
             if !SurfaceStyle.reduceMotion {
@@ -159,7 +162,7 @@ extension PanelScreenView {
     }
 
     func close() {
-        guard panel.isVisible else { navigator.close(); return }
+        guard panel.isVisible || (offscreen && navigator.isOpen) else { navigator.close(); return }
         if let clickAway { NSEvent.removeMonitor(clickAway) }
         clickAway = nil
         root.endEditing()
@@ -371,10 +374,14 @@ final class PanelRootView: NSView {
     }
 
     /// Lays the screen out for the panel's width; the panel's size (chrome and pointer included), capped at `maxHeight`.
+    /// The content's inset from the panel's edge (the radius, so nothing sits in the corners' curve): the title, the
+    /// hairline under the header and every screen share it.
+    static let pad: CGFloat = PanelStyle.radius
+
     func measure(width: CGFloat, maxHeight: CGFloat, edge: EdgeSide) -> NSSize {
         self.edge = edge
         panelWidth = width
-        let inner = width - 44
+        let inner = width - Self.pad * 2
         contentHeight = screenView?.layoutContent(width: inner) ?? 0
         let wanted = headerHeight + contentHeight + 22
         panelHeight = min(wanted, maxHeight)
@@ -388,11 +395,11 @@ final class PanelRootView: NSView {
         super.layout()
         let x0 = shapeX
         let y0 = Self.margin
-        let pad: CGFloat = 22
-        back.frame = NSRect(x: x0 + 14, y: y0 + 16, width: 28, height: 28)
-        let titleX = back.isHidden ? x0 + pad : x0 + 14 + 28 + 6
+        let pad = Self.pad
+        back.frame = NSRect(x: x0 + 16, y: y0 + 16, width: 28, height: 28)
+        let titleX = back.isHidden ? x0 + pad : x0 + 16 + 28 + 6
         title.frame = NSRect(x: titleX, y: y0 + 19, width: panelWidth - (titleX - x0) - 28 - pad, height: 22)
-        close.frame = NSRect(x: x0 + panelWidth - 14 - 28, y: y0 + 16, width: 28, height: 28)
+        close.frame = NSRect(x: x0 + panelWidth - 16 - 28, y: y0 + 16, width: 28, height: 28)
         pointerY = y0 + 30
         scroll.frame = NSRect(x: x0 + pad, y: y0 + headerHeight, width: panelWidth - pad * 2, height: panelHeight - headerHeight - 12)
         if let s = screenView { s.frame = NSRect(x: 0, y: 0, width: panelWidth - pad * 2, height: max(contentHeight, scroll.frame.height)) }
@@ -428,7 +435,7 @@ final class PanelRootView: NSView {
         shape.stroke()
         // A hairline under the header.
         PanelStyle.hairline.setFill()
-        NSRect(x: r.minX + 22, y: r.minY + headerHeight - 1, width: r.width - 44, height: 1).fill()
+        NSRect(x: r.minX + Self.pad, y: r.minY + headerHeight - 1, width: r.width - Self.pad * 2, height: 1).fill()
     }
 
     override func keyDown(with event: NSEvent) {

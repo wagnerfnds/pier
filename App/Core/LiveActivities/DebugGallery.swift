@@ -3,10 +3,12 @@ import SwiftUI
 import WidgetKit
 
 /// Debug-only screen (`-widgetGallery home|lock|activity|island|all`) that renders the widget and Live Activity views
-/// in-app, for screenshots. The real widgets use the same views (App/Shared/Views).
+/// in-app, for screenshots. The real widgets use the same views (App/Shared/Views). With `-uiTestShowcase 1` the sample
+/// data is the showcase's (in the app's language, one session per state), see UITestShowcase.swift.
 struct WidgetGalleryView: View {
     let page: String
-    private let snap = WidgetSnapshot.sample
+    private let snap: WidgetSnapshot = UITestShowcase.enabled ? .showcase : .sample
+    private let samples: ActivitySamples = UITestShowcase.enabled ? .showcase : .standard
 
     var body: some View {
         ZStack {
@@ -63,8 +65,8 @@ struct WidgetGalleryView: View {
 
     private var activity: some View {
         VStack(spacing: 14) {
-            ForEach([ActivityContentState.sampleRunning, .sampleWaiting, .sampleFinished], id: \.phase) { st in
-                SessionLockScreenView(attrs: .sample, state: st)
+            ForEach(Array([samples.running, samples.waiting, samples.finished].enumerated()), id: \.offset) { _, s in
+                SessionLockScreenView(attrs: s.attrs, state: s.state)
                     .background(BTheme.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .frame(width: 369)
             }
@@ -73,30 +75,30 @@ struct WidgetGalleryView: View {
 
     private var island: some View {
         VStack(spacing: 18) {
-            ForEach([ActivityContentState.sampleRunning, .sampleWaiting, .sampleQuestion], id: \.self) { st in
+            ForEach(Array([samples.running, samples.waiting, samples.question].enumerated()), id: \.offset) { _, s in
                 HStack(spacing: 0) {
-                    IslandCompactLeading(attrs: .sample, state: st).padding(.leading, 10)
+                    IslandCompactLeading(attrs: s.attrs, state: s.state).padding(.leading, 10)
                     Spacer()
-                    IslandCompactTrailing(state: st).padding(.trailing, 12)
+                    IslandCompactTrailing(state: s.state).padding(.trailing, 12)
                 }
                 .frame(width: 190, height: 37).background(.black, in: Capsule())
             }
-            ForEach([ActivityContentState.sampleWaiting, .sampleQuestion, .sampleFinished], id: \.self) { st in
+            ForEach(Array([samples.waiting, samples.question, samples.finished].enumerated()), id: \.offset) { _, s in
                 VStack(spacing: 8) {
                     HStack(alignment: .center, spacing: 10) {
-                        IslandExpandedLeading(attrs: .sample)
-                        IslandExpandedCenter(attrs: .sample)
-                        IslandExpandedTrailing(state: st)
+                        IslandExpandedLeading(attrs: s.attrs)
+                        IslandExpandedCenter(attrs: s.attrs)
+                        IslandExpandedTrailing(state: s.state)
                     }
-                    IslandExpandedBottom(attrs: .sample, state: st)
+                    IslandExpandedBottom(attrs: s.attrs, state: s.state)
                 }
                 .padding(.horizontal, 20).padding(.vertical, 16)
                 .frame(width: 371).background(.black, in: RoundedRectangle(cornerRadius: 44, style: .continuous))
             }
             HStack(spacing: 14) {
-                IslandMinimal(state: .sampleRunning).frame(width: 37, height: 37).background(.black, in: Circle())
-                IslandMinimal(state: .sampleWaiting).frame(width: 37, height: 37).background(.black, in: Circle())
-                IslandMinimal(state: .sampleFinished).frame(width: 37, height: 37).background(.black, in: Circle())
+                IslandMinimal(state: samples.running.state).frame(width: 37, height: 37).background(.black, in: Circle())
+                IslandMinimal(state: samples.waiting.state).frame(width: 37, height: 37).background(.black, in: Circle())
+                IslandMinimal(state: samples.finished.state).frame(width: 37, height: 37).background(.black, in: Circle())
             }
         }
         .foregroundStyle(.white)

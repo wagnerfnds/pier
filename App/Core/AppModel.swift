@@ -188,6 +188,21 @@ final class AppModel {
                 if let c = boxes.first, let s = c.sessions.first(where: { $0.isAgent }) { openSession(box: c.name, name: s.name) }
             }
         }
+        // Screenshot hooks: `-openTalk 1` the Falar sheet (with `-talkText "…"` typed and routed), `-openPalette 1` the
+        // ⌘K palette (iPad, Mac), `-openFaxina 1` the Faxina screen.
+        if UserDefaults.standard.bool(forKey: "openTalk") {
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                let text = UserDefaults.standard.string(forKey: "talkText") ?? ""
+                TalkCenter.shared.open(text: text, listen: false, autoRoute: UserDefaults.standard.bool(forKey: "talkRoute"))
+            }
+        }
+        if UserDefaults.standard.bool(forKey: "openPalette") {
+            Task { try? await Task.sleep(for: .seconds(3)); router.showPalette = true }
+        }
+        if UserDefaults.standard.bool(forKey: "openFaxina") {
+            Task { try? await Task.sleep(for: .seconds(3)); router.push(HousekeepingRoute()) }
+        }
         #endif
     }
 

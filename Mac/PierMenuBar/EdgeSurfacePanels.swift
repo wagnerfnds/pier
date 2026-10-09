@@ -376,6 +376,31 @@ import AppKit
 
     func debugToast(_ text: String) { showToast(text); layout(); repin() }
 
+    /// Screenshots without Screen Recording (`snapshot:<dir>`): the tab's view and the open side panel's drawn into
+    /// `tab.png` and `panel.png` at 2×, transparent outside their shapes, so they compose over any background and never
+    /// carry what is on the person's screen.
+    func snapshot(to dir: String) -> String {
+        let url = URL(fileURLWithPath: dir)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        var written: [String] = []
+        if let png = Self.png(of: view), (try? png.write(to: url.appendingPathComponent("tab.png"))) != nil { written.append("tab.png") }
+        if panelController.isOpen, let root = panelController.panel.contentView, let png = Self.png(of: root),
+           (try? png.write(to: url.appendingPathComponent("panel.png"))) != nil { written.append("panel.png") }
+        return written.isEmpty ? "snapshot: nothing written" : "snapshot: " + written.joined(separator: " ")
+    }
+
+    /// A view drawn into a PNG at `scale` (its own drawing, no window capture), with alpha.
+    static func png(of view: NSView, scale: CGFloat = 2) -> Data? {
+        let b = view.bounds
+        guard b.width > 0, b.height > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(b.width * scale), pixelsHigh: Int(b.height * scale), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { return nil }
+        rep.size = b.size
+        view.cacheDisplay(in: b, to: rep)
+        return rep.representation(using: .png, properties: [:])
+    }
+
     /// Debug hooks for a run without a pointer: `hover`, `unhover`, `option`, `labels`, `collapse`, `magnify:<y>`
     /// (the pointer at `y` points from the tab's top).
     func debug(_ command: String) {
@@ -384,6 +409,12 @@ import AppKit
         case "unhover": pointer(inside: false)
         case "option", "labels": optionHeld.toggle()
         case "collapse": forceCollapsed = true; toast = nil; repin()
+        case "offscreen":
+            // Screenshots: the tab and the panel keep laying out but leave the screen; `snapshot:` still draws them.
+            hidden = true
+            panel.orderOut(nil)
+            panelController.offscreen = true
+            panelController.panel.orderOut(nil)
         case "probe":
             // Which window the system hands a click to: on the shape it must be the tab, on the transparent canvas
             // beside it whatever is behind (evidence for the report).

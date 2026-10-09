@@ -437,8 +437,9 @@ final class CardView: NSView, NSTextFieldDelegate {
             if apply { reply.frame = NSRect(x: x, y: y, width: inner, height: h) }
             y += h + 14
         } else if apply { reply.frame = .zero }
+        // Headings, text and rows share one left edge (the labels' own 2 pt inset is the same for all of them).
         if !heading.stringValue.isEmpty {
-            if apply { heading.frame = NSRect(x: x + 2, y: y, width: inner, height: 14) }
+            if apply { heading.frame = NSRect(x: x, y: y, width: inner, height: 14) }
             y += 14 + 6
         } else if apply { heading.frame = .zero }
         for r in rows {
@@ -447,7 +448,7 @@ final class CardView: NSView, NSTextFieldDelegate {
             y += h + 6
         }
         if let loading {
-            if apply { loading.frame = NSRect(x: x + 4, y: y, width: inner, height: 18) }
+            if apply { loading.frame = NSRect(x: x, y: y, width: inner, height: 18) }
             y += 18 + 6
         }
         if !rows.isEmpty || loading != nil { y += 8 }
@@ -776,15 +777,20 @@ final class PillButton: ClickableView {
     }
     required init?(coder: NSCoder) { nil }
 
+    /// Before the label: the symbol and its gaps; after it: the trailing padding.
+    private static let leading: CGFloat = 11 + 16 + 5
+    private static let trailing: CGFloat = 12
+
+    /// The label is measured by its own cell (the text field's insets included), so a title never truncates to "St…".
     func measure() -> NSSize {
-        let w = (label.stringValue as NSString).size(withAttributes: [.font: label.font ?? PanelStyle.font(12, .semibold)]).width
-        return NSSize(width: ceil(w) + 11 + 16 + 5 + 12, height: 28)
+        let w = ceil(label.sizeThatFits(NSSize(width: 10_000, height: 28)).width)
+        return NSSize(width: w + Self.leading + Self.trailing, height: 28)
     }
 
     override func layout() {
         super.layout()
         image.frame = NSRect(x: 11, y: (bounds.height - 14) / 2, width: 16, height: 14)
-        label.frame = NSRect(x: 11 + 16 + 5, y: (bounds.height - 16) / 2, width: bounds.width - 32 - 10, height: 16)
+        label.frame = NSRect(x: Self.leading, y: (bounds.height - 16) / 2, width: max(0, bounds.width - Self.leading - Self.trailing), height: 16)
     }
 
     override func draw(_ dirtyRect: NSRect) {
