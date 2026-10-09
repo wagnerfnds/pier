@@ -334,11 +334,14 @@ final class PanelRootView: NSView {
         back.onBlack = true; close.onBlack = true
         back.onClick = { [weak self] in self?.onBack?() }
         close.onClick = { [weak self] in self?.onClose?() }
+        // The clip view draws a (square, gray) background of its own unless told not to; setting the scroll view's after
+        // the clip is in place covers both.
+        clip.drawsBackground = false
+        scroll.contentView = clip
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay
-        scroll.contentView = clip
         scroll.verticalScrollElasticity = .allowed
         for v in [back, close, title, scroll] as [NSView] { addSubview(v) }
     }

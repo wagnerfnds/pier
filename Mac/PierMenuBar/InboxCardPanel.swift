@@ -397,11 +397,18 @@ final class CardView: NSView, NSTextFieldDelegate {
                 sub.frame = NSRect(x: x + 52, y: y + 1 + nameH + 2, width: inner - 52, height: subH)
             }
             y += 40 + 16
-        } else if apply {
-            avatar.frame = .zero; name.frame = .zero
-            sub.frame = NSRect(x: x, y: y, width: inner, height: 40)
-            y += 40
+        } else {
+            // Empty: the title and a line under it, centred. Measured the same way it is applied, so nothing is cut.
+            let subH = max(18, SurfaceStyle.height(of: sub, width: inner))
+            if apply {
+                avatar.frame = .zero; name.frame = .zero
+                sub.frame = NSRect(x: x, y: y, width: inner, height: subH)
+            }
+            y += subH + 12
         }
+        let empty = card == nil
+        title.alignment = empty ? .center : .left
+        sub.alignment = empty ? .center : .left
         if !question.stringValue.isEmpty {
             let h = SurfaceStyle.height(of: question, width: inner)
             if apply { question.frame = NSRect(x: x, y: y, width: inner, height: h) }
