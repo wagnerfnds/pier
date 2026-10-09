@@ -1,0 +1,6 @@
+{
+  "command" : "ls /home/ubuntu/code/sandbox-subtract",
+  "id" : "toolu_01WLDNtPrSYAcd7nLdqNyR6a",
+  "name" : "Bash",
+  "output" : "README.md\ncalc.py"
+}

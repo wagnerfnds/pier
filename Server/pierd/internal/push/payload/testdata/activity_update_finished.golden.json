@@ -1,0 +1,21 @@
+{
+  "aps": {
+    "timestamp": 1790000000,
+    "event": "update",
+    "content-state": {
+      "phase": "finished",
+      "since": 1790000000,
+      "step": null,
+      "ask": null,
+      "hasMenu": false,
+      "added": 6,
+      "removed": 0,
+      "reply": null
+    },
+    "stale-date": 1790003600,
+    "alert": {
+      "title": "Corrigir login",
+      "body": "Concluído"
+    }
+  }
+}

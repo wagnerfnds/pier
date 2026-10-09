@@ -1,0 +1,5 @@
+{"seq":1,"type":"future.event","time":"2026-10-07T21:00:00.123456789Z","data":{"nested":{"a":[1,2,{"b":null}]},"flag":true}}
+
+not json at all
+{"seq":2,"type":"agent.waiting","time":"2026-10-07T21:00:01Z","box":"b","origin":"claude","data":{"agent":"claude","path":"/w/a","reason":"permission","session":"a-claude-1"}}
+{"type":"seqless","time":"2026-10-07T21:00:01Z"}

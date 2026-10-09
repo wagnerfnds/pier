@@ -1,0 +1,40 @@
+
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude Code[0m [38;5;246mv2.1.289
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mHaiku 4.5 · Claude Pro
+[38;5;174m ▝▝   ▝▝ [39m  [38;5;246m/…/scratch/proj
+
+
+[48;5;237m❯ [38;5;231mWithout using any tools, write about 350 words on how lighthouses work. Include a short heading, [39m 
+  [38;5;231ma bulleted list of three parts, a numbered list of two steps, some [1mbold[0m[38;5;231m[48;5;237m words, inline code like [39m  
+  [38;5;153mlamp_on()[38;5;231m, and a 4-line Python code block.[39m                                                        
+
+[38;5;231m[49m⏺[39m [1;3;4mHow Lighthouses Work
+
+[0m  Lighthouses are one of humanity's oldest navigation aids, serving as [1mbeacons[0m for ships at sea.
+  These tall structures use light and sometimes sound to warn maritime travelers of dangerous
+  coastlines, rocks, and shoals. Modern lighthouses are [1mfully automated[0m, but they all operate on the
+  same fundamental principle: projecting a visible light signal that can be seen from great
+  distances across water.
+
+  The basic components of a lighthouse system include:
+
+  - [1mThe light source and optics[0m: A powerful lamp (historically open flame, now electric or LED)
+    positioned at the top of a tall tower, combined with a lens system that magnifies and focuses
+    the light into a concentrated beam visible for 20+ miles
+  - [1mThe tower structure[0m: A tall building designed to position the light above sea level and
+    surrounding terrain, allowing ships to see the signal from the horizon
+  -
+
+
+
+
+
+
+                                                                                                  
+
+  [38;5;246mtmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tra…
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;246m❯ [39m                                                 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246mHaiku 4.5 · context 19% · 5h 1% · 7d 1%
+[39m  [38;5;246m⏸ manual mode on · ← for agents[39m                    

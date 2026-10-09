@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+
+  runtime-setup:
+    image: swift-nio-ssl:22.04-main
+    build:
+      args:
+        base_image: "swiftlang/swift:nightly-main-jammy"
+
+  performance-test:
+    image: swift-nio-ssl:22.04-main
+
+  shell:
+    image: swift-nio-ssl:22.04-main

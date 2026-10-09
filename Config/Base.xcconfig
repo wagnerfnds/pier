@@ -1,0 +1,10 @@
+// Identifiers. Everything else derives from PIER_BUNDLE_ID: the widget extension ($(PIER_BUNDLE_ID).widgets), the Mac
+// menu bar plugin (.menubar), the UI tests (.uitests), the App Group (group.$(PIER_BUNDLE_ID)), the keychain access
+// groups ($(AppIdentifierPrefix)$(PIER_BUNDLE_ID)[.shared]), the background refresh task (.refresh) and the APNs topic
+// (the bundle id itself, which pierd's push.json names as bundle_id). Override them in Config/Signing.xcconfig.
+PIER_BUNDLE_ID = dev.pier.app
+// The keychain service the identity and the pairings are stored under.
+PIER_KEYCHAIN_SERVICE = $(PIER_BUNDLE_ID)
+
+// Local overrides (team, bundle id): Config/Signing.xcconfig, gitignored. A missing file is fine (simulator builds).
+#include? "Signing.xcconfig"

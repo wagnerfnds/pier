@@ -1,0 +1,230 @@
+name: Pier
+options:
+  # Bundle ids, App Group, keychain groups and the APNs topic all derive from PIER_BUNDLE_ID (Config/Base.xcconfig,
+  # overridden in the gitignored Config/Signing.xcconfig).
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: pt-BR
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Automatic
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+packages:
+  PierKit:
+    path: Packages/PierKit
+targets:
+  Pier:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: PierKit
+        product: PierKit
+      # The widget extension: Home Screen widgets and Live Activities on iPhone/iPad, desktop / Notification Center widgets
+      # on the Mac (built for Mac Catalyst like the app; ActivityKit stays iOS-only inside it).
+      - target: PierWidgets
+      # The notification service extension (a question's choices as the notification's buttons), iPhone/iPad only too.
+      - target: PierNotificationService
+        platformFilter: iOS
+      # The Mac menu bar item: an AppKit plugin bundle loaded at runtime (Mac Catalyst only), in Contents/PlugIns.
+      - target: PierMenuBar
+        platformFilter: macOS
+        embed: true
+        codeSign: true
+        copy:
+          destination: plugins
+    entitlements:
+      path: App/Resources/Pier.entitlements
+      properties:
+        com.apple.security.application-groups: ["group.$(PIER_BUNDLE_ID)"]
+        keychain-access-groups:
+          - "$(AppIdentifierPrefix)$(PIER_BUNDLE_ID).shared"
+          - "$(AppIdentifierPrefix)$(PIER_BUNDLE_ID)"
+        aps-environment: "$(APS_ENVIRONMENT)"
+    settings:
+      configs:
+        Debug:
+          APS_ENVIRONMENT: development
+        Release:
+          APS_ENVIRONMENT: production
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PIER_BUNDLE_ID)
+        PRODUCT_NAME: Pier
+        # Mac: Mac Catalyst with the Mac idiom ("Optimize for Mac", family 6), the same target and code as iOS.
+        TARGETED_DEVICE_FAMILY: "1,2,6"
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      - name: Stamp build number
+        script: '"$SRCROOT/Config/scripts/stamp-build-number.sh" read'
+        basedOnDependencyAnalysis: false
+    info:
+      path: App/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Pier
+        CFBundleDevelopmentRegion: pt-BR
+        CFBundleLocalizations: [pt-BR, en]
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSCameraUsageDescription: "A câmera lê o QR code de pareamento exibido pelo pierd."
+        NSMicrophoneUsageDescription: "O microfone é usado para ditar pedidos aos agentes em Falar."
+        NSSpeechRecognitionUsageDescription: "O reconhecimento de fala transforma o que você diz em Falar em texto, no próprio aparelho."
+        NSLocalNetworkUsageDescription: "O Pier se conecta às suas boxes de desenvolvimento na rede local."
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        PierKeychainGroup: "$(AppIdentifierPrefix)$(PIER_BUNDLE_ID).shared"
+        PierAppGroup: "group.$(PIER_BUNDLE_ID)"
+        PierKeychainService: "$(PIER_KEYCHAIN_SERVICE)"
+        UIBackgroundModes: [fetch, processing, remote-notification]
+        BGTaskSchedulerPermittedIdentifiers: ["$(PIER_BUNDLE_ID).refresh"]
+        CFBundleURLTypes:
+          # pier:// (pierd's pairing links, widgets, Live Activities).
+          - CFBundleURLName: "$(PIER_BUNDLE_ID).pier"
+            CFBundleURLSchemes: [pier]
+  PierUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests/PierUITests
+    dependencies:
+      - target: Pier
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PIER_BUNDLE_ID).uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Pier
+        SWIFT_STRICT_CONCURRENCY: minimal
+  # AppKit plugin for the Mac app's menu bar item (Mac/PierMenuBar); see App/Features/MenuBar/MenuBarBridge.swift.
+  PierMenuBar:
+    type: bundle
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Mac/PierMenuBar
+      # The pure rules of the edge surface (position math, the ⌥ double tap, paging) are PierKit's, tested there; this
+      # one file is compiled into the plugin too, so it never links the whole kit a second time.
+      - path: Packages/PierKit/Sources/PierKit/Support/EdgeSurface.swift
+    dependencies:
+      - sdk: ScreenCaptureKit.framework
+      - sdk: IOKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PIER_BUNDLE_ID).menubar
+        PRODUCT_NAME: PierMenuBar
+        WRAPPER_EXTENSION: bundle
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: PierMenuBarPlugin
+        SKIP_INSTALL: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+  PierWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/PierWidgets
+        excludes: ["Info.plist"]
+      - path: App/Shared
+    dependencies:
+      - package: PierKit
+        product: PierKit
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    entitlements:
+      path: Extensions/PierWidgets/PierWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: ["group.$(PIER_BUNDLE_ID)"]
+        keychain-access-groups: ["$(AppIdentifierPrefix)$(PIER_BUNDLE_ID).shared"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PIER_BUNDLE_ID).widgets
+        PRODUCT_NAME: PierWidgets
+        TARGETED_DEVICE_FAMILY: "1,2,6"
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        # macOS loads a widget extension only when it is sandboxed: its own entitlements for the Mac build.
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Extensions/PierWidgets/PierWidgets-mac.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      - name: Stamp build number
+        script: '"$SRCROOT/Config/scripts/stamp-build-number.sh" write'
+        basedOnDependencyAnalysis: false
+    info:
+      path: Extensions/PierWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Pier
+        CFBundleDevelopmentRegion: pt-BR
+        NSLocalNetworkUsageDescription: "O Pier se conecta às suas boxes de desenvolvimento na rede local."
+        PierKeychainGroup: "$(AppIdentifierPrefix)$(PIER_BUNDLE_ID).shared"
+        PierAppGroup: "group.$(PIER_BUNDLE_ID)"
+        PierKeychainService: "$(PIER_KEYCHAIN_SERVICE)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  # Notification service extension: a waiting agent's `options` (push payload) become the notification's buttons
+  # (Extensions/PierNotificationService; NotificationChoices is shared with the app). Nothing else is compiled in.
+  PierNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/PierNotificationService
+        excludes: ["Info.plist"]
+      - path: App/Shared/NotificationChoices.swift
+    dependencies:
+      - sdk: UserNotifications.framework
+      # Build order only: the widget extension stamps the build number this target then reads (same number everywhere).
+      - target: PierWidgets
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PIER_BUNDLE_ID).notifications
+        PRODUCT_NAME: PierNotificationService
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      - name: Stamp build number
+        script: '"$SRCROOT/Config/scripts/stamp-build-number.sh" read'
+        basedOnDependencyAnalysis: false
+    info:
+      path: Extensions/PierNotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: Pier
+        CFBundleDevelopmentRegion: pt-BR
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+schemes:
+  Pier:
+    build:
+      targets:
+        Pier: all
+    test:
+      config: Debug
+      targets:
+        - name: PierUITests
+          parallelizable: false
+    run:
+      config: Debug

@@ -1,0 +1,25 @@
+{
+  "session" : {
+    "agent" : "codex",
+    "agent_state" : "running",
+    "attached" : 0,
+    "command" : "codex 'Add a multiply function to calc.py. Do not run anything.'",
+    "created" : "2026-10-07T21:36:46Z",
+    "dir" : "/home/ubuntu/code/sandbox-codex-try",
+    "exited" : false,
+    "fidelity" : "screen",
+    "location" : "sandbox/codex-try",
+    "name" : "sandbox-codex-try-codex-6y6",
+    "preset" : "codex",
+    "state_seq" : 289,
+    "state_since" : "2026-10-07T21:36:46.270889021Z",
+    "title" : "Add a multiply function to calc.py. Do not run…",
+    "turn" : "sandbox-codex-try-codex-6y6#1"
+  },
+  "worktree" : {
+    "branch" : "codex-try",
+    "head" : "ae6d87978c",
+    "name" : "codex-try",
+    "path" : "/home/ubuntu/code/sandbox-codex-try"
+  }
+}

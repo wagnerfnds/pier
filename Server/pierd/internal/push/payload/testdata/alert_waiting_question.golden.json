@@ -1,0 +1,17 @@
+{
+  "aps": {
+    "alert": {
+      "title": "✋ Needs you · Claude Code",
+      "body": "AskUserQuestion  Which colour?"
+    },
+    "category": "NEEDS_YOU_QUESTION",
+    "thread-id": "casa/projeto-wt-1",
+    "sound": "default",
+    "interruption-level": "time-sensitive",
+    "mutable-content": 1
+  },
+  "box": "casa",
+  "session": "projeto-wt-1",
+  "location": "projeto/wt-1",
+  "hasMenu": false
+}

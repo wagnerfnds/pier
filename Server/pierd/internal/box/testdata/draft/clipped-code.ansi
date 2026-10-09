@@ -1,0 +1,40 @@
+  These tall structures use light and sometimes sound to warn maritime travelers of dangerous
+  coastlines, rocks, and shoals. Modern lighthouses are [1mfully automated[0m, but they all operate on the
+  same fundamental principle: projecting a visible light signal that can be seen from great  
+  distances across water.                                                                           
+                                                                                                    
+  The basic components of a lighthouse system include:                                              
+
+  - [1mThe light source and optics[0m: A powerful lamp (historically open flame, now electric or LED)     
+    positioned at the top of a tall tower, combined with a lens system that magnifies and focuses
+    the light into a concentrated beam visible for 20+ miles                                    
+  - [1mThe tower structure[0m: A tall building designed to position the light above sea level and      
+    surrounding terrain, allowing ships to see the signal from the horizon                          
+  - [1mThe automation system[0m: Modern lighthouses use timers, sensors, and electronic controls to   
+    operate [38;5;153mturn_light_on()[39m and [38;5;153mturn_light_off()[39m automatically at dusk and dawn                     
+                                                                                                    
+  The operational process follows this sequence:                                           
+                         
+  1. [1mDetection and activation[0m: At sunset, a photocell sensor detects decreasing light levels and
+     triggers the lighthouse automation system to energize the lamp circuits                     
+  2. [1mSignal projection[0m: The activated lamp sends its beam through the optical lens system, creating
+     a rotating pattern that sweeps across the entire horizon in timed intervals                 
+                                                                                                   
+  Many lighthouses use [1mFresnel lenses[0m, revolutionary designs invented in 1822 that allow thinner
+  glass to focus light with minimal loss. The rotating beam creates a distinctive pattern—some flash
+  every 5 seconds, others every 10—allowing sailors to identify specific lighthouses.           
+                                                                                                    
+  Here's a simple Python example of lighthouse automation logic:                     
+                                                                                                
+  [34mdef[39m [33mlighthouse_control[39m(light_level):                                      
+      [34mif[39m light_level < [32m50[39m:                                                                         
+          [34mreturn[39m lamp_on()                                                                      
+      [34melse[39m:                                                                                        
+          [34mreturn[39m lamp_off()                                                                       
+                                                                                                    
+  [38;5;246mtmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tra…
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;246m❯ [39m                                                 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246mHaiku 4.5 · context 19% · 5h 1% · 7d 1%
+[39m  [38;5;246m⏸ manual mode on · ← for agents[39m                    

@@ -1,0 +1,13 @@
+.DS_Store
+/.build
+*/.build
+/Packages
+/*.xcodeproj
+Package.pins
+Package.resolved
+*.pem
+/docs
+DerivedData
+/.idea
+.swiftpm
+.vscode

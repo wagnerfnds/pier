@@ -1,0 +1,77 @@
+[
+  {
+    "agent" : "claude",
+    "end_seq" : 245,
+    "ended" : "2026-10-07T21:33:30.112423152Z",
+    "fidelity" : "screen",
+    "id" : "sandbox-subtract-claude-6s1#1",
+    "n" : 1,
+    "origin" : "laptop:pierctl-dev",
+    "sent" : "2026-10-07T21:33:06.156482163Z",
+    "sent_seq" : 240,
+    "session" : "sandbox-subtract-claude-6s1",
+    "started" : "2026-10-07T21:33:06.156482163Z",
+    "state" : "finished",
+    "waits" : [
+      {
+        "end" : "2026-10-07T21:33:23.244746465Z",
+        "reason" : "startup question",
+        "start" : "2026-10-07T21:33:07.460541749Z"
+      }
+    ]
+  },
+  {
+    "agent" : "claude",
+    "end_seq" : 253,
+    "ended" : "2026-10-07T21:33:51.068089308Z",
+    "fidelity" : "hooks",
+    "id" : "sandbox-subtract-claude-6s1#2",
+    "idem_key" : "pierctl-22C4BDC8",
+    "n" : 2,
+    "origin" : "laptop:pierctl-dev",
+    "sent" : "2026-10-07T21:33:49.197336491Z",
+    "sent_seq" : 249,
+    "session" : "sandbox-subtract-claude-6s1",
+    "started" : "2026-10-07T21:33:49.220686394Z",
+    "state" : "finished"
+  },
+  {
+    "agent" : "claude",
+    "end_seq" : 261,
+    "ended" : "2026-10-07T21:34:07.391035776Z",
+    "fidelity" : "hooks",
+    "id" : "sandbox-subtract-claude-6s1#3",
+    "idem_key" : "pierctl-F9A56687",
+    "n" : 3,
+    "origin" : "laptop:pierctl-dev",
+    "sent" : "2026-10-07T21:33:56.369343321Z",
+    "sent_seq" : 255,
+    "session" : "sandbox-subtract-claude-6s1",
+    "started" : "2026-10-07T21:33:56.391846297Z",
+    "state" : "finished",
+    "waits" : [
+      {
+        "ask" : {
+          "input" : "mkdir probe_dir && touch probe_dir/x.txt",
+          "message" : "Claude needs your permission",
+          "tool" : "Bash",
+          "why" : "Create probe_dir and an empty x.txt inside it"
+        },
+        "end" : "2026-10-07T21:34:06.494115944Z",
+        "reason" : "permission",
+        "start" : "2026-10-07T21:33:57.260855049Z"
+      }
+    ]
+  },
+  {
+    "agent" : "claude",
+    "id" : "sandbox-subtract-claude-6s1#4",
+    "idem_key" : "pierctl-9D667B46",
+    "n" : 4,
+    "origin" : "laptop:pierctl-dev",
+    "sent" : "2026-10-07T21:34:07.490199218Z",
+    "sent_seq" : 262,
+    "session" : "sandbox-subtract-claude-6s1",
+    "state" : "pending"
+  }
+]

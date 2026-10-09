@@ -1,0 +1,121 @@
+{
+  "adapters" : {
+    "claude" : {
+      "final_message" : true,
+      "finished" : true,
+      "ready" : true,
+      "started" : true,
+      "via" : "hooks",
+      "waiting" : true
+    },
+    "codex" : {
+      "final_message" : true,
+      "finished" : true,
+      "ready" : true,
+      "started" : true,
+      "via" : "hooks",
+      "waiting" : true
+    },
+    "cursor" : {
+      "final_message" : true,
+      "finished" : true,
+      "ready" : true,
+      "started" : true,
+      "via" : "hooks",
+      "waiting" : false
+    },
+    "gemini" : {
+      "final_message" : false,
+      "finished" : true,
+      "ready" : true,
+      "started" : true,
+      "via" : "hooks",
+      "waiting" : true
+    },
+    "opencode" : {
+      "final_message" : false,
+      "finished" : true,
+      "ready" : false,
+      "started" : true,
+      "via" : "plugin",
+      "waiting" : true
+    },
+    "screen" : {
+      "final_message" : false,
+      "finished" : true,
+      "ready" : true,
+      "started" : true,
+      "via" : "screen",
+      "waiting" : true
+    }
+  },
+  "agents" : [
+    {
+      "command" : "claude",
+      "effort_flag" : "--effort",
+      "efforts" : [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "id" : "claude",
+      "model_flag" : "--model",
+      "models" : [
+        "opus",
+        "sonnet",
+        "haiku"
+      ],
+      "name" : "Claude Code"
+    },
+    {
+      "command" : "codex",
+      "effort_flag" : "-c model_reasoning_effort=",
+      "efforts" : [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "id" : "codex",
+      "model_flag" : "--model",
+      "name" : "Codex"
+    }
+  ],
+  "arch" : "amd64",
+  "build" : "d0a9a683fae5",
+  "capabilities" : [
+    "transcript",
+    "diff",
+    "titles",
+    "sample",
+    "history",
+    "commands",
+    "service.terminal",
+    "answer",
+    "session.home",
+    "files",
+    "files.dir",
+    "agents.install",
+    "turns",
+    "queue",
+    "ask",
+    "controls",
+    "draft",
+    "runs",
+    "exec.detach",
+    "team",
+    "browser",
+    "browser.health",
+    "journal"
+  ],
+  "home" : "/home/ubuntu",
+  "name" : "devbox",
+  "os" : "linux",
+  "tools" : [
+    "claude",
+    "codex"
+  ],
+  "user" : "ubuntu"
+}

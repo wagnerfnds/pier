@@ -1,0 +1,45 @@
+[
+  {
+    "attached" : 0,
+    "created" : "2026-10-07T21:36:42Z",
+    "dir" : "/home/ubuntu/code/sandbox",
+    "exited" : false,
+    "location" : "sandbox",
+    "name" : "bk-shell",
+    "title" : "echo hi"
+  },
+  {
+    "agent" : "codex",
+    "agent_state" : "finished",
+    "attached" : 0,
+    "command" : "codex 'Add a multiply function to calc.py. Do not run anything.'",
+    "created" : "2026-10-07T21:36:46Z",
+    "dir" : "/home/ubuntu/code/sandbox-codex-try",
+    "exited" : false,
+    "fidelity" : "screen",
+    "location" : "sandbox/codex-try",
+    "name" : "sandbox-codex-try-codex-6y6",
+    "preset" : "codex",
+    "state_seq" : 298,
+    "state_since" : "2026-10-07T21:37:16.340949864Z",
+    "title" : "Add a multiply function to calc.py. Do not run…",
+    "turn" : "sandbox-codex-try-codex-6y6#2"
+  },
+  {
+    "agent" : "claude",
+    "agent_state" : "finished",
+    "attached" : 0,
+    "command" : "claude --model haiku 'Add a subtract function to calc.py and a one-line test; do not run anything else'",
+    "created" : "2026-10-07T21:33:06Z",
+    "dir" : "/home/ubuntu/code/sandbox-subtract",
+    "exited" : false,
+    "fidelity" : "hooks",
+    "location" : "sandbox/subtract",
+    "name" : "sandbox-subtract-claude-6s1",
+    "preset" : "claude",
+    "state_seq" : 272,
+    "state_since" : "2026-10-07T21:36:14.492565322Z",
+    "title" : "Subtract (pierkit fixture)",
+    "turn" : "sandbox-subtract-claude-6s1#5"
+  }
+]

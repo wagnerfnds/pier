@@ -1,0 +1,4 @@
+{
+  "diff" : "diff --git a/calc.py b/calc.py\nindex 4693ad3..d05a819 100644\n--- a/calc.py\n+++ b/calc.py\n@@ -1,2 +1,5 @@\n def add(a, b):\n     return a + b\n+\n+def subtract(a, b):\n+    return a - b\n",
+  "file" : "calc.py"
+}

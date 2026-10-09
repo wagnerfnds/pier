@@ -1,0 +1,7 @@
+{
+  "file" : "test_calc.py",
+  "id" : "toolu_01UQFfLKHpgu7dw7mYgfeV52",
+  "name" : "Write",
+  "new" : "from calc import subtract\n\ndef test_subtract(): assert subtract(5, 3) == 2\n",
+  "output" : "File created successfully at: /home/ubuntu/code/sandbox-subtract/test_calc.py (file state is current in your context — no need to Read it back)"
+}

@@ -1,0 +1,10 @@
+{"source":"claude","next":9,"items":[
+ {"kind":"user","id":"cl@1.1","off":1,"text":"hi","uuid":"u1"},
+ {"kind":"tools","id":"cl@2.1","off":2,"verb":"Read","done":false,"items":[{"verb":"Read","target":"a.ts","file":true,"id":"t1","at":1760000000000}]},
+ {"kind":"notice","id":"cl@3.1","off":3,"notice":"rate_limit","level":"warning","text":"Limit reached","resets":1760003600000},
+ {"kind":"command","id":"cl@4.1","off":4,"command":"/model","args":"opus","text":"Set model","markdown":true},
+ {"kind":"crew","id":"cl@5.1","off":5,"names":["explorer"],"tool":"toolu_2"},
+ {"kind":"artifact","id":"cl@6.1","off":6,"text":"Report","url":"https://claude.ai/artifact/abc","done":true,"updated":true},
+ {"kind":"report","id":"cl@7.1","off":7,"report":{"kind":"task","session":"s","title":"Fix","status":"finished","duration":"2m","files":3,"added":10,"removed":2,"summary":"done"}},
+ {"kind":"hologram","id":"cl@8.1","off":8,"text":"from the future","extra":[1,2,3]}
+]}

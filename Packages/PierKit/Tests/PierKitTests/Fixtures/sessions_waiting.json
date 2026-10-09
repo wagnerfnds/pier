@@ -1,0 +1,24 @@
+[
+  {
+    "agent" : "claude",
+    "agent_state" : "waiting",
+    "ask" : {
+      "input" : "mkdir probe_dir && touch probe_dir/x.txt",
+      "tool" : "Bash",
+      "why" : "Create probe_dir and an empty x.txt inside it"
+    },
+    "attached" : 0,
+    "command" : "claude --model haiku 'Add a subtract function to calc.py and a one-line test; do not run anything else'",
+    "created" : "2026-10-07T21:33:06Z",
+    "dir" : "/home/ubuntu/code/sandbox-subtract",
+    "exited" : false,
+    "fidelity" : "hooks",
+    "location" : "sandbox/subtract",
+    "name" : "sandbox-subtract-claude-6s1",
+    "preset" : "claude",
+    "state_seq" : 257,
+    "state_since" : "2026-10-07T21:33:57.260855049Z",
+    "title" : "Add a subtract function to calc.py and a…",
+    "turn" : "sandbox-subtract-claude-6s1#3"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "agent" : "claude",
+  "agent_state" : "finished",
+  "attached" : 0,
+  "command" : "claude --model haiku 'Add a subtract function to calc.py and a one-line test; do not run anything else'",
+  "created" : "2026-10-07T21:33:06Z",
+  "dir" : "/home/ubuntu/code/sandbox-subtract",
+  "exited" : false,
+  "fidelity" : "hooks",
+  "location" : "sandbox/subtract",
+  "name" : "sandbox-subtract-claude-6s1",
+  "preset" : "claude",
+  "state_seq" : 272,
+  "state_since" : "2026-10-07T21:36:14.492565322Z",
+  "title" : "Subtract (pierkit fixture)",
+  "turn" : "sandbox-subtract-claude-6s1#5"
+}

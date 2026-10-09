@@ -1,0 +1,264 @@
+{
+  "sourceLanguage" : "pt-BR",
+  "strings" : {
+    "Criar tarefa no ${applicationName}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a task in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Criar tarefa no ${applicationName} em ${project}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a task in ${applicationName} in ${project}"
+          }
+        }
+      }
+    },
+    "Mandar mensagem para ${session} no ${applicationName}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send a message to ${session} in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Mandar mensagem para o agente no ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Send a message to the agent in ${applicationName}"
+          }
+        },
+        "pt-BR" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Mandar mensagem para o agente no ${applicationName}",
+              "Mandar mensagem para ${session} no ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "Mensagem ao agente" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Message to agent"
+          }
+        }
+      }
+    },
+    "Meus agentes no ${applicationName}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My agents in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Negar o agente no ${applicationName}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deny the agent in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Negar o pedido do agente no ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deny the agent's request in ${applicationName}"
+          }
+        },
+        "pt-BR" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Negar o pedido do agente no ${applicationName}",
+              "Negar o agente no ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "Negar pedido" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deny request"
+          }
+        }
+      }
+    },
+    "Nova tarefa" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New task"
+          }
+        }
+      }
+    },
+    "Nova tarefa em ${project} no ${applicationName}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New task in ${project} in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Nova tarefa no ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "New task in ${applicationName}"
+          }
+        },
+        "pt-BR" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Nova tarefa no ${applicationName}",
+              "Criar tarefa no ${applicationName}",
+              "Criar tarefa no ${applicationName} em ${project}",
+              "Nova tarefa em ${project} no ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "O que meus agentes estão fazendo no ${applicationName}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What are my agents doing in ${applicationName}"
+          }
+        }
+      }
+    },
+    "O que os agentes do ${applicationName} estão fazendo" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What are the ${applicationName} agents doing"
+          }
+        }
+      }
+    },
+    "Permitir o agente no ${applicationName}" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow the agent in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Permitir o pedido do agente no ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Allow the agent's request in ${applicationName}"
+          }
+        },
+        "pt-BR" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Permitir o pedido do agente no ${applicationName}",
+              "Permitir o agente no ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "Permitir pedido" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow request"
+          }
+        }
+      }
+    },
+    "Status dos agentes" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agents status"
+          }
+        }
+      }
+    },
+    "Status dos agentes no ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Agents status in ${applicationName}"
+          }
+        },
+        "pt-BR" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Status dos agentes no ${applicationName}",
+              "O que os agentes do ${applicationName} estão fazendo",
+              "O que meus agentes estão fazendo no ${applicationName}",
+              "Meus agentes no ${applicationName}"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "added" : 0,
+    "agent" : "claude",
+    "agent_state" : "finished",
+    "ahead" : 0,
+    "base" : "main",
+    "base_ahead" : 1,
+    "behind" : 0,
+    "branch" : "subtract",
+    "commits" : [
+      {
+        "author" : "Mona Octocat",
+        "sha" : "5337933256f547a1f3068c9e9bf81d2e4d6b0e2c",
+        "subject" : "Add subtract function",
+        "when" : "2026-10-07T21:36:28Z"
+      }
+    ],
+    "committed" : [
+      {
+        "added" : 3,
+        "code" : "M ",
+        "path" : "calc.py",
+        "removed" : 0
+      },
+      {
+        "added" : 0,
+        "code" : "A ",
+        "path" : "probe_dir/x.txt",
+        "removed" : 0
+      },
+      {
+        "added" : 3,
+        "code" : "A ",
+        "path" : "test_calc.py",
+        "removed" : 0
+      }
+    ],
+    "files" : [
+
+    ],
+    "head" : "5337933256f547a1f3068c9e9bf81d2e4d6b0e2c",
+    "location" : "sandbox",
+    "path" : "/home/ubuntu/code/sandbox-subtract",
+    "removed" : 0,
+    "session" : "sandbox-subtract-claude-6s1",
+    "state_since" : "2026-10-07T21:36:14.492565322Z",
+    "worktree" : "subtract"
+  }
+]

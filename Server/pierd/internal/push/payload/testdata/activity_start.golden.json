@@ -1,0 +1,28 @@
+{
+  "aps": {
+    "timestamp": 1790000000,
+    "event": "start",
+    "content-state": {
+      "phase": "running",
+      "since": 1790000000,
+      "step": "Brewing…",
+      "ask": null,
+      "hasMenu": false,
+      "added": null,
+      "removed": null,
+      "reply": null
+    },
+    "attributes-type": "SessionActivityAttributes",
+    "attributes": {
+      "box": "casa",
+      "session": "projeto-wt-1",
+      "title": "Corrigir login",
+      "project": "projeto",
+      "agent": "claude"
+    },
+    "alert": {
+      "title": "Corrigir login",
+      "body": "Trabalhando"
+    }
+  }
+}

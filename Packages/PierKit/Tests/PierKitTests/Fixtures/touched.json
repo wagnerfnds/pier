@@ -1,0 +1,23 @@
+{
+  "files" : [
+    {
+      "added" : 3,
+      "agent" : "claude",
+      "at" : 1791408808572,
+      "base" : "turn",
+      "created" : true,
+      "path" : "test_calc.py",
+      "removed" : 0,
+      "session" : "sandbox-subtract-claude-6s1"
+    },
+    {
+      "added" : 3,
+      "agent" : "claude",
+      "at" : 1791408808503,
+      "base" : "turn",
+      "path" : "calc.py",
+      "removed" : 0,
+      "session" : "sandbox-subtract-claude-6s1"
+    }
+  ]
+}

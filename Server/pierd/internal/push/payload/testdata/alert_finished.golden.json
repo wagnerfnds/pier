@@ -1,0 +1,16 @@
+{
+  "aps": {
+    "alert": {
+      "title": "✅ Concluído · Corrigir login",
+      "body": "Claude Code · projeto / wt-1 · casa · +6 −0"
+    },
+    "category": "FINISHED",
+    "thread-id": "casa/projeto-wt-1",
+    "sound": "default",
+    "interruption-level": "active",
+    "mutable-content": 1
+  },
+  "box": "casa",
+  "session": "projeto-wt-1",
+  "location": "projeto/wt-1"
+}

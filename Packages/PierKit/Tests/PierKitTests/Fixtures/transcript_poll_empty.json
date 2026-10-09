@@ -1,0 +1,21 @@
+{
+  "crew" : [
+
+  ],
+  "file" : "854110a0-b6e9-4534-9436-ee4b9b60f77c",
+  "gen" : "1791405298320001.0",
+  "items" : null,
+  "last" : 1791408810054,
+  "next" : 6,
+  "signals" : {
+    "context" : {
+      "at" : 1791408810054,
+      "tokens" : 41576
+    },
+    "effort" : "medium",
+    "mode" : "auto",
+    "model" : "claude-haiku-5-5"
+  },
+  "source" : "claude",
+  "start" : 657
+}

@@ -1,0 +1,10 @@
+{
+  "branches" : [
+    {
+      "current" : true,
+      "name" : "main",
+      "remote" : false
+    }
+  ],
+  "default" : "main"
+}

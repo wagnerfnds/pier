@@ -1,0 +1,30 @@
+  [2m▎[0m [3m"Time and tide wait for no one."[0m                            
+                                                                
+  That old proverb is practical advice. The water moves faster  
+  than it appears, especially across flat sand, so build in a   
+  safety margin.                                                
+                                                                
+  [1mWorking Out Your Window[0m                                       
+                                                                
+  Tides change gradually, not in a straight line. The water     
+  moves slowly just after a high or low, then speeds up through
+  the middle of the cycle. A handy shortcut is the "rule of   
+  twelfths," which says the tide moves roughly one twelfth of
+  its range in the first hour, two in the second, three in the  
+  third, three in the fourth, two in the fifth, and one in the
+  last.                                                         
+                                                              
+  You can also estimate the time between two tide events with a 
+  few lines of code:                                            
+                                                           
+  [34mconst[39m low = [34mnew[39m [34mDate[39m([31m"2026-10-06T07:42:00"[39m);                 
+  [34mconst[39m high = [34mnew[39m [34mDate[39m([31m"2026-10-06T13:55:00"[39m);               
+  [34mconst[39m hours = (high - low) / ([32m1000[39m * [32m60[39m * [32m60[39m);              
+  console.[33mlog[39m([31m`Rising for [39m${hours.toFixed([32m1[31m)}[39m hours`);        
+  console.[33mlog[39m([31m`Roughly [39m${(hours / [32m6[31m).toFixed([32m2[31m)}[39m hours per
+                                                              
+[38;5;244m────────────────────────────────────────────────────────────────
+[38;5;246m❯ [39m                            
+[38;5;244m────────────────────────────────────────────────────────────────
+[39m  [38;5;246mSonnet 5.5 · context 5% · 5h 1% · 7d 1%
+[39m  [38;5;220m⏵⏵ auto mode on[38;5;246m (shift+tab to cycle) · ← for agents

@@ -1,0 +1,17 @@
+{
+  "aps": {
+    "timestamp": 1790000000,
+    "event": "end",
+    "content-state": {
+      "phase": "ended",
+      "since": 1790000000,
+      "step": null,
+      "ask": null,
+      "hasMenu": false,
+      "added": null,
+      "removed": null,
+      "reply": null
+    },
+    "dismissal-date": 1790000300
+  }
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "command" : "claude",
+    "default" : true,
+    "id" : "claude",
+    "install" : "curl -fsSL https://claude.ai/install.sh | bash",
+    "installed" : true,
+    "name" : "Claude Code",
+    "offered" : true,
+    "path" : "/home/ubuntu/.local/bin/claude",
+    "verified" : "Anthropic's native installer checks the build it downloads against its checksum"
+  },
+  {
+    "command" : "codex",
+    "id" : "codex",
+    "install" : "codex 0.160.1 from github.com/openai/codex/releases → ~/.local/bin/codex",
+    "installed" : true,
+    "name" : "Codex",
+    "offered" : true,
+    "path" : "/home/ubuntu/.local/bin/codex",
+    "verified" : "pinned to 0.160.1 and checked against its sha256"
+  },
+  {
+    "command" : "cursor-agent",
+    "id" : "cursor",
+    "install" : "curl -fsS https://cursor.com/install | bash",
+    "installed" : false,
+    "name" : "Cursor Agent",
+    "offered" : true,
+    "verified" : "Cursor's installer, over HTTPS; Cursor publishes no checksums for it"
+  },
+  {
+    "command" : "opencode",
+    "id" : "opencode",
+    "install" : "curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path",
+    "installed" : false,
+    "name" : "OpenCode",
+    "offered" : true,
+    "verified" : "OpenCode's installer, over HTTPS; it publishes no checksums for it"
+  },
+  {
+    "command" : "gemini",
+    "id" : "gemini",
+    "install" : "npm install -g @google/gemini-cli",
+    "installed" : false,
+    "name" : "Gemini CLI",
+    "offered" : false,
+    "why" : "it installs with npm and needs Node.js 20 or newer, which Pier doesn't install; install Node, then run the command"
+  }
+]

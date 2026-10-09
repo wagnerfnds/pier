@@ -1,0 +1,11 @@
+{
+  "agent" : "claude",
+  "mode" : "default",
+  "modes" : [
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions"
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "agents" : [
+    {
+      "path" : "/home/ubuntu",
+      "pid" : 6366,
+      "since" : "2026-10-07T19:07:42.53987405Z",
+      "state" : "finished",
+      "tool" : "codex"
+    },
+    {
+      "path" : "/home/ubuntu",
+      "pid" : 6461,
+      "since" : "2026-10-07T19:07:42.53987405Z",
+      "state" : "finished",
+      "tool" : "codex"
+    },
+    {
+      "location" : "sandbox",
+      "path" : "/home/ubuntu/code/sandbox-subtract",
+      "pid" : 379068,
+      "since" : "2026-10-07T21:33:30.112423152Z",
+      "state" : "finished",
+      "tool" : "claude",
+      "worktree" : "subtract"
+    }
+  ],
+  "cpus" : 12,
+  "disks" : [
+    {
+      "mount" : "/",
+      "total" : 1889743667200,
+      "used" : 813738385408
+    }
+  ],
+  "hooks" : true,
+  "hostname" : "devbox",
+  "load" : [
+    0.97999999999999998,
+    1.8999999999999999,
+    1.98
+  ],
+  "memory" : {
+    "total" : 63096745984,
+    "used" : 457631744
+  },
+  "swap" : {
+    "total" : 8589930496,
+    "used" : 8192
+  },
+  "uptime_s" : 12754
+}

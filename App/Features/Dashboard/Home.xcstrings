@@ -1,0 +1,754 @@
+{
+  "sourceLanguage" : "pt-BR",
+  "strings" : {
+    "+%lld mais" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld more"
+          }
+        }
+      }
+    },
+    "A porta %lld em %@ não responde a partir deste iPhone. Conecte-se à mesma rede da box (ou VPN) e tente de novo." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Port %lld on %@ doesn't answer from this iPhone. Join the box's network (or VPN) and try again."
+          }
+        }
+      }
+    },
+    "Abrir no GitHub" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open on GitHub"
+          }
+        }
+      }
+    },
+    "Agentes esperando uma permissão ou resposta" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agents waiting on a permission or an answer"
+          }
+        }
+      }
+    },
+    "agora" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "now"
+          }
+        }
+      }
+    },
+    "Aguardando sua revisão" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting on your review"
+          }
+        }
+      }
+    },
+    "Aguardando sua revisão e os seus, com os checks" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting on your review and yours, with their checks"
+          }
+        }
+      }
+    },
+    "Aprovado" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approved"
+          }
+        }
+      }
+    },
+    "Encerradas (%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Closed (%lld)"
+          }
+        }
+      }
+    },
+    "Nada esperando você continuar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing waiting for you to carry on"
+          }
+        }
+      }
+    },
+    "Quadro" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Board"
+          }
+        }
+      }
+    },
+    "Sua vez" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your turn"
+          }
+        }
+      }
+    },
+    "Turnos concluídos esperando você continuar; as sessões arquivadas ou encerradas ficam recolhidas" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finished turns waiting for you to carry on; archived or ended sessions stay folded"
+          }
+        }
+      }
+    },
+    "Áreas recentes" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent areas"
+          }
+        }
+      }
+    },
+    "Arraste para reordenar; use a chave para mostrar ou ocultar." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to reorder; use the switch to show or hide."
+          }
+        }
+      }
+    },
+    "As últimas execuções nas branches das suas worktrees passaram." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The latest runs on your worktrees' branches passed."
+          }
+        }
+      }
+    },
+    "As worktrees em que há agentes aparecem aqui." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worktrees with agents show up here."
+          }
+        }
+      }
+    },
+    "Atividade git" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Git activity"
+          }
+        }
+      }
+    },
+    "atualizado" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "updated"
+          }
+        }
+      }
+    },
+    "atualizado agora" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "updated just now"
+          }
+        }
+      }
+    },
+    "Cada agente trabalhando e o passo em que está" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each working agent and the step it is on"
+          }
+        }
+      }
+    },
+    "Carregando…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading…"
+          }
+        }
+      }
+    },
+    "Checks falharam" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checks fail"
+          }
+        }
+      }
+    },
+    "Checks passaram" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checks pass"
+          }
+        }
+      }
+    },
+    "Checks rodando" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checks running"
+          }
+        }
+      }
+    },
+    "CI está verde" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CI is green"
+          }
+        }
+      }
+    },
+    "commits · 14 dias" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "commits · 14 days"
+          }
+        }
+      }
+    },
+    "Commits e linhas por dia nas últimas duas semanas" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Commits and lines a day, the last two weeks"
+          }
+        }
+      }
+    },
+    "Concluídos recentemente" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recently finished"
+          }
+        }
+      }
+    },
+    "Concluir" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        }
+      }
+    },
+    "Em revisão" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In review"
+          }
+        }
+      }
+    },
+    "Execuções que falharam nas branches das suas worktrees" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Runs that failed on your worktrees' branches"
+          }
+        }
+      }
+    },
+    "Falhas de CI" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CI failures"
+          }
+        }
+      }
+    },
+    "gh não está autenticado na box" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh isn't signed in on the box"
+          }
+        }
+      }
+    },
+    "gh não está instalado na box" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh isn't installed on the box"
+          }
+        }
+      }
+    },
+    "Instale o GitHub CLI na box e rode `gh auth login`." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install the GitHub CLI on the box and run `gh auth login`."
+          }
+        }
+      }
+    },
+    "Mudanças" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changes"
+          }
+        }
+      }
+    },
+    "Nada concluído ainda" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing finished yet"
+          }
+        }
+      }
+    },
+    "Nada esperando por você" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing waiting on you"
+          }
+        }
+      }
+    },
+    "Não foi possível consultar o GitHub" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't ask GitHub"
+          }
+        }
+      }
+    },
+    "Não foi possível ler o git" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read git"
+          }
+        }
+      }
+    },
+    "Não foi possível listar os serviços" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't list services"
+          }
+        }
+      }
+    },
+    "Não foi possível listar os serviços." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't list services."
+          }
+        }
+      }
+    },
+    "Nenhum agente trabalhando" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No agents working"
+          }
+        }
+      }
+    },
+    "Nenhum pull request aberto" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No open pull requests"
+          }
+        }
+      }
+    },
+    "Nenhum servidor rodando" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No servers running"
+          }
+        }
+      }
+    },
+    "Nenhum widget visível" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No widgets shown"
+          }
+        }
+      }
+    },
+    "Nenhuma área recente" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recent areas"
+          }
+        }
+      }
+    },
+    "Nenhuma box com um repositório para rodar o gh." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No box with a repository to run gh in."
+          }
+        }
+      }
+    },
+    "Os servidores de desenvolvimento das suas worktrees aparecem aqui." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dev servers in your worktrees show here."
+          }
+        }
+      }
+    },
+    "Os seus, e os que aguardam sua revisão, aparecem aqui." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yours, and those waiting on your review, show here."
+          }
+        }
+      }
+    },
+    "Personalizar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Customize"
+          }
+        }
+      }
+    },
+    "Precisa de você" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Needs you"
+          }
+        }
+      }
+    },
+    "Pull requests" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull requests"
+          }
+        }
+      }
+    },
+    "Rascunho" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draft"
+          }
+        }
+      }
+    },
+    "Restaurar padrão" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset to default"
+          }
+        }
+      }
+    },
+    "Rode `gh auth login` na box para ver pull requests e CI." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Run `gh auth login` on the box to see pull requests and CI."
+          }
+        }
+      }
+    },
+    "Sem commits nos últimos 14 dias" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No commits in the last 14 days"
+          }
+        }
+      }
+    },
+    "Serviço inacessível" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service unreachable"
+          }
+        }
+      }
+    },
+    "Serviços rodando" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Running services"
+          }
+        }
+      }
+    },
+    "servidor de dev" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dev server"
+          }
+        }
+      }
+    },
+    "Servidores de desenvolvimento nas suas worktrees" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dev servers listening in your worktrees"
+          }
+        }
+      }
+    },
+    "Seus" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yours"
+          }
+        }
+      }
+    },
+    "Toque em Personalizar para escolher o que aparece no início." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap Customize to choose what Home shows."
+          }
+        }
+      }
+    },
+    "Trabalhando agora" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Working now"
+          }
+        }
+      }
+    },
+    "Turnos que acabaram de terminar, com as linhas alteradas" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turns that just ended, with the lines they changed"
+          }
+        }
+      }
+    },
+    "Ver menos" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show less"
+          }
+        }
+      }
+    },
+    "Ver todos (%lld)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show all (%lld)"
+          }
+        }
+      }
+    },
+    "Worktrees em que você e seus agentes trabalharam" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worktrees you and your agents worked in"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

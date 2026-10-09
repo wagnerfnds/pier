@@ -1,0 +1,39 @@
+[
+  {
+    "added" : 6,
+    "agent" : "claude",
+    "agent_state" : "finished",
+    "ahead" : 0,
+    "base" : "main",
+    "base_ahead" : 0,
+    "behind" : 0,
+    "branch" : "subtract",
+    "commits" : [
+
+    ],
+    "committed" : [
+
+    ],
+    "files" : [
+      {
+        "added" : 3,
+        "code" : " M",
+        "path" : "calc.py",
+        "removed" : 0
+      },
+      {
+        "added" : 3,
+        "code" : "??",
+        "path" : "test_calc.py",
+        "removed" : 0
+      }
+    ],
+    "head" : "ae6d87978ce613d68d039e0d63b5c672001bb409",
+    "location" : "sandbox",
+    "path" : "/home/ubuntu/code/sandbox-subtract",
+    "removed" : 0,
+    "session" : "sandbox-subtract-claude-6s1",
+    "state_since" : "2026-10-07T21:33:30.112423152Z",
+    "worktree" : "subtract"
+  }
+]

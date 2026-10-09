@@ -1,0 +1,267 @@
+package box
+
+import (
+	"context"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestParseWorktrees(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "cal")
+	billing := filepath.Join(dir, "cal-billing")
+	other := filepath.Join(dir, "tailmux-smoke")
+	for _, d := range []string{repo, billing, other} {
+		os.MkdirAll(d, 0o755)
+	}
+	out := []byte("worktree " + repo + "\nHEAD 5fdc8af8dd0123456789\nbranch refs/heads/main\n\n" +
+		"worktree " + billing + "\nHEAD 62d41c1302abcdef\nbranch refs/heads/billing/4-customer-credit\n\n" +
+		"worktree " + other + "\nHEAD 0d0ca9d73f000000\ndetached\n\n" +
+		"worktree /tmp/gone-for-good\nHEAD 2301306497000000\ndetached\nprunable gitdir file points to non-existent location\n\n")
+	got := parseWorktrees(out, repo)
+	want := []Worktree{
+		{Name: "cal", Path: repo, Branch: "main", Head: "5fdc8af8dd", Main: true},
+		{Name: "billing", Path: billing, Branch: "billing/4-customer-credit", Head: "62d41c1302"},
+		{Name: "tailmux-smoke", Path: other, Head: "0d0ca9d73f"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d worktrees, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("worktree %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func gitRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(root, "cal")
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	os.MkdirAll(repo, 0o755)
+	run("init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "README"), []byte("hi"), 0o644)
+	run("add", ".")
+	run("commit", "-q", "-m", "init")
+	return repo
+}
+
+func TestLocationsWithWorktreesEndToEnd(t *testing.T) {
+	repo := gitRepo(t)
+	ctx := context.Background()
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	loc, err := l.Add(ctx, "cal", repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loc.Repo || len(loc.Worktrees) != 1 || !loc.Worktrees[0].Main {
+		t.Fatalf("new repo location = %+v", loc)
+	}
+	wt, err := l.CreateWorktree(ctx, "cal", "billing", "alex/billing", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(filepath.Dir(repo), "cal-billing")
+	if wt.Name != "billing" || wt.Branch != "alex/billing" || wt.Path != wantPath {
+		t.Fatalf("worktree = %+v, want billing on alex/billing at %s", wt, wantPath)
+	}
+	if dir, err := l.Dir(ctx, "cal/billing"); err != nil || dir != wantPath {
+		t.Fatalf("Dir(cal/billing) = %q, %v", dir, err)
+	}
+	if dir, err := l.Dir(ctx, "cal"); err != nil || dir != repo {
+		t.Fatalf("Dir(cal) = %q, %v", dir, err)
+	}
+	// Uncommitted work is protected unless the caller insists.
+	os.WriteFile(filepath.Join(wantPath, "wip.txt"), []byte("unsaved"), 0o644)
+	if err := l.RemoveWorktree(ctx, "cal", "billing", false); err == nil {
+		t.Fatal("removed a worktree with uncommitted changes")
+	}
+	if err := l.RemoveWorktree(ctx, "cal", "billing", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Dir(ctx, "cal/billing"); !errors.Is(err, ErrUnknownWorktree) {
+		t.Fatalf("removed worktree still resolves: %v", err)
+	}
+	if err := l.RemoveWorktree(ctx, "cal", "cal", true); err == nil {
+		t.Fatal("removed the main checkout")
+	}
+}
+
+func TestPlainDirectoriesAreLocationsToo(t *testing.T) {
+	dir := t.TempDir()
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	loc, err := l.Add(context.Background(), "scratch", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loc.Repo || len(loc.Worktrees) != 0 {
+		t.Fatalf("plain directory reported as a repo: %+v", loc)
+	}
+	if _, err := l.CreateWorktree(context.Background(), "scratch", "x", "", ""); err == nil {
+		t.Fatal("created a worktree in a non-repository")
+	}
+}
+
+func TestAddRejectsMissingPathsAndBadNames(t *testing.T) {
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	if _, err := l.Add(context.Background(), "gone", "/definitely/not/here"); err == nil {
+		t.Fatal("added a missing directory")
+	}
+	if _, err := l.Add(context.Background(), "bad name", t.TempDir()); err == nil {
+		t.Fatal("added an invalid name")
+	}
+	if err := l.Remove("nope"); !errors.Is(err, ErrUnknownLocation) {
+		t.Fatalf("removing unknown: %v", err)
+	}
+}
+
+// A branch, base or ref starting with "-" never reaches git, which would
+// read it as an option.
+func TestWorktreeRefsCannotBeGitOptions(t *testing.T) {
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	if _, err := l.Add(context.Background(), "shop", gitRepo(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []WorktreeRequest{
+		{Name: "a", Branch: "--upload-pack=touch /tmp/x"},
+		{Name: "b", Base: "--detach"},
+		{Name: "c", Ref: "--upload-pack=touch /tmp/x", PR: 1},
+	} {
+		_, err := l.CreateWorktreeFrom(context.Background(), "shop", req)
+		var he httpError
+		if !errors.As(err, &he) || he.status != 400 {
+			t.Fatalf("%+v: %v, want a 400", req, err)
+		}
+	}
+}
+
+func TestAWorktreeChecksOutABranchThatAlreadyExists(t *testing.T) {
+	repo := gitRepo(t)
+	ctx := context.Background()
+	if out, err := exec.Command("git", "-C", repo, "branch", "feature/review-me").CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	l.Add(ctx, "cal", repo)
+	wt, err := l.CreateWorktree(ctx, "cal", "review", "feature/review-me", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt.Branch != "feature/review-me" {
+		t.Fatalf("branch = %q", wt.Branch)
+	}
+}
+
+// lockWorktree locks a worktree the way git does, by writing its lock file.
+func lockWorktree(t *testing.T, repo, name, reason string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repo, ".git", "worktrees", name, "locked"), []byte(reason), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestArchivingAWorktreeLeftLockedByAnInterruptedAdd(t *testing.T) {
+	repo := gitRepo(t)
+	ctx := context.Background()
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	if _, err := l.Add(ctx, "cal", repo); err != nil {
+		t.Fatal(err)
+	}
+	wt, err := l.CreateWorktree(ctx, "cal", "audit", "audit", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An add that was killed halfway leaves git's own lock behind.
+	lockWorktree(t, repo, "cal-audit", "initializing")
+	loc, _ := l.Get(ctx, "cal")
+	if w := loc.Worktrees[1]; !w.Locked || w.LockReason != "initializing" {
+		t.Fatalf("locked worktree = %+v", w)
+	}
+	if err := l.RemoveWorktree(ctx, "cal", "audit", false); err != nil {
+		t.Fatalf("archiving a worktree an interrupted add left locked: %v", err)
+	}
+	if _, err := os.Stat(wt.Path); !os.IsNotExist(err) {
+		t.Fatalf("worktree folder still there: %v", err)
+	}
+	if _, err := l.Dir(ctx, "cal/audit"); !errors.Is(err, ErrUnknownWorktree) {
+		t.Fatalf("removed worktree still resolves: %v", err)
+	}
+}
+
+func TestAWorktreeSomeoneLockedIsLeftAlone(t *testing.T) {
+	repo := gitRepo(t)
+	ctx := context.Background()
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	if _, err := l.Add(ctx, "cal", repo); err != nil {
+		t.Fatal(err)
+	}
+	wt, err := l.CreateWorktree(ctx, "cal", "usb", "usb", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reason := range []string{"on a USB disk", ""} {
+		lockWorktree(t, repo, "cal-usb", reason)
+		err := l.RemoveWorktree(ctx, "cal", "usb", true)
+		if err == nil {
+			t.Fatalf("removed a worktree locked with reason %q", reason)
+		}
+		if !strings.Contains(err.Error(), "worktree unlock "+wt.Path) || statusFor(err) != 409 {
+			t.Fatalf("refusal doesn't say how to unlock: %v (status %d)", err, statusFor(err))
+		}
+		if reason != "" && !strings.Contains(err.Error(), reason) {
+			t.Fatalf("refusal doesn't give the reason: %v", err)
+		}
+		if _, err := os.Stat(wt.Path); err != nil {
+			t.Fatalf("locked worktree's folder went: %v", err)
+		}
+	}
+}
+
+func TestAFailedAddLeavesNothingBehind(t *testing.T) {
+	repo := gitRepo(t)
+	ctx := context.Background()
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	if _, err := l.Add(ctx, "cal", repo); err != nil {
+		t.Fatal(err)
+	}
+	// A checkout that fails halfway: a post-checkout hook that errors makes
+	// git give up after it has registered (and locked) the worktree.
+	hook := filepath.Join(repo, ".git", "hooks", "post-checkout")
+	os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755)
+	if _, err := l.CreateWorktree(ctx, "cal", "broken", "broken", "main"); err == nil {
+		t.Skip("this git does not fail an add on its post-checkout hook")
+	}
+	path := filepath.Join(filepath.Dir(repo), "cal-broken")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("half-made worktree folder left: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git", "worktrees", "cal-broken")); !os.IsNotExist(err) {
+		t.Fatalf("half-made worktree still registered: %v", err)
+	}
+	if branchExists(ctx, repo, "refs/heads/broken") {
+		t.Fatal("the failed add's branch is left")
+	}
+	// And the same name works once the cause is gone.
+	os.Remove(hook)
+	if _, err := l.CreateWorktree(ctx, "cal", "broken", "broken", "main"); err != nil {
+		t.Fatalf("creating again after a failed add: %v", err)
+	}
+}

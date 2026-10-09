@@ -1,0 +1,23 @@
+[
+  {
+    "agent" : "claude",
+    "end_seq" : 245,
+    "ended" : "2026-10-07T21:33:30.112423152Z",
+    "fidelity" : "screen",
+    "id" : "sandbox-subtract-claude-6s1#1",
+    "n" : 1,
+    "origin" : "laptop:pierctl-dev",
+    "sent" : "2026-10-07T21:33:06.156482163Z",
+    "sent_seq" : 240,
+    "session" : "sandbox-subtract-claude-6s1",
+    "started" : "2026-10-07T21:33:06.156482163Z",
+    "state" : "finished",
+    "waits" : [
+      {
+        "end" : "2026-10-07T21:33:23.244746465Z",
+        "reason" : "startup question",
+        "start" : "2026-10-07T21:33:07.460541749Z"
+      }
+    ]
+  }
+]

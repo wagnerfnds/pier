@@ -1,0 +1,5 @@
+{"source":"claude","items":null,"next":9,"crew":null,"truncated":true,"gen":"1.0","file":"abc",
+ "signals":{"mode":"plan","todos":[{"text":"Write tests","active":"Writing tests","status":"in_progress"},{"id":"2","text":"Ship","status":"pending"}],
+            "background":[{"tool":"toolu_1","kind":"shell","command":"npm run dev","state":"running","since":1760000000000}],
+            "retrying":{"message":"connection dropped","attempt":2,"max":5,"at":1760000000999}},
+ "artifacts":[{"url":"https://claude.ai/artifact/abc","title":"Report","at":1760000000000,"tool":"toolu_9","updated":true}]}

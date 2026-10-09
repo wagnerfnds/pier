@@ -1,0 +1,256 @@
+[
+  {
+    "area" : "pierd",
+    "detail" : "192.0.2.10:7444",
+    "name" : "listening",
+    "status" : "ok"
+  },
+  {
+    "area" : "pierd",
+    "detail" : "pierd runs, but not as a service",
+    "fix" : "pierd install",
+    "name" : "starts at boot",
+    "status" : "warn"
+  },
+  {
+    "area" : "pierd",
+    "detail" : "user lingering is on",
+    "name" : "survives logout",
+    "status" : "ok"
+  },
+  {
+    "area" : "pierd",
+    "detail" : "2",
+    "name" : "paired laptops",
+    "status" : "ok"
+  },
+  {
+    "area" : "Worktrees and sessions",
+    "detail" : "/usr/bin/git",
+    "name" : "git",
+    "status" : "ok"
+  },
+  {
+    "area" : "Worktrees and sessions",
+    "detail" : "/usr/bin/tmux",
+    "name" : "tmux",
+    "status" : "ok"
+  },
+  {
+    "area" : "Worktrees and sessions",
+    "detail" : "not installed; needed for public shares",
+    "fix" : "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
+    "name" : "cloudflared",
+    "status" : "info"
+  },
+  {
+    "area" : "Agents",
+    "detail" : "/home/ubuntu/.local/bin/claude",
+    "name" : "claude",
+    "status" : "ok"
+  },
+  {
+    "area" : "Agents",
+    "detail" : "/home/ubuntu/.local/bin/codex",
+    "name" : "codex",
+    "status" : "ok"
+  },
+  {
+    "area" : "Worktrees and sessions",
+    "detail" : "/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/opt/homebrew/bin:/opt/homebrew/sbin",
+    "name" : "PATH",
+    "status" : "info"
+  },
+  {
+    "area" : "Agents",
+    "detail" : "installed",
+    "name" : "Claude Code hooks",
+    "status" : "ok"
+  },
+  {
+    "area" : "Agents",
+    "detail" : "installed",
+    "name" : "Codex hooks",
+    "status" : "ok"
+  },
+  {
+    "area" : "Events",
+    "detail" : "237 events, 1 segments, 0.1 MB",
+    "name" : "journal",
+    "status" : "ok"
+  },
+  {
+    "area" : "Events",
+    "detail" : "no events lost",
+    "name" : "browsers",
+    "status" : "ok"
+  },
+  {
+    "area" : "Events",
+    "detail" : "no events lost",
+    "name" : "flows",
+    "status" : "ok"
+  },
+  {
+    "area" : "Events",
+    "detail" : "no events lost",
+    "name" : "hooks",
+    "status" : "ok"
+  },
+  {
+    "area" : "Events",
+    "detail" : "no events lost",
+    "name" : "http pier",
+    "status" : "ok"
+  },
+  {
+    "area" : "Events",
+    "detail" : "no events lost",
+    "name" : "phone",
+    "status" : "ok"
+  },
+  {
+    "area" : "Events",
+    "detail" : "no events lost",
+    "name" : "repo hooks",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/leads-app",
+    "name" : "leads-app",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/admin-mobile",
+    "name" : "admin-mobile",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/api.acme.dev",
+    "name" : "acme-api",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/atlas-agents",
+    "name" : "atlas-agents",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/atlas-android",
+    "name" : "atlas-android",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/atlas-ios",
+    "name" : "atlas-ios",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/atlas-mkt",
+    "name" : "atlas-mkt",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/atlas-orchestrator",
+    "name" : "atlas-orchestrator",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme",
+    "name" : "acme",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-admin",
+    "name" : "acme-admin",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-app-android",
+    "name" : "acme-app-android",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-app-ios",
+    "name" : "acme-app-ios",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-chat",
+    "name" : "acme-chat",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-control",
+    "name" : "acme-control",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-crm",
+    "name" : "acme-crm",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-gate-android",
+    "name" : "acme-gate-android",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-gate-ios",
+    "name" : "acme-gate-ios",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-site",
+    "name" : "acme-site",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-web",
+    "name" : "acme-web",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/acme-vision",
+    "name" : "acme-vision",
+    "status" : "ok"
+  },
+  {
+    "area" : "Locations",
+    "detail" : "git repository at /home/ubuntu/code/sandbox",
+    "name" : "sandbox",
+    "status" : "ok"
+  },
+  {
+    "area" : "Agents",
+    "detail" : "Chromium at /home/ubuntu/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell; at most 4 at once",
+    "name" : "agent browser",
+    "status" : "ok"
+  },
+  {
+    "area" : "Agents",
+    "detail" : "none left behind",
+    "name" : "agent-browser sessions",
+    "status" : "ok"
+  }
+]

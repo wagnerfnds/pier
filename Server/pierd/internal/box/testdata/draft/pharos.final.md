@@ -1,0 +1,13 @@
+The ancient Pharos of Alexandria, one of the Seven Wonders of the Ancient World, stood over 300 feet tall and guided Mediterranean sailors for nearly 1,500 years. This magnificent lighthouse used mirrors and fire to reflect light across the harbor, demonstrating that civilizations have always recognized the life-saving value of guiding beams across dark waters. The structure eventually collapsed due to earthquakes, but its legacy inspired lighthouse designs throughout the centuries.
+
+Lighthouse keepers were once solitary figures, living isolated lives atop rocky shores and towering towers. They maintained the flames, cleaned the lenses, and climbed countless stairs each day to ensure ships stayed safe. These dedicated individuals developed a deep connection to their lighthouses, often becoming local heroes in their communities. Today, automation has replaced most keepers, but their stories remain celebrated in maritime history.
+
+## Notable Lighthouses Around the World
+
+| Lighthouse Name | Location | Height (feet) |
+|---|---|---|
+| Bell Rock | Scotland | 115 |
+| Cape Byron | Australia | 189 |
+| Minot's Ledge | Massachusetts | 97 |
+
+These remarkable structures continue to stand as silent sentinels guarding our coasts.

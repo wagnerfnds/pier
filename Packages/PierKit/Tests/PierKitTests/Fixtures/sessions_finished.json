@@ -1,0 +1,19 @@
+[
+  {
+    "agent" : "claude",
+    "agent_state" : "finished",
+    "attached" : 0,
+    "command" : "claude --model haiku 'Add a subtract function to calc.py and a one-line test; do not run anything else'",
+    "created" : "2026-10-07T21:33:06Z",
+    "dir" : "/home/ubuntu/code/sandbox-subtract",
+    "exited" : false,
+    "fidelity" : "screen",
+    "location" : "sandbox/subtract",
+    "name" : "sandbox-subtract-claude-6s1",
+    "preset" : "claude",
+    "state_seq" : 245,
+    "state_since" : "2026-10-07T21:33:30.112423152Z",
+    "title" : "Add a subtract function to calc.py and a…",
+    "turn" : "sandbox-subtract-claude-6s1#1"
+  }
+]

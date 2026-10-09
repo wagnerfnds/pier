@@ -1,0 +1,468 @@
+[
+  {
+    "default_branch" : "master",
+    "name" : "leads-app",
+    "path" : "/home/ubuntu/code/leads-app",
+    "remote" : "https://github.com/octocat/leads-app.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/leads-app",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "c938d8e7e1",
+        "main" : true,
+        "name" : "leads-app",
+        "path" : "/home/ubuntu/code/leads-app",
+        "port" : 41000
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "admin-mobile",
+    "path" : "/home/ubuntu/code/admin-mobile",
+    "remote" : "https://github.com/octocat/admin-mobile.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/admin-mobile",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "e266b5f6df",
+        "main" : true,
+        "name" : "admin-mobile",
+        "path" : "/home/ubuntu/code/admin-mobile",
+        "port" : 41310
+      }
+    ]
+  },
+  {
+    "default_branch" : "master",
+    "name" : "acme-api",
+    "path" : "/home/ubuntu/code/api.acme.dev",
+    "remote" : "https://github.com/octocat/api.acme.dev.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/api.acme.dev",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "ff017632d4",
+        "main" : true,
+        "name" : "api.acme.dev",
+        "path" : "/home/ubuntu/code/api.acme.dev",
+        "port" : 41020
+      }
+    ]
+  },
+  {
+    "default_branch" : "master",
+    "name" : "atlas-agents",
+    "path" : "/home/ubuntu/code/atlas-agents",
+    "remote" : "https://github.com/octocat/atlas-agents.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/atlas-agents",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "a717066b05",
+        "main" : true,
+        "name" : "atlas-agents",
+        "path" : "/home/ubuntu/code/atlas-agents",
+        "port" : 41270
+      }
+    ]
+  },
+  {
+    "default_branch" : "master",
+    "name" : "atlas-android",
+    "path" : "/home/ubuntu/code/atlas-android",
+    "remote" : "https://github.com/octocat/atlas-android.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/atlas-android",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "9c0a6b272c",
+        "main" : true,
+        "name" : "atlas-android",
+        "path" : "/home/ubuntu/code/atlas-android",
+        "port" : 41140
+      }
+    ]
+  },
+  {
+    "check" : "make test",
+    "check_from" : "detected",
+    "default_branch" : "master",
+    "name" : "atlas-ios",
+    "path" : "/home/ubuntu/code/atlas-ios",
+    "remote" : "https://github.com/octocat/atlas-ios.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/atlas-ios",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "24a2b07668",
+        "main" : true,
+        "name" : "atlas-ios",
+        "path" : "/home/ubuntu/code/atlas-ios",
+        "port" : 41150
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "atlas-mkt",
+    "path" : "/home/ubuntu/code/atlas-mkt",
+    "remote" : "https://github.com/octocat/atlas-mkt.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/atlas-mkt",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "0083bdd7cb",
+        "main" : true,
+        "name" : "atlas-mkt",
+        "path" : "/home/ubuntu/code/atlas-mkt",
+        "port" : 41180
+      }
+    ]
+  },
+  {
+    "check" : "npm test",
+    "check_from" : "detected",
+    "default_branch" : "master",
+    "name" : "atlas-orchestrator",
+    "path" : "/home/ubuntu/code/atlas-orchestrator",
+    "remote" : "https://github.com/octocat/atlas-orchestrator.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/atlas-orchestrator",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "cc5c0da4ca",
+        "main" : true,
+        "name" : "atlas-orchestrator",
+        "path" : "/home/ubuntu/code/atlas-orchestrator",
+        "port" : 41130
+      }
+    ]
+  },
+  {
+    "default_branch" : "master",
+    "name" : "acme",
+    "path" : "/home/ubuntu/code/acme",
+    "remote" : "https://github.com/octocat/acme.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "81e4958ad1",
+        "main" : true,
+        "name" : "acme",
+        "path" : "/home/ubuntu/code/acme",
+        "port" : 41110
+      }
+    ]
+  },
+  {
+    "default_branch" : "master",
+    "name" : "acme-admin",
+    "path" : "/home/ubuntu/code/acme-admin",
+    "remote" : "https://github.com/octocat/acme-admin.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-admin",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "c816ead5e2",
+        "main" : true,
+        "name" : "acme-admin",
+        "path" : "/home/ubuntu/code/acme-admin",
+        "port" : 41200
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "acme-app-android",
+    "path" : "/home/ubuntu/code/acme-app-android",
+    "remote" : "https://github.com/octocat/acme-app-android.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-app-android",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "c31e87ba0d",
+        "main" : true,
+        "name" : "acme-app-android",
+        "path" : "/home/ubuntu/code/acme-app-android",
+        "port" : 41330
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "acme-app-ios",
+    "path" : "/home/ubuntu/code/acme-app-ios",
+    "remote" : "https://github.com/octocat/acme-app-ios.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-app-ios",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "1de04526ec",
+        "main" : true,
+        "name" : "acme-app-ios",
+        "path" : "/home/ubuntu/code/acme-app-ios",
+        "port" : 41170
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "acme-chat",
+    "path" : "/home/ubuntu/code/acme-chat",
+    "remote" : "https://github.com/octocat/acme-chat.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-chat",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "f4e74da4a1",
+        "main" : true,
+        "name" : "acme-chat",
+        "path" : "/home/ubuntu/code/acme-chat",
+        "port" : 41060
+      }
+    ]
+  },
+  {
+    "default_branch" : "master",
+    "name" : "acme-control",
+    "path" : "/home/ubuntu/code/acme-control",
+    "remote" : "https://github.com/octocat/acme-control.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-control",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "27f5db02bd",
+        "main" : true,
+        "name" : "acme-control",
+        "path" : "/home/ubuntu/code/acme-control",
+        "port" : 41400
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "acme-crm",
+    "path" : "/home/ubuntu/code/acme-crm",
+    "remote" : "https://github.com/octocat/acme-crm.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-crm",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "d5465678cb",
+        "main" : true,
+        "name" : "acme-crm",
+        "path" : "/home/ubuntu/code/acme-crm",
+        "port" : 41100
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "acme-gate-android",
+    "path" : "/home/ubuntu/code/acme-gate-android",
+    "remote" : "https://github.com/octocat/acme-gate-android.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-gate-android",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "7fc581f324",
+        "main" : true,
+        "name" : "acme-gate-android",
+        "path" : "/home/ubuntu/code/acme-gate-android",
+        "port" : 41320
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "acme-gate-ios",
+    "path" : "/home/ubuntu/code/acme-gate-ios",
+    "remote" : "https://github.com/octocat/acme-gate-ios.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-gate-ios",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "b024e2ce25",
+        "main" : true,
+        "name" : "acme-gate-ios",
+        "path" : "/home/ubuntu/code/acme-gate-ios",
+        "port" : 41160
+      }
+    ]
+  },
+  {
+    "default_branch" : "master",
+    "name" : "acme-site",
+    "path" : "/home/ubuntu/code/acme-site",
+    "remote" : "https://github.com/octocat/acme-site.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-site",
+    "worktrees" : [
+      {
+        "branch" : "master",
+        "head" : "c449b66683",
+        "main" : true,
+        "name" : "acme-site",
+        "path" : "/home/ubuntu/code/acme-site",
+        "port" : 41070
+      }
+    ]
+  },
+  {
+    "check" : "pnpm test",
+    "check_from" : "detected",
+    "default_branch" : "main",
+    "name" : "acme-web",
+    "path" : "/home/ubuntu/code/acme-web",
+    "remote" : "https://github.com/octocat/acme-web.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-web",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "f50244a204",
+        "main" : true,
+        "name" : "acme-web",
+        "path" : "/home/ubuntu/code/acme-web",
+        "port" : 41010
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "acme-vision",
+    "path" : "/home/ubuntu/code/acme-vision",
+    "remote" : "https://github.com/octocat/acme-vision.git",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "slug" : "octocat/acme-vision",
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "b9b0925f95",
+        "main" : true,
+        "name" : "acme-vision",
+        "path" : "/home/ubuntu/code/acme-vision",
+        "port" : 41190
+      }
+    ]
+  },
+  {
+    "default_branch" : "main",
+    "name" : "sandbox",
+    "path" : "/home/ubuntu/code/sandbox",
+    "repo" : true,
+    "repo_trust" : "none",
+    "scripts" : {
+
+    },
+    "worktrees" : [
+      {
+        "branch" : "main",
+        "head" : "ae6d87978c",
+        "main" : true,
+        "name" : "sandbox",
+        "path" : "/home/ubuntu/code/sandbox",
+        "port" : 41660
+      }
+    ]
+  }
+]

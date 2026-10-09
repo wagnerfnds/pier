@@ -1,0 +1,23 @@
+{
+  "aps": {
+    "alert": {
+      "title": "✋ Needs you · Pricing page",
+      "body": "AskUserQuestion  Which layout?\n1 Three tiers · 2 One plan · 3 A table"
+    },
+    "category": "NEEDS_YOU_CHOICE_3",
+    "thread-id": "casa/projeto-wt-1",
+    "sound": "default",
+    "interruption-level": "time-sensitive",
+    "mutable-content": 1
+  },
+  "box": "casa",
+  "session": "projeto-wt-1",
+  "location": "projeto/wt-1",
+  "hasMenu": false,
+  "options": [
+    "Three tiers",
+    "One plan",
+    "A table"
+  ],
+  "optionsKind": "menu"
+}

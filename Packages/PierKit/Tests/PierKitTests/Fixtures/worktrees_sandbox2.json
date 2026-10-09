@@ -1,0 +1,52 @@
+[
+  {
+    "ahead" : 0,
+    "behind" : 0,
+    "branch" : "main",
+    "changed" : 0,
+    "last_commit" : {
+      "author" : "Mona Octocat",
+      "on_base" : true,
+      "parents" : [
+
+      ],
+      "refs" : "HEAD -> main, subtract",
+      "sha" : "ae6d87978ce613d68d039e0d63b5c672001bb409",
+      "short" : "ae6d879",
+      "subject" : "Initial sandbox",
+      "time" : "2026-10-07T21:31:01Z"
+    },
+    "location" : "sandbox",
+    "main" : true,
+    "name" : "sandbox",
+    "path" : "/home/ubuntu/code/sandbox",
+    "port" : 41660,
+    "sessions" : 0,
+    "untracked" : 0
+  },
+  {
+    "ahead" : 0,
+    "base" : "main",
+    "behind" : 0,
+    "branch" : "subtract",
+    "changed" : 1,
+    "last_commit" : {
+      "author" : "Mona Octocat",
+      "on_base" : true,
+      "parents" : [
+
+      ],
+      "refs" : "HEAD -> subtract, main",
+      "sha" : "ae6d87978ce613d68d039e0d63b5c672001bb409",
+      "short" : "ae6d879",
+      "subject" : "Initial sandbox",
+      "time" : "2026-10-07T21:31:01Z"
+    },
+    "location" : "sandbox",
+    "name" : "subtract",
+    "path" : "/home/ubuntu/code/sandbox-subtract",
+    "port" : 41670,
+    "sessions" : 1,
+    "untracked" : 1
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "aps": {
+    "alert": {
+      "title": "✋ Precisa de você · Claude Code",
+      "body": "Claude Code · projeto / wt-1 · casa\nBash  rm -rf build"
+    },
+    "category": "NEEDS_YOU",
+    "thread-id": "casa/projeto-wt-1",
+    "sound": "default",
+    "interruption-level": "time-sensitive",
+    "mutable-content": 1
+  },
+  "box": "casa",
+  "session": "projeto-wt-1",
+  "location": "projeto/wt-1",
+  "hasMenu": true
+}

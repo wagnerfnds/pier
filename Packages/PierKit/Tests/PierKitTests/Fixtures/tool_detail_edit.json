@@ -1,0 +1,23 @@
+{
+  "file" : "calc.py",
+  "hunks" : [
+    {
+      "lines" : [
+        " def add(a, b):",
+        "     return a + b",
+        "+",
+        "+def subtract(a, b):",
+        "+    return a - b"
+      ],
+      "newLines" : 5,
+      "newStart" : 1,
+      "oldLines" : 2,
+      "oldStart" : 1
+    }
+  ],
+  "id" : "toolu_012nrGhotyqcTxZoEVx2JcoX",
+  "name" : "Edit",
+  "new" : "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n",
+  "old" : "def add(a, b):\n    return a + b\n",
+  "output" : "The file /home/ubuntu/code/sandbox-subtract/calc.py has been updated successfully. (file state is current in your context — no need to Read it back)"
+}

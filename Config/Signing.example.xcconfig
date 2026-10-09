@@ -1,0 +1,14 @@
+// Copy to Config/Signing.xcconfig (gitignored) and fill in. It is included by Config/Base.xcconfig, so what you set
+// here wins over the defaults there.
+
+// Your Apple Developer team (Xcode: Settings > Accounts, or developer.apple.com > Membership).
+DEVELOPMENT_TEAM = ABCDE12345
+
+// A bundle id your team owns. The widget extension, the Mac menu bar plugin, the UI tests, the App Group
+// (group.<id>), the keychain groups and the APNs topic all follow it. Put the same id as `bundle_id` in the box's
+// ~/.config/pier/push.json so pierd's pushes reach the app.
+PIER_BUNDLE_ID = com.example.pier
+
+// Optional: the keychain service the identity and pairings live under (default: PIER_BUNDLE_ID). Set it only to keep
+// the pairings of an install made by a build that used another service name.
+// PIER_KEYCHAIN_SERVICE = com.example.pier
