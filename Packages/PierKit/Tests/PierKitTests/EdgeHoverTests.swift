@@ -82,14 +82,14 @@ import Testing
         for size in EdgeSizeClass.allCases {
             let m = EdgeMetrics.metrics(size)
             for n in [0, 1, 3, 8] {
-                let canvas = m.canvasSize(indicators: n, peak: 1.45)
-                // Room for the grown tab, its magnification and the slop; whole points; the folded tab fits too.
+                let canvas = m.canvasSize(indicators: n)
+                // Room for the grown tab and the slop; whole points; the folded tab fits too.
                 #expect(canvas.height == ceil(m.height(openness: 1, indicators: n)) && canvas.width == canvas.width.rounded())
-                #expect(canvas.width >= m.expandedWidth + m.slop + m.magnifiedExtra(peak: 1.45))
+                #expect(canvas.width >= m.expandedWidth + m.slop)
                 #expect(canvas.height >= m.collapsedSize(indicators: n).height)
                 // The same canvas whatever the pointer does: only the agents' count, a label or the settings change it.
-                #expect(m.canvasSize(indicators: n, peak: 1.45, side: 80).height == canvas.height)
-                #expect(m.canvasSize(indicators: n, peak: 1.45, side: 80).width == canvas.width + 80)
+                #expect(m.canvasSize(indicators: n, side: 80).height == canvas.height)
+                #expect(m.canvasSize(indicators: n, side: 80).width == canvas.width + 80)
                 // The shape's middle is the canvas's middle at any openness: folding and growing never move it.
                 var o: CGFloat = 0
                 while o <= 1 {
@@ -100,7 +100,6 @@ import Testing
                     o += 0.25
                 }
             }
-            #expect(m.magnifiedExtra(peak: 1) == 0 && m.magnifiedExtra(peak: 1.45) > 0)
         }
     }
 

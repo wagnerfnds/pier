@@ -48,7 +48,7 @@ Agents ask; you answer in a tap or a keystroke, from anywhere. No agent sits wai
 - **Made for each device.** Tabs on iPhone; sidebar, command palette (`⌘K`) and menu shortcuts on iPad and Mac; light
   and dark.
 - **Always there on the Mac.** A narrow black tab hanging from the edge of the screen, over every app: a dot per agent
-  (working, needs you, done); under the pointer it grows, Dock-like, into the Inbox, the agents, a new task, Talk and
+  (working, needs you, done); under the pointer it grows into the Inbox, the agents, a new task, Talk and
   "point at it". Beside it, a dark panel with the app's work without the app's window: answer the Inbox with `1` `2` `3`
   (Esc undoes), read an agent's last reply and send it a next step, start a task or a chat, mark a part of the screen and
   say what should happen. Double-tap `⌥` (or `⌃⌥Space`) opens Talk from anywhere, `⌃⌥P` hides and shows the tab; desktop

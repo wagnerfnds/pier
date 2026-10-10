@@ -176,11 +176,8 @@ final class IconButton: ClickableView {
     var standalone = false { didSet { needsDisplay = true } }
     /// On the black tab: a white glyph and a white hover wash, whatever the appearance.
     var onBlack = false { didSet { render() } }
-    /// The glyph's point size, unmagnified.
+    /// The glyph's point size.
     var symbolSize: CGFloat { didSet { if symbolSize != oldValue { render() } } }
-    /// Magnified (the Dock-like hover on the tab): the glyph is rendered again at its final size, never scaled as pixels.
-    var scale: CGFloat = 1 { didSet { if abs(scale - oldValue) > 0.01 { render() } } }
-    private var drawnSize: CGFloat { symbolSize * scale }
     private var glyph: NSImage?
     /// Brightens and glows instead of the flat wash (the tab).
     var glow = false { didSet { needsDisplay = true } }
@@ -197,7 +194,7 @@ final class IconButton: ClickableView {
 
     /// The glyph at its final size, in its color.
     private func render() {
-        glyph = SurfaceStyle.symbol(symbolName, size: drawnSize)?.tinted(onBlack ? NSColor.white.withAlphaComponent(0.92) : tint)
+        glyph = SurfaceStyle.symbol(symbolName, size: symbolSize)?.tinted(onBlack ? NSColor.white.withAlphaComponent(0.92) : tint)
         needsDisplay = true
     }
 
@@ -231,15 +228,14 @@ final class IconButton: ClickableView {
         }
         if badge > 0 {
             // The count at the glyph's top-trailing corner, over it by a little, a dark ring cutting it out of the glyph
-            // (as iOS badges); drawn last, kept inside the box (it grows with the glyph).
+            // (as iOS badges); drawn last, kept inside the box.
             let text = badge > 99 ? "99+" : "\(badge)"
-            let k = max(0.85, scale)
             let fill = onBlack ? SurfaceStyle.tabColor(forState: "needsYou") : SurfaceStyle.orange
             let ink = onBlack ? NSColor(srgbRed: 0.1, green: 0.1, blue: 0.11, alpha: 1) : NSColor.white
-            let attrs: [NSAttributedString.Key: Any] = [.font: SurfaceStyle.font(8 * k, .bold), .foregroundColor: ink]
+            let attrs: [NSAttributedString.Key: Any] = [.font: SurfaceStyle.font(8, .bold), .foregroundColor: ink]
             let size = (text as NSString).size(withAttributes: attrs)
-            let h = 12 * k, w = max(h, size.width + 6 * k), ring: CGFloat = 1.5
-            var b = NSRect(x: r.midX + drawnSize * 0.4 - w / 2, y: r.midY - drawnSize * 0.6 - h / 2, width: w, height: h)
+            let h: CGFloat = 12, w = max(h, size.width + 6), ring: CGFloat = 1.5
+            var b = NSRect(x: r.midX + symbolSize * 0.4 - w / 2, y: r.midY - symbolSize * 0.6 - h / 2, width: w, height: h)
             b.origin.x = min(b.origin.x, r.maxX - w - ring)
             b.origin.y = max(b.origin.y, r.minY + ring)
             (onBlack ? SurfaceStyle.tab : SurfaceStyle.card).setFill()
