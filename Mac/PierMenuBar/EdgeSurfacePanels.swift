@@ -4,7 +4,7 @@ import AppKit
 /// like a drop (each end an S-curve out of the edge, `EdgeOutline`), with one indicator per agent (a blue ring turning
 /// while it works, an amber dot when it needs the person, green when its turn ended), that grows — same silhouette,
 /// same window, still glued — to hold the Inbox button with its count, the agents, Nova tarefa, Falar, Apontar and a
-/// menu. Under the pointer its items magnify like the Dock's. It opens while the pointer is on it or ⌥ is held, while
+/// menu. It opens while the pointer is on it or ⌥ is held, while
 /// an agent needs the person, while the side panel or the menu is open and for a moment after a turn finished; it folds
 /// only once the pointer has been away for a while (`EdgeHover`, PierKit), never while the pointer is inside. Beside it,
 /// the side panel (`SidePanelController`): the Inbox, the agents, a new task, Falar — the app's work without the app's
@@ -219,9 +219,9 @@ import AppKit
         }
     }
 
-    /// The window: one fixed canvas for the state (the grown tab, its magnification and the labels fit in it), flush
+    /// The window: one fixed canvas for the state (the grown tab and the labels fit in it), flush
     /// with the screen edge at whole points, its middle at the chosen fraction. It moves or resizes only when the state
-    /// does — the agents' count, a label, the settings — never while the springs run: the shape morphs inside it.
+    /// does — the agents' count, a label, the settings — never while the spring runs: the shape morphs inside it.
     func layout() {
         guard let screen else { return }
         lastScreenID = screen.displayID
@@ -401,7 +401,7 @@ import AppKit
         return rep.representation(using: .png, properties: [:])
     }
 
-    /// Debug hooks for a run without a pointer: `hover`, `unhover`, `option`, `labels`, `collapse`, `magnify:<y>`
+    /// Debug hooks for a run without a pointer: `hover`, `unhover`, `option`, `labels`, `collapse`, `point:<y>`
     /// (the pointer at `y` points from the tab's top).
     func debug(_ command: String) {
         switch command {
@@ -424,7 +424,7 @@ import AppKit
             let a = NSWindow.windowNumber(at: onShape, belowWindowWithWindowNumber: 0), b = NSWindow.windowNumber(at: beside, belowWindowWithWindowNumber: 0)
             NSLog("PierMenuBar: probe tab=%ld onShape=%ld beside=%ld frame=%@", panel.windowNumber, a, b, NSStringFromRect(f))
         default:
-            if command.hasPrefix("magnify:"), let y = Double(command.dropFirst(8)) { view.debugMagnify(y: CGFloat(y)) }
+            if command.hasPrefix("point:"), let y = Double(command.dropFirst(6)) { view.debugPoint(y: CGFloat(y)) }
         }
     }
 
@@ -478,17 +478,14 @@ final class EdgePanel: NSPanel {
 
 /// The one view of the tab, drawn inside a fixed canvas: the black drop (`EdgeOutline`) holding the column of items
 /// (`EdgeColumn`, both PierKit) — folded, the indicators; grown, Inbox, agents, new task, Falar, Apontar, the menu —
-/// the hover, the Dock-like magnification under the pointer, the drag along the edge, the labels and the finished toast
-/// beside it. The window around it never moves while the pointer is on it: the canvas is sized for the grown tab, its
-/// magnification and the widest label (`EdgeMetrics.canvasSize`), transparent outside the shape, and the shape alone
-/// takes the pointer (`hitTest`). One number, `openness`, morphs the tab between folded and grown around the canvas's
-/// middle (a spring, like the magnification); the items magnify in place and the body widens with its ends fixed, so
-/// the edge side and the tab's centre stay exactly put through everything.
+/// the hover (the item under the pointer glows and names itself), the drag along the edge, the labels and the finished
+/// toast beside it. The window around it never moves while the pointer is on it: the canvas is sized for the grown tab
+/// and the widest label (`EdgeMetrics.canvasSize`), transparent outside the shape, and the shape alone takes the pointer
+/// (`hitTest`). One number, `openness`, morphs the tab between folded and grown around the canvas's middle with a short
+/// spring; the items keep their size under the pointer (no Dock-like magnification: it made the tab wobble), so the
+/// edge side and the tab's centre stay exactly put through everything.
 final class EdgeTabView: NSView {
     static let maxDots = 10
-    /// How much an item grows right under the pointer, and over how many indicator pitches the growth fades.
-    static let peakMagnification: CGFloat = 1.45
-    static let magnifyReach: CGFloat = 2.4
 
     var metrics = EdgeMetrics.metrics(.medium) { didSet { if metrics != oldValue { applyMetrics() } } }
     /// Grown or folded; `openness` follows with a spring (at once with Reduce Motion).
@@ -536,19 +533,13 @@ final class EdgeTabView: NSView {
     private var moved = false
     private var spinTimer: Timer?
     private var spinAngle: CGFloat = 0
-    // Magnification: the pointer along the tab (base coordinates, nil when off the shape), the current and the target
-    // scale per slot, the spring that takes them there.
+    // The pointer along the tab (base coordinates, nil when off the shape) and the item under it.
     private var pointerBase: CGFloat?
     private var insideShape = false
-    private var scales: [CGFloat] = []
-    private var targets: [CGFloat] = []
-    private var velocities: [CGFloat] = []
     private var springTimer: Timer?
     private var hoveredSlot: Int?
     // The last layout: what draw, clicks and the hit test go by.
     private var column = EdgeColumn(slots: [], top: 0)
-    private var lay = EdgeColumn.Layout(tops: [], sizes: [])
-    private var baseWidth: CGFloat = 23
     private var bodyWidth: CGFloat = 23
     private var shapeHeight: CGFloat = 0
     private var shapeTop: CGFloat = 0
@@ -618,7 +609,6 @@ final class EdgeTabView: NSView {
             pill.sizeToFit()
             return pill
         }
-        resetScalesIfNeeded()
         labelReserve = min(320, (0..<slotCount).compactMap { slotName($0) }.map { Self.hoverPill($0).frame.width }.max() ?? 0)
         needsLayout = true
         needsDisplay = true
@@ -653,7 +643,7 @@ final class EdgeTabView: NSView {
         if window == nil { spin(false); springTimer?.invalidate(); springTimer = nil }
     }
 
-    // MARK: slots and magnification
+    // MARK: slots and the pointer
 
     private var shownCount: Int { indicatorRects.count }
     /// Slot 0 is the Inbox, 1… the indicators (or the quiet ring), then +, Falar, Apontar, "…" (EdgeMetrics.toolSlot).
@@ -671,29 +661,13 @@ final class EdgeTabView: NSView {
         }
     }
 
-    private func resetScalesIfNeeded() {
-        let n = slotCount
-        guard scales.count != n else { return }
-        scales = Array(repeating: 1, count: n)
-        targets = scales
-        velocities = Array(repeating: 0, count: n)
-    }
-
-    private var magnifyReach: CGFloat { Self.magnifyReach * (metrics.indicator + metrics.indicatorGap) }
-
-    /// New targets for the pointer's spot (on the current column: it morphs with the openness): the item under it
-    /// grows, its neighbours less (a cosine fall-off), the rest stay. With Reduce Motion nothing grows; the item under
-    /// the pointer is still known (its label, its glow).
+    /// The item under the pointer's spot (on the current column: it morphs with the openness), for its label and glow.
     private func aim() {
-        resetScalesIfNeeded()
-        let col = metrics.column(openness: openness, indicators: shownCount)
-        targets = col.targetScales(pointer: SurfaceStyle.reduceMotion ? nil : pointerBase, peak: Self.peakMagnification, reach: magnifyReach)
-        if let p = pointerBase { hoveredSlot = col.index(at: p) } else { hoveredSlot = nil }
-    }
-
-    private func retarget() {
-        aim()
-        startSpring()
+        let slot = pointerBase.flatMap { metrics.column(openness: openness, indicators: shownCount).index(at: $0) }
+        guard slot != hoveredSlot else { return }
+        hoveredSlot = slot
+        needsLayout = true
+        needsDisplay = true
     }
 
     private func startSpring() {
@@ -703,33 +677,21 @@ final class EdgeTabView: NSView {
         }
     }
 
-    /// Critically damped springs (stiff, no overshoot): one for the openness, one per slot for the magnification.
-    /// Stops once everything settled.
+    /// The openness's critically damped spring: stiff and short (about a fifth of a second), no overshoot, so the tab
+    /// grows in one clean move. Stops once settled.
     private func springStep() {
         let dt: CGFloat = 1.0 / 60
-        var settled = true
         if abs(openness - opennessTarget) > 0.001 || abs(opennessVelocity) > 0.01 {
-            let k: CGFloat = 400, c = 2 * k.squareRoot()
+            let k: CGFloat = 1100, c = 2 * k.squareRoot()
             opennessVelocity += (-k * (openness - opennessTarget) - c * opennessVelocity) * dt
             openness = min(max(openness + opennessVelocity * dt, 0), 1)
-            settled = false
-        } else if openness != opennessTarget {
+        } else {
             openness = opennessTarget
             opennessVelocity = 0
-        }
-        // A still pointer while the shape morphs under it: its spot is read again, and the targets follow the column.
-        if insideShape || pointerBase != nil { readPointer() }
-        for i in scales.indices where targets.indices.contains(i) {
-            let k: CGFloat = 320, c = 2 * k.squareRoot()
-            velocities[i] += (-k * (scales[i] - targets[i]) - c * velocities[i]) * dt
-            scales[i] += velocities[i] * dt
-            if abs(scales[i] - targets[i]) > 0.002 || abs(velocities[i]) > 0.01 { settled = false }
-        }
-        if settled {
-            scales = targets
-            velocities = Array(repeating: 0, count: scales.count)
             springTimer?.invalidate(); springTimer = nil
         }
+        // A still pointer while the shape morphs under it: its spot is read again.
+        if insideShape || pointerBase != nil { readPointer() }
         needsLayout = true
         needsDisplay = true
         onRelayout?()
@@ -742,7 +704,7 @@ final class EdgeTabView: NSView {
         pointer(at: hitPath.contains(p) ? p : nil)
     }
 
-    /// The pointer at `p` (view coordinates) on the shape, or off it: the hover and the magnification follow.
+    /// The pointer at `p` (view coordinates) on the shape, or off it: the hover and the item under it follow.
     private func pointer(at p: NSPoint?) {
         pointerBase = p.map { $0.y - shapeTop }
         let inside = p != nil
@@ -751,7 +713,6 @@ final class EdgeTabView: NSView {
             onHover?(inside)
         }
         aim()
-        if inside || scales != targets { startSpring() }
     }
 
     /// The window's size for the state: the canvas (`EdgeMetrics.canvasSize`) plus what the labels beside the shape
@@ -759,7 +720,6 @@ final class EdgeTabView: NSView {
     func measure(edge: EdgeSide, labels: Bool, toast: String?) -> NSSize {
         self.edge = edge
         labelsShown = labels
-        resetScalesIfNeeded()
         sideWidth = labelReserve
         if labels, !self.labels.isEmpty { sideWidth = max(sideWidth, min(320, self.labels.map(\.frame.width).max() ?? 0)) }
         if let toast {
@@ -775,7 +735,7 @@ final class EdgeTabView: NSView {
             toastPill?.removeFromSuperview(); toastPill = nil
         }
         if sideWidth > 0 { sideWidth += 10 }
-        return metrics.canvasSize(indicators: shownCount, peak: Self.peakMagnification, side: sideWidth)
+        return metrics.canvasSize(indicators: shownCount, side: sideWidth)
     }
 
     /// The screen edge and the body's face, in the view's x.
@@ -820,38 +780,32 @@ final class EdgeTabView: NSView {
 
     override func layout() {
         super.layout()
-        resetScalesIfNeeded()
         let m = metrics, n = shownCount
         column = m.column(openness: openness, indicators: n)
-        guard column.slots.count == scales.count, slotCount >= 5 else { return }
-        lay = column.magnified(scales: scales)
-        // The body widens by half the growth of the most magnified item (the glyph takes the rest from its margins),
-        // its ends staying exactly where they are; the shape sits in the middle of the canvas.
-        baseWidth = m.bodyWidth(openness: openness)
-        let extra = zip(column.slots, scales).map { ($1 - 1) * $0.size * 0.5 }.max() ?? 0
-        bodyWidth = baseWidth + max(0, extra)
+        guard column.slots.count == slotCount, slotCount >= 5 else { return }
+        // The shape sits in the middle of the canvas.
+        bodyWidth = m.bodyWidth(openness: openness)
         shapeHeight = m.height(openness: openness, indicators: n)
         shapeTop = m.shapeTop(openness: openness, indicators: n, canvasHeight: bounds.height)
-        shapePath = path(for: EdgeOutline(width: bodyWidth, height: shapeHeight, profileWidth: baseWidth), top: shapeTop)
-        hitPath = path(for: EdgeOutline(width: bodyWidth + 3, height: shapeHeight + 6, profileWidth: baseWidth + 3), top: shapeTop - 3)
+        shapePath = path(for: EdgeOutline(width: bodyWidth, height: shapeHeight), top: shapeTop)
+        hitPath = path(for: EdgeOutline(width: bodyWidth + 3, height: shapeHeight + 6), top: shapeTop - 3)
         let edgeX = self.edgeX, faceX = self.faceX
         let cx = (edgeX + faceX) / 2
+        let tops = column.tops
         func rect(_ i: Int) -> NSRect {
-            let s = lay.sizes[i]
-            return NSRect(x: cx - s / 2, y: lay.tops[i] + shapeTop, width: s, height: s)
+            let s = column.slots[i].size
+            return NSRect(x: cx - s / 2, y: tops[i] + shapeTop, width: s, height: s)
         }
         let t = EdgeMetrics.toolSlot(indicators: n)
-        let grow = 0.6 + 0.4 * openness   // the glyphs pop in with their boxes
         inbox.frame = rect(0)
-        inbox.scale = scales[0] * grow
         for i in indicatorRects.indices { indicatorRects[i] = rect(1 + i) }
-        for (k, b) in [plus, talk, camera, more].enumerated() {
-            b.frame = rect(t + k)
-            b.scale = scales[t + k] * grow
-        }
+        for (k, b) in [plus, talk, camera, more].enumerated() { b.frame = rect(t + k) }
+        // The glyphs come in early and at their final size (drawn once, never re-rendered per frame): fully there by
+        // the time the tab is half grown, gone as soon as it starts to fold.
+        let shown = min(1, max(0, (openness - 0.15) / 0.35))
         for b in buttons {
-            b.isHidden = openness < 0.02
-            b.alphaValue = openness * openness
+            b.isHidden = shown <= 0
+            b.alphaValue = shown
         }
         if let overflow, let last = indicatorRects.last {
             overflow.frame = NSRect(x: min(edgeX, faceX), y: last.maxY + 1, width: bodyWidth, height: 12)
@@ -874,7 +828,7 @@ final class EdgeTabView: NSView {
             toastPill.frame = NSRect(x: edge == .right ? sideX - w : sideX, y: cy - toastPill.frame.height / 2, width: w, height: toastPill.frame.height)
             toastPill.isHidden = labelsShown && !labels.isEmpty
         }
-        if let slot = hoveredSlot, let name = slotName(slot), pointerBase != nil, !labelsShown, toastPill == nil, lay.tops.indices.contains(slot) {
+        if let slot = hoveredSlot, let name = slotName(slot), pointerBase != nil, !labelsShown, toastPill == nil, tops.indices.contains(slot) {
             if hoverLabel?.text != name {
                 hoverLabel?.removeFromSuperview()
                 hoverLabel = Self.hoverPill(name)
@@ -882,7 +836,7 @@ final class EdgeTabView: NSView {
             guard let hoverLabel else { return }
             if hoverLabel.superview == nil { addSubview(hoverLabel) }
             let w = hoverLabel.frame.width
-            let cy = lay.tops[slot] + lay.sizes[slot] / 2 + shapeTop
+            let cy = tops[slot] + column.slots[slot].size / 2 + shapeTop
             hoverLabel.frame = NSRect(x: edge == .right ? sideX - w : sideX, y: cy - hoverLabel.frame.height / 2, width: w, height: hoverLabel.frame.height)
         } else {
             hoverLabel?.removeFromSuperview(); hoverLabel = nil
@@ -892,7 +846,8 @@ final class EdgeTabView: NSView {
     // MARK: drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        guard !shapePath.isEmpty, lay.tops.count == slotCount, slotCount >= 5 else { return }
+        guard !shapePath.isEmpty, column.slots.count == slotCount, slotCount >= 5 else { return }
+        let tops = column.tops, sizes = column.slots.map(\.size)
         let m = metrics
         let edgeX = self.edgeX, faceX = self.faceX
         SurfaceStyle.tab.setFill()
@@ -908,10 +863,10 @@ final class EdgeTabView: NSView {
         NSGraphicsContext.restoreGraphicsState()
         let t = EdgeMetrics.toolSlot(indicators: shownCount)
         let cx = (edgeX + faceX) / 2
-        if indicatorRects.isEmpty, lay.sizes[1] > 0.5 {
+        if indicatorRects.isEmpty, sizes[1] > 0.5 {
             // No agent anywhere: a quiet ring, so the tab is still there to reach the Inbox and Falar; gone once grown.
-            let s = lay.sizes[1], d = s * 0.65
-            let cy = lay.tops[1] + shapeTop + s / 2
+            let s = sizes[1], d = s * 0.65
+            let cy = tops[1] + shapeTop + s / 2
             let ring = NSBezierPath(ovalIn: NSRect(x: cx - d / 2, y: cy - d / 2, width: d, height: d))
             ring.lineWidth = 1.5
             NSColor.white.withAlphaComponent(0.55 * (1 - openness)).setStroke()
@@ -929,7 +884,7 @@ final class EdgeTabView: NSView {
             // Hairlines between the grown tab's sections, in the middle of each section gap.
             NSColor.white.withAlphaComponent(0.12 * openness).setFill()
             let x0 = min(edgeX, faceX) + 6, w = bodyWidth - 12
-            func mid(_ a: Int, _ b: Int) -> CGFloat { ((lay.tops[a] + lay.sizes[a]) + lay.tops[b]) / 2 + shapeTop }
+            func mid(_ a: Int, _ b: Int) -> CGFloat { ((tops[a] + sizes[a]) + tops[b]) / 2 + shapeTop }
             var ys: [CGFloat] = []
             if shownCount > 0 { ys.append(mid(0, 1)); ys.append(mid(t - 1, t)) } else { ys.append(mid(0, t)) }
             ys.append(mid(t + 2, t + 3))
@@ -964,7 +919,7 @@ final class EdgeTabView: NSView {
     }
 
     /// Tests: the pointer at `y` from the shape's top (no real pointer).
-    func debugMagnify(y: CGFloat) {
+    func debugPoint(y: CGFloat) {
         pointer(at: NSPoint(x: (edgeX + faceX) / 2, y: shapeTop + y))
     }
 

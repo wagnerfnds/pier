@@ -318,20 +318,20 @@ Revisar button is tapped by position in that test.
   ends — to hold the Inbox button with the unseen count (the badge at the glyph's corner, ringed, drawn last), the agents
   (the section is left out when there are none), Nova tarefa, Falar, Apontar na tela and "…" (a menu with everything the
   menu bar item offered and the tab's settings: edge, position, size, screen, full screen, "Ocultar a aba" ⌃⌥P, Ajustes).
-  The window is one fixed transparent **canvas** (`EdgeMetrics.canvasSize`: room for the grown tab, its magnification and
-  the widest label beside it), flush with the edge at whole points, its middle at the chosen fraction; it moves or
+  The window is one fixed transparent **canvas** (`EdgeMetrics.canvasSize`: room for the grown tab and the widest label
+  beside it), flush with the edge at whole points, its middle at the chosen fraction; it moves or
   resizes only when the state does (the agents' count, a label, the settings), never while the pointer is on it:
-  folding and growing (one `openness` number driven by a critically damped spring) and the **Dock-like magnification**
-  (the item under the pointer 1.45 ×, its neighbours by a cosine fall-off over 2.4 pitches, each growing in place around
-  its own centre, the body widening by half the growth with its ends fixed — `EdgeColumn`, tested) all happen inside it,
-  so the edge side and the tab's centre never move (a 16-frame burst while the pointer slid down the tab measured 0 px of
-  drift in both). A label with the item's name floats beside the item under the pointer. Only the shape takes the pointer
+  folding and growing (one `openness` number driven by a stiff critically damped spring, about 0.2 s, no overshoot) happen
+  inside it, so the edge side and the tab's centre never move. The glyphs are drawn once at their final size and fade in
+  over the first half of the growth. Items keep their size under the pointer: a Dock-like magnification was tried and
+  removed (it made the tab wobble as the pointer moved). The item under the pointer glows and a label with its name floats
+  beside it. Only the shape takes the pointer
   (`hitTest` by the outline path, 3 pt of slack); the transparent rest is click-through — `NSWindow.windowNumber(at:)`
   names the window behind, which the `probe` debug command logs. When it opens: `EdgeHover` (PierKit, tested) — open
   while the pointer is on the shape, folds only 0.4 s after the pointer left (a return cancels; the real pointer position
   is checked again before folding), and never while something pins it: an agent needing the person, the side panel or
   the menu open, ⌥ held (labels beside the dots), the 8 s "Sua vez · title" toast after a turn finished. Reduce Motion:
-  no springs and no magnification (the label and the glow still tell which item is under the pointer). The pure rules
+  no spring (the tab grows and folds at once). The pure rules
   (`EdgeLayout`, `EdgeMetrics`, `EdgeOutline`, `EdgeColumn`, `EdgeHover`, `PanelNavigator`, `OptionDoubleTap`,
   `SurfacePaging`, `EdgeSurfaceRules`) are PierKit's `EdgeSurface.swift`, tested, and compiled into the plugin as a
   source. Settings in Ajustes → Mac (`MacSurfaceSettings`, UserDefaults `macSurface.*`: enabled, edge, fraction, display,
@@ -339,7 +339,7 @@ Revisar button is tapped by position in that test.
   beside ⌃⌥Space's 1, no permission needed) shows or hides the tab from any app (`surface:toggle`); hiding shows the toast
   "Aba oculta · ⌃⌥P mostra de novo" and turns the menu bar item on, whose first item is then "Mostrar a aba na borda".
   Debug: `-macSurfaceDebug "hover,panel:inbox,pick:1,…"` (one command every 1.5 s: hover, unhover, option, labels,
-  collapse, toast, magnify:<y>, panel:<inbox|agents|agent:<id>|task|chat|project|talk|close>, page:<n>, pick:<n>,
+  collapse, toast, point:<y>, panel:<inbox|agents|agent:<id>|task|chat|project|talk|close>, page:<n>, pick:<n>,
   reply:<text>, undo, optiontap, pointat, pointat:auto, probe, menu, state — `state` logs the canvas, the openness, every
   button's frame and the panel's stack; screenshots without Screen Recording: `snapshot:<dir>` writes `tab.png` and
   `panel.png` drawn from the views at 2× with alpha, `pointat:render:<dir>` the point-at-it overlay as `pointat.png`,

@@ -198,7 +198,7 @@ public final class PierMenuBarPlugin: NSObject {
         p.start()
     }
 
-    /// Tests and screenshots: `hover`, `unhover`, `option`, `labels`, `collapse`, `toast`, `magnify:<y>`, `panel:<screen>`
+    /// Tests and screenshots: `hover`, `unhover`, `option`, `labels`, `collapse`, `toast`, `point:<y>`, `panel:<screen>`
     /// (inbox, agents, agent:<id>, task, chat, project, talk, close), `optiontap`, `pointat:auto`, `state`.
     @objc public func debugSurface(_ command: String) -> String {
         switch command {

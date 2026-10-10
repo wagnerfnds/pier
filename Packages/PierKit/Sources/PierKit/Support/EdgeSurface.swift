@@ -191,16 +191,12 @@ public struct EdgeMetrics: Sendable, Equatable {
         return column(openness: o, indicators: n).bottom - last + padding(openness: o) + flare(openness: o)
     }
 
-    /// How much the body widens with the biggest item magnified `peak` ×: half of the item's growth (the glyph takes
-    /// the other half from the margins), so a magnified glyph keeps its room without the face jumping out.
-    public func magnifiedExtra(peak: CGFloat) -> CGFloat { max(0, peak - 1) * max(inboxButton, button, indicator) * 0.5 }
-
-    /// The tab's window: one fixed canvas for a state, big enough for the grown tab and for the magnification, with
-    /// `side` more beside the shape for the labels. The shape is drawn in it, centred, the rest transparent, so the
+    /// The tab's window: one fixed canvas for a state, big enough for the grown tab, with `side` more beside the shape
+    /// for the labels. The shape is drawn in it, centred, the rest transparent, so the
     /// window never moves or resizes while the pointer is on it (it changes only with the agents' count, the labels,
     /// or the settings).
-    public func canvasSize(indicators n: Int, peak: CGFloat, side: CGFloat = 0) -> CGSize {
-        CGSize(width: ceil(expandedWidth + magnifiedExtra(peak: peak) + slop + side), height: ceil(height(openness: 1, indicators: n)))
+    public func canvasSize(indicators n: Int, side: CGFloat = 0) -> CGSize {
+        CGSize(width: ceil(expandedWidth + slop + side), height: ceil(height(openness: 1, indicators: n)))
     }
 
     /// Where the shape's top tip sits in a canvas `canvasHeight` tall: centred, so folding and growing happen around
@@ -345,10 +341,9 @@ public struct EdgeOutline: Sendable, Equatable {
     }
 }
 
-/// The column of items down the tab — the Inbox, the indicators (or the quiet ring), +, Falar, Apontar, "…" — and
-/// their Dock-like magnification under the pointer. Base coordinates: y along the tab from the shape's top tip, nothing
-/// magnified. Pure, so the rules are tested: the item under the pointer grows around its own centre, its neighbours a
-/// little, the rest not at all; no item ever moves, so the shape, its ends and the window around it stay put.
+/// The column of items down the tab — the Inbox, the indicators (or the quiet ring), +, Falar, Apontar, "…". Base
+/// coordinates: y along the tab from the shape's top tip. Items keep their size under the pointer (a Dock-like
+/// magnification made the tab wobble), so the shape, its ends and the window around it stay put.
 public struct EdgeColumn: Sendable, Equatable {
     public struct Slot: Sendable, Equatable {
         public var size: CGFloat
@@ -369,7 +364,7 @@ public struct EdgeColumn: Sendable, Equatable {
         self.top = top
     }
 
-    /// Each slot's top, unmagnified.
+    /// Each slot's top.
     public var tops: [CGFloat] {
         var y = top
         var out: [CGFloat] = []
@@ -390,35 +385,6 @@ public struct EdgeColumn: Sendable, Equatable {
             if d <= s.size / 2 + gap / 2, d < (best?.1 ?? .infinity) { best = (i, d) }
         }
         return best?.0
-    }
-
-    /// The scale each slot heads for with the pointer at `y`: `peak` right under it, fading to 1 with a cosine over
-    /// `reach` points on each side; all 1 without a pointer.
-    public func targetScales(pointer y: CGFloat?, peak: CGFloat, reach: CGFloat) -> [CGFloat] {
-        guard let y, reach > 0, peak > 1 else { return Array(repeating: 1, count: slots.count) }
-        return centers.map { c in
-            let d = abs(c - y) / reach
-            return d >= 1 ? 1 : 1 + (peak - 1) * (0.5 + 0.5 * cos(d * .pi))
-        }
-    }
-
-    public struct Layout: Sendable, Equatable {
-        public var tops: [CGFloat]
-        public var sizes: [CGFloat]
-
-        public init(tops: [CGFloat], sizes: [CGFloat]) {
-            self.tops = tops
-            self.sizes = sizes
-        }
-
-        public var centers: [CGFloat] { zip(tops, sizes).map { $0 + $1 / 2 } }
-    }
-
-    /// The magnified layout: each slot `size × scale` tall around its own centre; the centres never move.
-    public func magnified(scales: [CGFloat]) -> Layout {
-        let centers = centers
-        let sizes = slots.indices.map { slots[$0].size * (scales.indices.contains($0) ? scales[$0] : 1) }
-        return Layout(tops: zip(centers, sizes).map { $0 - $1 / 2 }, sizes: sizes)
     }
 }
 

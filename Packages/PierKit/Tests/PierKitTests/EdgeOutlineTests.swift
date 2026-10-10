@@ -144,39 +144,4 @@ private func sameDirection(_ a: CGPoint, _ b: CGPoint) -> Bool {
         let folded = EdgeColumn(slots: [.init(size: 0), .init(size: 12), .init(size: 0)], top: 20)
         #expect(folded.index(at: 20) == 1 && folded.index(at: 32) == 1)
     }
-
-    @Test func thePeakIsUnderThePointerAndFadesWithDistance() {
-        let s = column.targetScales(pointer: 60, peak: 1.45, reach: 40)
-        #expect(abs(s[2] - 1.45) < 1e-9)
-        #expect(s[1] == s[3] && s[1] > 1 && s[1] < 1.45)
-        #expect(s[0] == s[4] && s[0] > 1 && s[0] < s[1])
-        // Beyond the reach, nothing; without a pointer, nothing.
-        let far = column.targetScales(pointer: 60, peak: 1.45, reach: 15)
-        #expect(far[0] == 1 && far[1] == 1 && abs(far[2] - 1.45) < 1e-9 && far[3] == 1 && far[4] == 1)
-        #expect(column.targetScales(pointer: nil, peak: 1.45, reach: 40) == [1, 1, 1, 1, 1])
-    }
-
-    @Test func magnificationGrowsEachItemAroundItsOwnCentreAndMovesNothingElse() {
-        let scales: [CGFloat] = [1, 1.2, 1.45, 1.2, 1]
-        let l = column.magnified(scales: scales)
-        for (a, b) in zip(l.sizes, [12, 14.4, 17.4, 14.4, 12] as [CGFloat]) { #expect(abs(a - b) < 1e-9) }
-        // Every centre where it was: the item under the pointer grows around itself, the rest never shift.
-        for (a, b) in zip(l.centers, column.centers) { #expect(abs(a - b) < 1e-9) }
-        #expect(abs(l.tops[2] - (60 - 8.7)) < 1e-9)
-        // Nothing magnified: the base layout.
-        let still = column.magnified(scales: [1, 1, 1, 1, 1])
-        #expect(still.tops == column.tops && still.sizes == column.slots.map(\.size))
-        #expect(column.magnified(scales: []) == still)
-    }
-
-    @Test func magnifiedItemsStayClearOfTheirNeighboursMarks() {
-        // Indicators of 12 at a pitch of 17, the drawn dot 0.62 of the box: with the biggest one 1.45 × and its neighbour
-        // about 1.28 ×, the dots keep a clear gap, so growing in place never makes them touch.
-        let scales = column.targetScales(pointer: 60, peak: 1.45, reach: 41)
-        let l = column.magnified(scales: scales)
-        for i in 0..<4 {
-            let a = l.centers[i] + l.sizes[i] * 0.62 / 2, b = l.centers[i + 1] - l.sizes[i + 1] * 0.62 / 2
-            #expect(b - a > 4, "\(i): \(b - a)")
-        }
-    }
 }
