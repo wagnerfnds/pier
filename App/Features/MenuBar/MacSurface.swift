@@ -300,6 +300,8 @@ enum MacSurfaceSettings {
         var out: [String: Any] = ["kind": c.chat ? "chat" : "task", "canChat": c.canChat, "projects": projects,
                                   "worktree": c.isNew ? "new" : "main", "agents": agents, "summary": c.summary,
                                   "busy": composeBusy || c.stage.isBusy, "image": composeImage != nil]
+        // The picture itself, so the panel shows what was taken (the panel runs in this process: the bytes go as they are).
+        if let d = composeImage?.data { out["imageData"] = d }
         if let l = c.location, !c.chat { out["project"] = LocalPrefs.key(box: c.box, location: l) }
         if let a = c.agentID { out["agent"] = a }
         if let m = c.model { out["model"] = m }
@@ -395,6 +397,7 @@ enum MacSurfaceSettings {
         if let r = talkReceipt, r.until > Date() { out["receipt"] = r.text }
         if talkClear { out["clear"] = true; talkClear = false }
         out["image"] = talkImage != nil
+        if let d = talkImage?.data { out["imageData"] = d }
         return out
     }
 

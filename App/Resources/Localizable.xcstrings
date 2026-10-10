@@ -8171,6 +8171,16 @@
         }
       }
     },
+    "Remover imagem" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove picture"
+          }
+        }
+      }
+    },
     "Remover salvo" : {
       "localizations" : {
         "en" : {

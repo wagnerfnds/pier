@@ -171,6 +171,7 @@ public final class PierMenuBarPlugin: NSObject {
     /// `fakePath` (tests) stands in for the screen; `""` for the real capture. The target is whatever asked last (the
     /// new task's form, else Falar).
     @objc public func pointAt(_ fakePath: String) {
+        NSLog("PierMenuBar: point at: start (picker open: %@, permission: %@)", picker == nil ? "no" : "yes", RegionPicker.screenRecordingGranted ? "yes" : "no")
         guard picker == nil else { return }
         let fake = fakePath.isEmpty ? nil : NSImage(contentsOfFile: fakePath)
         if fakePath.isEmpty, !RegionPicker.screenRecordingGranted {
@@ -187,6 +188,7 @@ public final class PierMenuBarPlugin: NSObject {
                 self?.picker = nil
                 self?.surface?.setHidden(false)
                 guard let image, let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else {
+                    NSLog("PierMenuBar: point at: no picture")
                     self?.handler?("shot:cancel"); return
                 }
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent("pier-point-\(Int(Date().timeIntervalSince1970)).png")
