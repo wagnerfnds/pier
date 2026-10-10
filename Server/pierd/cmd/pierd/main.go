@@ -31,6 +31,7 @@ import (
 	"pier/pierd/internal/integrations"
 	"pier/pierd/internal/pairing"
 	"pier/pierd/internal/push"
+	"pier/pierd/internal/qr"
 	"pier/pierd/internal/statefile"
 	"pier/pierd/internal/trust"
 	"pier/pierd/internal/version"
@@ -52,7 +53,8 @@ const usage = `pierd — the Pier box server
                                           a box name and a range of worktree ports of their own
   pierd uninstall                         Remove that service
   pierd pair [--address HOST[:PORT]] [--ttl 10m] [--json]
-                                          Print a single-use pairing link
+                                          Print a single-use pairing link (and its QR code
+                                          on a terminal)
   pierd clients                           List paired clients
   pierd revoke <name|fingerprint>         Stop trusting a client
   pierd id                                Print this box's fingerprint
@@ -478,6 +480,11 @@ func pair(b boxHome, args []string) error {
 		})
 	}
 	fmt.Printf("Pairing link (single use, valid for %s):\n\n  %s\n\n", ttl, link)
+	if info, err := os.Stdout.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
+		if m, err := qr.Encode([]byte(link)); err == nil {
+			fmt.Println(qr.Terminal(m))
+		}
+	}
 	fmt.Println("Scan it as a QR code or paste it in the Pier app.")
 	fmt.Println("Apps will dial " + target + "; pass --address if that is not reachable.")
 	fmt.Println("pierd serve must be running on this box to accept the pairing.")

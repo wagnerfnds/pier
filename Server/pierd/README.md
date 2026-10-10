@@ -33,7 +33,7 @@ Copy the binary to the box (e.g. `~/.local/bin/pierd`), then, as the user the ag
 pierd install --listen 192.0.2.10:7444   # writes and starts ~/.config/systemd/user/pierd.service,
                                            # then installs the agents' hooks (see Agent hooks)
 sudo loginctl enable-linger $USER          # once, so pierd keeps running after you log out
-pierd pair                                 # prints a single-use pier:// link (10 minutes); scan or paste it in the app
+pierd pair                                 # prints a single-use pier:// link (10 minutes) and its QR code; scan it or paste the link in the app
 pierd doctor                               # what works and what to fix
 ```
 
