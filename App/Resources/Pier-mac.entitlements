@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The Mac build of the app: the Mac App Store and TestFlight take it only in the App Sandbox; the network for the
+	     boxes, the camera for the pairing QR code, the microphone for Falar, and the same App Group, keychain groups and
+	     push environment as on iOS. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>aps-environment</key>
+	<string>$(APS_ENVIRONMENT)</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.$(PIER_BUNDLE_ID)</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(PIER_BUNDLE_ID).shared</string>
+		<string>$(AppIdentifierPrefix)$(PIER_BUNDLE_ID)</string>
+	</array>
+</dict>
+</plist>

@@ -61,6 +61,8 @@ targets:
         SUPPORTS_MACCATALYST: YES
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        # The Mac build runs in the App Sandbox (required by the Mac App Store and TestFlight): its own entitlements.
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/Resources/Pier-mac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: NO
@@ -79,10 +81,13 @@ targets:
         CFBundleDisplayName: Pier
         CFBundleDevelopmentRegion: pt-BR
         CFBundleLocalizations: [pt-BR, en]
+        LSApplicationCategoryType: public.app-category.developer-tools
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # iPad multitasking (required by App Store Connect) needs all four.
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSCameraUsageDescription: "A câmera lê o QR code de pareamento exibido pelo pierd."
         NSMicrophoneUsageDescription: "O microfone é usado para ditar pedidos aos agentes em Falar."
         NSSpeechRecognitionUsageDescription: "O reconhecimento de fala transforma o que você diz em Falar em texto, no próprio aparelho."

@@ -19,3 +19,10 @@ Config/Signing.xcconfig
 # Tools and OS
 .claude/
 .DS_Store
+
+# Personal, machine-specific files: never published
+*.local.xcconfig
+.env
+.env.*
+.vscode/
+.idea/
