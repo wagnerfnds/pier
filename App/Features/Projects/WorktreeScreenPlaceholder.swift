@@ -19,6 +19,10 @@ struct WorktreeScreenPlaceholder: View {
             .sorted { ($0.isAgent ? 0 : 1, $1.created) < ($1.isAgent ? 0 : 1, $0.created) }
     }
     private var isMain: Bool { worktree?.main == true }
+    /// The worktree for the files and the history screens.
+    private var workspaceRef: WorkspaceRef {
+        WorkspaceRef(box: route.box, location: route.location, worktree: route.worktree, execLocation: ref)
+    }
 
     var body: some View {
         List {
@@ -33,6 +37,10 @@ struct WorktreeScreenPlaceholder: View {
                     Button { router.push(ReviewRoute(box: route.box, location: route.location, worktree: route.worktree)) } label: {
                         Label("Revisar mudanças", systemImage: "doc.text.magnifyingglass")
                     }
+                    NavigationLink(value: FilesRoute(ref: workspaceRef)) { Label("Arquivos", systemImage: "folder") }
+                        .accessibilityIdentifier("worktree-files")
+                    NavigationLink(value: HistoryRoute(ref: workspaceRef)) { Label("Histórico", systemImage: "clock.arrow.circlepath") }
+                        .accessibilityIdentifier("worktree-history")
                     if !isMain {
                         Button(role: .destructive) { removing = true } label: { Label("Remover worktree", systemImage: "archivebox").foregroundStyle(Theme.red) }
                     }

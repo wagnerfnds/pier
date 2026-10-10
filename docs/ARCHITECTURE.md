@@ -282,8 +282,13 @@ editor's line, column, language and line ending):
   sessions running in this one.
 
 What each worktree holds (open files with their unsaved text, the folders open, the history read, the tab) lives in
-`WorkspaceState` for the app's run, so opening a session or another project and coming back finds it as it was. The
-menu bar adds ⌘S, ⇧⌘O, ⌘R (read the box again) and ⌥⌘1–4 (the tabs).
+`WorkspaceState` for the app's run (`WorkspaceRegistry`), so opening a session or another project and coming back finds it
+as it was; the sidebar and the Projetos cards mark projects with unsaved files. The menu bar adds ⌘S, ⇧⌘O (Ir), ⌘R (read
+the box again) and ⌥⌘1–4 (the tabs). Projetos itself is a grid of project cards on regular width.
+
+On the iPhone the worktree screen has **Arquivos** and **Histórico**, the same stores one screen at a time
+(`CompactWorkspace.swift`): a folder per screen, a file full screen in the editor with Salvar, the commits, a commit's
+files, a file's patch (`WorkspaceUITests` covers both).
 
 Keyboard (iPad hardware keyboard, Mac menu "Ir", `PierCommands`; the palette lists the same): ⌘1 Início, ⌘2 Inbox,
 ⌘3 the agents board, ⌘4 Projetos (the order of the tabs and the sidebar), ⌘, Ajustes, ⌘N new task, ⌘K / ⌘P the palette, ⇧⌘L Faxina, ⇧⌘Space Falar;

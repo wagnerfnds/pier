@@ -12,6 +12,12 @@ extension View {
             .navigationDestination(for: ReviewRoute.self) { ReviewScreenPlaceholder(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: HousekeepingRoute.self) { _ in HousekeepingScreen().toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: PullRequestRoute.self) { PullRequestScreen(route: $0).toolbar(.hidden, for: .tabBar) }
+            // The workspace one screen at a time (the iPhone; CompactWorkspace.swift).
+            .navigationDestination(for: FilesRoute.self) { CompactFolderScreen(route: $0).toolbar(.hidden, for: .tabBar) }
+            .navigationDestination(for: FileEditorRoute.self) { CompactFileScreen(route: $0).toolbar(.hidden, for: .tabBar) }
+            .navigationDestination(for: HistoryRoute.self) { CompactHistoryScreen(route: $0).toolbar(.hidden, for: .tabBar) }
+            .navigationDestination(for: CommitRoute.self) { CompactCommitScreen(route: $0).toolbar(.hidden, for: .tabBar) }
+            .navigationDestination(for: CommitFileRoute.self) { CompactCommitFileScreen(route: $0).toolbar(.hidden, for: .tabBar) }
     }
 }
 
