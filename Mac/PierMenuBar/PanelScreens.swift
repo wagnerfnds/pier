@@ -18,6 +18,76 @@ struct Stacker {
     mutating func gap(_ g: CGFloat) { y += g }
 }
 
+/// The picture taken with "point at it", under the field it goes with: the part of the screen as it was, whole and
+/// rounded, at most 120 pt tall, with a × to drop it. Hidden without one.
+final class ShotPreview: NSView {
+    var onRemove: (() -> Void)?
+    private var data: Data?
+    private var image: NSImage?
+    private let remove = ClickableView(frame: .zero)
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        isHidden = true
+        remove.drawBlock = { rect, hovered in
+            NSColor.black.withAlphaComponent(hovered ? 0.85 : 0.65).setFill()
+            NSBezierPath(ovalIn: rect).fill()
+            if let x = SurfaceStyle.symbol("xmark", size: 9, weight: .bold)?.tinted(.white) {
+                x.draw(in: NSRect(x: rect.midX - x.size.width / 2, y: rect.midY - x.size.height / 2, width: x.size.width, height: x.size.height),
+                       from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
+        remove.onClick = { [weak self] in self?.onRemove?() }
+        addSubview(remove)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    var hasImage: Bool { image != nil }
+
+    /// The picture's bytes (JPEG or PNG); decoded only when they change.
+    func set(_ data: Data?, removeTitle: String) {
+        remove.accessibilityTitle = removeTitle
+        remove.toolTip = removeTitle
+        guard data != self.data else { return }
+        self.data = data
+        image = data.flatMap { NSImage(data: $0) }
+        needsLayout = true
+        needsDisplay = true
+    }
+
+    /// The height for `width`: the whole picture, at most 120 pt tall.
+    func height(for width: CGFloat) -> CGFloat {
+        guard let s = image?.size, s.width > 0 else { return 0 }
+        return min(120, width * s.height / s.width)
+    }
+
+    private var imageRect: NSRect {
+        guard let s = image?.size, s.height > 0 else { return .zero }
+        return NSRect(x: 0, y: 0, width: min(bounds.width, bounds.height * s.width / s.height), height: bounds.height)
+    }
+
+    override func layout() {
+        super.layout()
+        let r = imageRect
+        remove.frame = NSRect(x: r.maxX - 26, y: 6, width: 20, height: 20)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let image else { return }
+        let r = imageRect
+        let clip = NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10)
+        NSGraphicsContext.saveGraphicsState()
+        clip.addClip()
+        image.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high])
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor.white.withAlphaComponent(0.14).setStroke()
+        let ring = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
+        ring.lineWidth = 1
+        ring.stroke()
+    }
+}
+
 /// A small uppercase heading over a group of rows.
 func panelHeading(_ text: String) -> NSTextField {
     SurfaceStyle.label(text.uppercased(), font: PanelStyle.font(11, .semibold), color: PanelStyle.textFaint)
@@ -416,7 +486,7 @@ final class ComposeScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDel
     private let placeholder = SurfaceStyle.label("", font: PanelStyle.font(14), color: PanelStyle.textFaint)
     private let mic = IconButton(symbol: "mic.fill", size: 32, symbolSize: 15, title: "Ditar")
     private let camera = IconButton(symbol: "camera.fill", size: 32, symbolSize: 15, title: "Apontar")
-    private let imageChip = PillLabel("", font: PanelStyle.font(12, .medium), color: PanelStyle.text, fill: PanelStyle.raised)
+    private let shot = ShotPreview()
     private let start = PillButton(title: "", symbol: "arrow.up", color: PanelStyle.accent)
     private let summary = SurfaceStyle.label("", font: PanelStyle.font(12), color: PanelStyle.textFaint, lines: 2)
     private let error = SurfaceStyle.label("", font: PanelStyle.font(12), color: PanelStyle.red, lines: 3)
@@ -426,7 +496,7 @@ final class ComposeScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDel
         self.chat = chat
         super.init(frame: .zero)
         for v in [kind, projectHeading, project, worktreeHeading, worktree, agentHeading, agent, modelHeading, model, effortHeading, effort,
-                  promptBox, mic, camera, imageChip, start, summary, error] as [NSView] { addSubview(v) }
+                  promptBox, mic, camera, shot, start, summary, error] as [NSView] { addSubview(v) }
         project.addSubview(projectName); project.addSubview(projectBox); project.addSubview(chevron)
         chevron.image = SurfaceStyle.symbol("chevron.right", size: 12)
         chevron.contentTintColor = PanelStyle.textFaint
@@ -455,7 +525,7 @@ final class ComposeScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDel
         }
         camera.onClick = { [weak self] in self?.onAction?("compose:camera") }
         start.onClick = { [weak self] in self?.submit() }
-        imageChip.padding = NSSize(width: 10, height: 5)
+        shot.onRemove = { [weak self] in self?.onAction?("compose:image:clear") }
     }
     required init?(coder: NSCoder) { nil }
 
@@ -505,9 +575,7 @@ final class ComposeScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDel
         placeholder.stringValue = chat ? (strings["chatPrompt"] ?? "") : (strings["taskPrompt"] ?? "")
         placeholder.isHidden = !prompt.string.isEmpty
         start.title = (c["busy"] as? Bool ?? false) ? (strings["starting"] ?? "Iniciando…") : (chat ? (strings["startChat"] ?? "Começar") : (strings["startTask"] ?? "Iniciar"))
-        imageChip.text = (c["image"] as? Bool ?? false) ? (strings["screenPart"] ?? "Parte da tela") + "  ×" : ""
-        imageChip.sizeToFit()
-        imageChip.isHidden = imageChip.text.isEmpty
+        shot.set(c["imageData"] as? Data, removeTitle: strings["removePicture"] ?? "Remover imagem")
         summary.stringValue = c["summary"] as? String ?? ""
         error.stringValue = c["error"] as? String ?? ""
         mic.accessibilityTitle = strings["dictate"] ?? "Ditar"; mic.toolTip = mic.accessibilityTitle
@@ -557,7 +625,7 @@ final class ComposeScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDel
         st.place(promptBox, height: promptH, gap: 10)
         prompt.frame = NSRect(x: 14, y: 12, width: width - 28, height: promptH - 24)
         placeholder.frame = NSRect(x: 14, y: 12, width: width - 28, height: 18)
-        if !imageChip.isHidden { st.place(imageChip, height: imageChip.frame.height, width: imageChip.frame.width, gap: 10) }
+        if shot.hasImage { st.place(shot, height: shot.height(for: width), gap: 10) } else { st.skip(shot) }
         let rowY = st.y
         mic.frame = NSRect(x: 0, y: rowY, width: 32, height: 32)
         camera.frame = NSRect(x: 36, y: rowY, width: 32, height: 32)
@@ -688,11 +756,13 @@ final class TalkScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDelega
     private let confirm = PillButton(title: "", symbol: "paperplane.fill", color: PanelStyle.accent)
     private let adjust = PillButton(title: "", symbol: "arrow.up.forward.app", color: PanelStyle.textDim)
     private let hint = HintPill()
+    private let shot = ShotPreview()
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        for v in [box, mic, route, spinner, status, decision, hint] as [NSView] { addSubview(v) }
+        for v in [box, shot, mic, route, spinner, status, decision, hint] as [NSView] { addSubview(v) }
+        shot.onRemove = { [weak self] in self?.onAction?("talk:image:clear") }
         box.addSubview(field); box.addSubview(placeholder)
         for v in [kicker, dTitle, dSub, dText, confirm, adjust] as [NSView] { decision.addSubview(v) }
         field.delegate = self
@@ -757,6 +827,7 @@ final class TalkScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDelega
         } else {
             decision.isHidden = true
         }
+        shot.set(state["imageData"] as? Data, removeTitle: strings["removePicture"] ?? "Remover imagem")
         hint.render(kind: "", count: 0, pending: nil, receipt: state["receipt"] as? String, strings: strings)
         hint.isHidden = hint.measure().width == 0
         if (state["clear"] as? Bool ?? false) { field.string = ""; placeholder.isHidden = false }
@@ -775,6 +846,7 @@ final class TalkScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDelega
         st.place(box, height: th, gap: 10)
         field.frame = NSRect(x: 14, y: 12, width: width - 28, height: th - 24)
         placeholder.frame = NSRect(x: 14, y: 12, width: width - 28, height: 18)
+        if shot.hasImage { st.place(shot, height: shot.height(for: width), gap: 10) } else { st.skip(shot) }
         let rowY = st.y
         mic.frame = NSRect(x: 0, y: rowY, width: 32, height: 32)
         spinner.frame = NSRect(x: 40, y: rowY + 8, width: 16, height: 16)

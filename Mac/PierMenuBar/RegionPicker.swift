@@ -65,6 +65,7 @@ import ScreenCaptureKit
     }
 
     private func selected(_ rect: NSRect, on screen: NSScreen) {
+        NSLog("PierMenuBar: point at: selected %@", NSStringFromRect(rect))
         guard rect.width >= 8, rect.height >= 8 else { finish(nil); return }
         if let fake {
             // The chosen part of the stand-in picture, so the flow is the real one up to the capture itself.
@@ -91,8 +92,14 @@ import ScreenCaptureKit
 
     /// ScreenCaptureKit's screenshot of `rect` (screen coordinates, AppKit) at the screen's scale.
     static func capture(_ rect: NSRect, on screen: NSScreen) async -> NSImage? {
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
-              let display = content.displays.first(where: { Int($0.displayID) == screen.displayID }) else { return nil }
+        let content: SCShareableContent
+        do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) } catch {
+            NSLog("PierMenuBar: point at: no shareable content: %@", String(describing: error)); return nil
+        }
+        guard let display = content.displays.first(where: { Int($0.displayID) == screen.displayID }) else {
+            NSLog("PierMenuBar: point at: display %ld not among %@", screen.displayID, content.displays.map { "\($0.displayID)" }.joined(separator: ","))
+            return nil
+        }
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
         // The display's own coordinates: origin at its top-left corner, in points.
@@ -103,8 +110,12 @@ import ScreenCaptureKit
         config.height = Int(rect.height * scale)
         config.scalesToFit = false
         config.showsCursor = false
-        guard let cg = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) else { return nil }
-        return NSImage(cgImage: cg, size: rect.size)
+        do {
+            let cg = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            return NSImage(cgImage: cg, size: rect.size)
+        } catch {
+            NSLog("PierMenuBar: point at: capture failed: %@", String(describing: error)); return nil
+        }
     }
 
     private static func crop(_ image: NSImage, rect: NSRect, screen: NSScreen) -> NSImage? {
@@ -182,13 +193,19 @@ final class OverlayView: NSView {
     /// A selection in the view's own coordinates (offscreen rendering, no window).
     func showLocal(_ r: NSRect) { rect = r; needsDisplay = true }
 
+    /// The overlay comes up while another app is active (the tab never activates Pier): without this the first click
+    /// only activates the window, the drag never starts and the release cancels.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         start = convert(event.locationInWindow, from: nil)
         rect = nil
     }
     override func mouseDragged(with event: NSEvent) {
-        guard let start else { return }
         let p = convert(event.locationInWindow, from: nil)
+        // A press that went elsewhere still starts the selection where the drag began.
+        if start == nil { start = p }
+        guard let start else { return }
         rect = NSRect(x: min(start.x, p.x), y: min(start.y, p.y), width: abs(p.x - start.x), height: abs(p.y - start.y))
         needsDisplay = true
     }

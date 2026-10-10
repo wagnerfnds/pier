@@ -177,7 +177,7 @@ import PierKit
             ("newTask", S("Nova tarefa")), ("newChat", S("Nova conversa")), ("project", S("Projeto")), ("chooseProject", S("Escolha um projeto")),
             ("newWorktree", S("Nova worktree")), ("onMain", S("Na principal")), ("model", S("Modelo")), ("effort", S("Esforço")), ("auto", S("Padrão")),
             ("taskPrompt", S("O que o agente deve fazer?")), ("chatPrompt", S("Sobre o que é a conversa?")), ("startTask", S("Iniciar")), ("startChat", S("Começar")),
-            ("screenPart", S("Parte da tela")), ("searchProject", S("Buscar projeto")), ("recent", S("recente")),
+            ("removePicture", S("Remover imagem")), ("searchProject", S("Buscar projeto")), ("recent", S("recente")),
             ("talkPrompt", S("Diga ou escreva o que você precisa…")), ("yourAnswer", S("Sua resposta…")), ("route", S("Encaminhar")),
             ("routing", S("Procurando o agente certo…")), ("send", S("Enviar")), ("createTask", S("Criar tarefa")), ("adjustInPier", S("Ajustar no Pier")),
             ("menuEdge", S("Borda")), ("menuLeft", S("Esquerda")), ("menuRight", S("Direita")),
