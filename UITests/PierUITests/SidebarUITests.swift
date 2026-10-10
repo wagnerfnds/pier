@@ -97,6 +97,55 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(element("sidebar-project-atlas-ios").waitForExistence(timeout: 5), "clearing the search did not bring the list back")
     }
 
+    func testWorkingSectionPinsTheLiveWorktreesAboveTheProjects() {
+        let working = element("sidebar-section-Trabalhando")
+        XCTAssertTrue(working.waitForExistence(timeout: 10), "no Trabalhando section")
+        let waiting = element("sidebar-active-devbox/sandbox")
+        let running = element("sidebar-active-devbox/acme-web")
+        XCTAssertTrue(waiting.waitForExistence(timeout: 5), "the worktree that needs the person is not under Trabalhando")
+        XCTAssertTrue(running.exists, "the working worktree is not under Trabalhando")
+        // A finished turn is the person's turn, not work in progress.
+        XCTAssertFalse(element("sidebar-active-devbox/sandbox/subtract").exists, "a finished turn is listed as working")
+        // Needs-you first, and the whole section above the person's sections.
+        XCTAssertLessThan(waiting.frame.minY, running.frame.minY, "needs-you is not first")
+        XCTAssertLessThan(running.frame.minY, element("sidebar-section-Acme").frame.minY, "Trabalhando is not above the projects")
+        shot("sidebar-working")
+
+        // One agent there: the row opens its session.
+        waiting.tap()
+        XCTAssertTrue(element("composer-field").waitForExistence(timeout: 10), "the working row did not open its session")
+        XCTAssertTrue(element("needs-you-card").waitForExistence(timeout: 10), "opened the wrong session")
+    }
+
+    func testNewTaskAndChatFromTheSidebar() {
+        let newTask = element("sidebar-new-task")
+        XCTAssertTrue(newTask.waitForExistence(timeout: 10), "no Nova tarefa in the sidebar")
+        XCTAssertLessThan(newTask.frame.minY, element("sidebar-home").frame.minY, "Nova tarefa is not at the top")
+        newTask.tap()
+        XCTAssertTrue(element("compose-prompt").waitForExistence(timeout: 5), "Nova tarefa did not open the composer")
+        shot("sidebar-new-task")
+        element("sidebar-home").tap()
+        XCTAssertTrue(app.buttons["new-task-button"].waitForExistence(timeout: 5))
+        element("sidebar-new-chat").tap()
+        XCTAssertTrue(element("compose-chat-place").waitForExistence(timeout: 5), "Nova conversa did not open the composer on a chat")
+    }
+
+    func testArchivedSectionListsExitedAndArchivedSessions() {
+        app.terminate()
+        app.launchArguments += ["-uiTestExtras", "1"]
+        app.launch()
+        let header = element("sidebar-section-Arquivadas")
+        for _ in 0..<6 where !header.exists { app.swipeUp() }
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "no Arquivadas section")
+        let exited = element("sidebar-archived-sandbox-old-claude-x3")
+        if !exited.exists { header.tap() }   // folded by default
+        for _ in 0..<3 where !exited.isHittable { app.swipeUp() }
+        XCTAssertTrue(exited.waitForExistence(timeout: 5), "an exited session is not under Arquivadas")
+        // It is not in the projects tree any more.
+        XCTAssertFalse(element("sidebar-session-sandbox-old-claude-x3").exists, "an exited session is still in the tree")
+        shot("sidebar-archived")
+    }
+
     func testHomeColumnsHaveNoGaps() {
         // Two independent columns: the left one stacks Needs you, Sua vez, CI... right under each other.
         sleep(3)

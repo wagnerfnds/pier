@@ -60,18 +60,15 @@ struct AgentDot: Identifiable, Hashable {
 /// A compact strip with a dot per live agent. Tap a dot to open its session; the labels (title · project) show while ⌥ is
 /// held (hardware keyboard), while the pointer rests on the strip (iPad, Mac) or after a long press (touch).
 struct AgentDotStrip: View {
-    enum Style { case home, sidebar }
-    var style: Style = .home
-
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
     @State private var hoverTask: Task<Void, Never>?
     @State private var collapseTask: Task<Void, Never>?
 
-    private var dotSize: CGFloat { style == .home ? 12 : 10 }
+    private var dotSize: CGFloat { 12 }
     /// More than this collapses the rest into "+N".
-    private var maxDots: Int { style == .home ? 28 : 18 }
+    private var maxDots: Int { 28 }
 
     var body: some View {
         let dots = AgentDots.make(model)
@@ -81,14 +78,12 @@ struct AgentDotStrip: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if showLabels { labels(dots) } else { strip(dots) }
                 }
-                .padding(.horizontal, style == .home ? 12 : 0)
-                .padding(.vertical, style == .home ? 10 : 4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background {
-                    if style == .home {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.card)
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.stroke))
-                    }
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.card)
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.stroke))
                 }
                 .contentShape(Rectangle())
                 .onHover { inside in hover(inside) }
@@ -115,7 +110,7 @@ struct AgentDotStrip: View {
 
     private func strip(_ dots: [AgentDot]) -> some View {
         HStack(spacing: 10) {
-            HStack(spacing: style == .home ? 7 : 6) {
+            HStack(spacing: 7) {
                 ForEach(dots.prefix(maxDots)) { d in
                     Button { open(d) } label: {
                         AgentDotView(state: d.state, size: dotSize)
@@ -146,7 +141,7 @@ struct AgentDotStrip: View {
         Group {
             if waiting > 0 {
                 Text(waiting == 1 ? S("1 precisa de você") : S("\(waiting) precisam de você")).foregroundStyle(Theme.orange)
-            } else if style == .home {
+            } else {
                 Text(dots.count == 1 ? S("1 agente") : S("\(dots.count) agentes")).foregroundStyle(Theme.textDim)
             }
         }
@@ -168,7 +163,7 @@ struct AgentDotStrip: View {
                     }
                 }
                 .padding(.horizontal, 9).padding(.vertical, 5)
-                .frame(maxWidth: style == .sidebar ? .infinity : 320, alignment: .leading)
+                .frame(maxWidth: 320, alignment: .leading)
                 .background(d.state.color.opacity(0.13), in: Capsule())
                 .contentShape(Capsule())
             }
@@ -178,11 +173,7 @@ struct AgentDotStrip: View {
             .accessibilityValue(Text(d.accessibilityValue))
             .accessibilityIdentifier("agent-label-\(d.session)")
         }
-        if style == .sidebar {
-            VStack(alignment: .leading, spacing: 5) { chips }
-        } else {
-            FlowLayout(spacing: 6, lineSpacing: 6) { chips }
-        }
+        FlowLayout(spacing: 6, lineSpacing: 6) { chips }
     }
 
     // MARK: actions
