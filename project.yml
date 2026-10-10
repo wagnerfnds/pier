@@ -82,6 +82,9 @@ targets:
         CFBundleDevelopmentRegion: pt-BR
         CFBundleLocalizations: [pt-BR, en]
         LSApplicationCategoryType: public.app-category.developer-tools
+        # Export compliance: only the standard TLS of the box connection (BoringSSL), which is exempt; without this every
+        # upload waits in App Store Connect for the question to be answered by hand.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
