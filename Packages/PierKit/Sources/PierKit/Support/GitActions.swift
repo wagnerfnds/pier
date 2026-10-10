@@ -158,8 +158,9 @@ public enum GitActions {
             guard e.count >= 3 else { continue }
             let code = String(e.prefix(2))
             var change = FileChange(path: String(e.dropFirst(3)), from: nil, code: code)
-            // A rename or copy is followed by the path it came from.
-            if code.first == "R" || code.first == "C", i + 1 < entries.count {
+            // A rename or copy is followed by the path it came from, staged ("R ") or in the work tree (" R", a file
+            // added with -N).
+            if code.contains("R") || code.contains("C"), i + 1 < entries.count {
                 i += 1
                 change.from = entries[i]
             }

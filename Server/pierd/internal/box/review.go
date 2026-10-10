@@ -230,8 +230,9 @@ func parsePorcelain(out []byte, item *ReviewItem) []ReviewFile {
 			continue
 		}
 		f := ReviewFile{Code: e[:2], Path: e[3:]}
-		// A rename or copy is followed by the path it came from.
-		if (f.Code[0] == 'R' || f.Code[0] == 'C') && i+1 < len(entries) {
+		// A rename or copy is followed by the path it came from, staged
+		// ("R ") or in the worktree (" R", a file added with -N).
+		if strings.ContainsAny(f.Code, "RC") && i+1 < len(entries) {
 			i++
 			f.From = entries[i]
 		}

@@ -106,6 +106,12 @@ targets:
           # pier:// (pierd's pairing links, widgets, Live Activities).
           - CFBundleURLName: "$(PIER_BUNDLE_ID).pier"
             CFBundleURLSchemes: [pier]
+        # The sidebar's drag and drop (projects between sections, sections among themselves) carries a type of the app's
+        # own, never text, so a dragged project cannot land in a text field.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: "$(PIER_BUNDLE_ID).sidebar-item"
+            UTTypeDescription: Pier sidebar item
+            UTTypeConformsTo: [public.data]
   PierUITests:
     type: bundle.ui-testing
     platform: iOS

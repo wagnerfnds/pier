@@ -99,6 +99,9 @@ import Testing
         #expect(s.files[0].code == "R " && s.files[0].path == "new.ts" && s.files[0].from == "old.ts")
         #expect(s.files[1].added == 4 && s.files[1].removed == 1)
         #expect(GitActions.parseStatus("## No commits yet on main\0?? a\0").branch.branch == "main")
+        // A rename in the work tree (a file added with -N) carries its source too.
+        let moved = GitActions.parseStatus("## main\0 R moved.ts\0was.ts\0?? c.ts\0")
+        #expect(moved.files.map(\.path) == ["moved.ts", "c.ts"] && moved.files[0].from == "was.ts")
         #expect(GitActions.describeCode("??").label == "New" && GitActions.describeCode("A ").label == "Added" && GitActions.describeCode(" D").label == "Deleted")
     }
 

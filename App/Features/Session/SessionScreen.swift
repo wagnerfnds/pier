@@ -97,6 +97,7 @@ struct SessionScreen: View {
             TextField("Título", text: $renameText)
             Button("Cancelar", role: .cancel) {}
             Button("Salvar") { Task { await vm.rename(renameText) } }
+                .keyboardShortcut(.defaultAction)
         }
         .sheet(isPresented: $confirmStop) {
             EndSessionSheet(vm: vm, title: title) { note in

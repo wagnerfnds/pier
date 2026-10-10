@@ -28,6 +28,10 @@ func (b *Box) eventScope(ctx context.Context, data map[string]any) (Location, Wo
 	}
 	name, wtName, _ := strings.Cut(ref, "/")
 	if wtName == "" {
+		// Gates on a worktree's services and files name it "worktree".
+		wtName, _ = data["worktree"].(string)
+	}
+	if wtName == "" {
 		wtName, _ = data["name"].(string)
 	}
 	loc, err := b.Locations.Get(ctx, name)

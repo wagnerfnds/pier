@@ -203,10 +203,36 @@ final class AppModel {
         if UserDefaults.standard.bool(forKey: "openFaxina") {
             Task { try? await Task.sleep(for: .seconds(3)); router.push(HousekeepingRoute()) }
         }
+        openProjectIfRequested()
         #endif
     }
 
     #if DEBUG
+    /// `-openProject <loc>[/<worktree>]` opens a project's workspace (iPad, Mac), `-workspaceTab
+    /// files|changes|history|overview` on that tab, `-openFile <path>` with that file open in the editor.
+    private func openProjectIfRequested() {
+        if let spec = UserDefaults.standard.string(forKey: "openProject") {
+            Task {
+                try? await Task.sleep(for: .seconds(2.5))
+                guard let c = boxes.first else { return }
+                let parts = spec.split(separator: "/", maxSplits: 1).map(String.init)
+                let loc = parts[0]
+                let main = c.location(named: loc)?.worktrees?.first { $0.main == true }?.name ?? loc
+                let wt = parts.count > 1 ? parts[1] : main
+                if parts.count > 1 { router.select(.worktree(WorktreeRoute(box: c.name, location: loc, worktree: wt))) }
+                else { router.select(.project(ProjectRoute(box: c.name, location: loc))) }
+                let execLocation = wt == main ? loc : "\(loc)/\(wt)"
+                let state = WorkspaceState.of(WorkspaceRef(box: c.name, location: loc, worktree: wt, execLocation: execLocation))
+                if let tab = UserDefaults.standard.string(forKey: "workspaceTab").flatMap(WorkspaceTab.init(rawValue:)) { state.tab = tab }
+                if let file = UserDefaults.standard.string(forKey: "openFile") {
+                    state.bind(self)
+                    state.editor.open(file)
+                    await state.tree.reveal(file)
+                }
+            }
+        }
+    }
+
     /// `-uiTestMock 1`: one in-memory box with fixture data; no keychain, pairing, push or network.
     private func startMock() {
         let conn = UITestMock.makeConnection()
@@ -219,6 +245,7 @@ final class AppModel {
         activate(conn)
         // `-openSession <name>` works with the mock too (sessions the Home does not list, e.g. an idle agent).
         if let name = UserDefaults.standard.string(forKey: "openSession") { openSession(box: conn.name, name: name) }
+        openProjectIfRequested()
     }
     #endif
 

@@ -1,0 +1,4 @@
+{
+  "exit_code": 0,
+  "output": "aa1ffb511be5238a6b6583d584dfcb37f4653d72\u001faa1ffb5\u001f6ecbc6f0ba3ef1a54e3d0c5164675098e4d4b891\u001fMona Octocat\u001fmona@example.com\u001f2026-10-07T21:36:28Z\u001fMona Octocat\u001f2026-10-07T21:36:28Z\u001f\u001fAdd subtract function\n\nWith a test for it.\n\n\n--pier-files--\nM\u0000calc.py\u0000A\u0000test_calc.py\u0000\n--pier-numstat--\n3\t0\tcalc.py\u00004\t0\ttest_calc.py\u0000"
+}

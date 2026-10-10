@@ -16,6 +16,7 @@ struct ProjectGroup: Identifiable {
     let kind: Kind
     let title: String
     var entries: [ProjectEntry]
+    var sort: ProjectSort = .manual
     var id: String {
         switch kind {
         case .section(let u): u.uuidString
@@ -23,6 +24,8 @@ struct ProjectGroup: Identifiable {
         case .hidden: "hidden"
         }
     }
+    /// The section's id (nil for the projects in none, and the hidden ones).
+    var section: UUID? { if case .section(let u) = kind { u } else { nil } }
 }
 
 enum ProjectGrouping {
@@ -31,27 +34,41 @@ enum ProjectGrouping {
         boxes.flatMap { b in b.locations.filter(\.repo).map { ProjectEntry(box: b.name, location: $0) } }
     }
 
-    /// Sections (user order, projects in the user's order), then the rest, then hidden.
-    @MainActor static func groups(entries: [ProjectEntry], prefs: LocalPrefs, activity: (ProjectEntry) -> Int, includeEmptySections: Bool) -> [ProjectGroup] {
+    /// Sections (the person's order, each ordering its projects by hand, by name or by activity), then the projects in
+    /// none, then the hidden ones. `activity`: when an agent last did something in a project (nil: never).
+    @MainActor static func groups(entries: [ProjectEntry], prefs: LocalPrefs, activity: (ProjectEntry) -> Date?, includeEmptySections: Bool) -> [ProjectGroup] {
         let byKey = Dictionary(entries.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        func name(_ k: String) -> String { byKey[k].map { prefs.displayName(box: $0.box, location: $0.location.name) } ?? k }
+        func when(_ k: String) -> Date? { byKey[k].flatMap(activity) }
+        func ordered(_ keys: [String], _ sort: ProjectSort, manual: [String]) -> [ProjectEntry] {
+            ProjectOrder.ordered(keys, sort: sort, manual: manual, name: name, activity: when).compactMap { byKey[$0] }
+        }
         var placed = Set<String>()
         var groups: [ProjectGroup] = []
         for s in prefs.sections {
-            let items = s.projects.compactMap { k -> ProjectEntry? in
-                guard let e = byKey[k], !prefs.data.hidden.contains(k) else { return nil }
-                return e
-            }
+            let keys = s.projects.filter { byKey[$0] != nil && !prefs.data.hidden.contains($0) }
             placed.formUnion(s.projects)
-            if !items.isEmpty || includeEmptySections { groups.append(ProjectGroup(kind: .section(s.id), title: s.name, entries: items)) }
+            if !keys.isEmpty || includeEmptySections {
+                groups.append(ProjectGroup(kind: .section(s.id), title: s.name, entries: ordered(keys, s.sort, manual: s.projects), sort: s.sort))
+            }
         }
-        let rest = entries.filter { !placed.contains($0.key) && !prefs.data.hidden.contains($0.key) }
-            .sorted { (activity($0), $1.location.name.lowercased()) > (activity($1), $0.location.name.lowercased()) }
+        let rest = entries.map(\.key).filter { !placed.contains($0) && !prefs.data.hidden.contains($0) }
         if !rest.isEmpty {
-            groups.append(ProjectGroup(kind: .unsorted, title: groups.isEmpty ? String(localized: "Projetos") : String(localized: "Sem seção"), entries: rest))
+            groups.append(ProjectGroup(kind: .unsorted, title: groups.isEmpty ? String(localized: "Projetos") : String(localized: "Sem seção"),
+                                       entries: ordered(rest, prefs.data.unsortedSort, manual: prefs.data.unsortedOrder), sort: prefs.data.unsortedSort))
         }
         let hidden = entries.filter { prefs.data.hidden.contains($0.key) }.sorted { $0.location.name < $1.location.name }
         if !hidden.isEmpty { groups.append(ProjectGroup(kind: .hidden, title: String(localized: "Ocultos"), entries: hidden)) }
         return groups
+    }
+
+    /// When an agent last did something in the project (its sessions' latest state change), for the activity order.
+    @MainActor static func lastActivity(_ e: ProjectEntry, in boxes: [BoxConnection]) -> Date? {
+        guard let conn = boxes.first(where: { $0.name == e.box }) else { return nil }
+        return conn.sessions.lazy
+            .filter { $0.isAgent && BoxSession(box: e.box, session: $0).location == e.location.name }
+            .map { $0.stateSince ?? $0.created }
+            .max()
     }
 
     static func matches(_ e: ProjectEntry, _ q: String, display: String) -> Bool {

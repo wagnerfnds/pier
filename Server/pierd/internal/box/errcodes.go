@@ -23,6 +23,8 @@ import (
 //	git_failed       git refused; the message carries git's words
 //	command_failed   a program the box ran failed
 //	too_many         slow down and try again
+//	file_changed     a save's file changed (or went) on the box since it was read
+//	file_exists      a new file's path is taken
 //	bad_request      the request itself was wrong
 //	internal         anything else
 const (
@@ -36,6 +38,8 @@ const (
 	CodeGitFailed     = "git_failed"
 	CodeCommandFailed = "command_failed"
 	CodeTooMany       = "too_many"
+	CodeFileChanged   = "file_changed"
+	CodeFileExists    = "file_exists"
 	CodeBadRequest    = "bad_request"
 	CodeInternal      = "internal"
 )
@@ -58,6 +62,10 @@ func codeFor(err error) string {
 		return CodeSessionExists
 	case errors.Is(err, errTmuxMissing):
 		return CodeTmuxMissing
+	case errors.Is(err, ErrFileChanged), errors.Is(err, ErrFileDeleted):
+		return CodeFileChanged
+	case errors.Is(err, ErrFileExists):
+		return CodeFileExists
 	case errors.Is(err, ErrUnknownLocation), errors.Is(err, ErrUnknownWorktree), errors.Is(err, ErrUnknownSession), errors.Is(err, ErrUnknownUnit):
 		return CodeNotFound
 	case errors.As(err, &he):

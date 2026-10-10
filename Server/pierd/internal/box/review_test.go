@@ -87,11 +87,11 @@ func TestReviewListsAFinishedAgentsChangesAndCommits(t *testing.T) {
 
 func TestPorcelainAndNameStatusParsing(t *testing.T) {
 	var it ReviewItem
-	files := parsePorcelain([]byte("## fix...origin/fix [ahead 2, behind 1]\x00R  new.go\x00old.go\x00?? a b.txt\x00"), &it)
+	files := parsePorcelain([]byte("## fix...origin/fix [ahead 2, behind 1]\x00R  new.go\x00old.go\x00?? a b.txt\x00 R moved.txt\x00was.txt\x00"), &it)
 	if it.Upstream != "origin/fix" || it.Ahead != 2 || it.Behind != 1 || it.Branch != "fix" {
 		t.Fatalf("branch = %+v", it)
 	}
-	if len(files) != 2 || files[0].From != "old.go" || files[0].Path != "new.go" || files[1].Path != "a b.txt" {
+	if len(files) != 3 || files[0].From != "old.go" || files[0].Path != "new.go" || files[1].Path != "a b.txt" || files[2].From != "was.txt" {
 		t.Fatalf("files = %+v", files)
 	}
 	applyNumstat(files, []byte("4\t1\t{old.go => new.go}\n"))

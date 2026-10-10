@@ -1,0 +1,59 @@
+{
+  "path": "",
+  "entries": [
+    {
+      "name": "dist",
+      "type": "dir"
+    },
+    {
+      "name": "node_modules",
+      "type": "dir",
+      "ignored": true
+    },
+    {
+      "name": "shared",
+      "type": "link",
+      "status": "??",
+      "target": "src/lib",
+      "points": "dir"
+    },
+    {
+      "name": "src",
+      "type": "dir",
+      "changed": true
+    },
+    {
+      "name": ".gitignore",
+      "type": "file",
+      "size": 14
+    },
+    {
+      "name": "calc.py",
+      "type": "file",
+      "size": 71,
+      "status": " M"
+    },
+    {
+      "name": "logo.bin",
+      "type": "file",
+      "size": 3
+    },
+    {
+      "name": "notes.txt",
+      "type": "file",
+      "size": 5,
+      "status": "??"
+    },
+    {
+      "name": "README",
+      "type": "file",
+      "size": 2
+    },
+    {
+      "name": "README.md",
+      "type": "file",
+      "size": 10
+    }
+  ],
+  "truncated": false
+}

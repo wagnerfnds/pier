@@ -8,7 +8,24 @@ final class LocalPrefs {
     struct Section: Codable, Identifiable, Hashable {
         var id = UUID()
         var name: String
+        /// Its projects; in this order when `sort` is manual.
         var projects: [String] = []
+        var sort: ProjectSort = .manual
+
+        init(id: UUID = UUID(), name: String, projects: [String] = [], sort: ProjectSort = .manual) {
+            self.id = id
+            self.name = name
+            self.projects = projects
+            self.sort = sort
+        }
+
+        init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: CodingKeys.self)
+            id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+            name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+            projects = try c.decodeIfPresent([String].self, forKey: .projects) ?? []
+            sort = try c.decodeIfPresent(ProjectSort.self, forKey: .sort) ?? .manual
+        }
     }
     /// Last composer choices for a project (agent / model / effort).
     struct Pick: Codable, Hashable {
@@ -45,6 +62,9 @@ final class LocalPrefs {
         /// Sidebar sections the person opened or folded (section id, or "working" / "chats" / "archived" / "hidden" /
         /// "unsorted" -> open). Missing means the section's default.
         var sidebarExpanded: [String: Bool] = [:]
+        /// How the projects in no section are ordered, and their order when that is by hand.
+        var unsortedSort: ProjectSort = .activity
+        var unsortedOrder: [String] = []
 
         init() {}
         init(from d: Decoder) throws {
@@ -63,6 +83,8 @@ final class LocalPrefs {
             dismissed = try c.decodeIfPresent([String: Date].self, forKey: .dismissed) ?? [:]
             snoozedHealth = try c.decodeIfPresent([String: Date].self, forKey: .snoozedHealth) ?? [:]
             sidebarExpanded = try c.decodeIfPresent([String: Bool].self, forKey: .sidebarExpanded) ?? [:]
+            unsortedSort = try c.decodeIfPresent(ProjectSort.self, forKey: .unsortedSort) ?? .activity
+            unsortedOrder = try c.decodeIfPresent([String].self, forKey: .unsortedOrder) ?? []
         }
     }
 
@@ -102,6 +124,13 @@ final class LocalPrefs {
         save()
     }
     func addSection(_ name: String) { data.sections.append(Section(name: name)); save() }
+    /// A new section at the end; its id, to put a project in it or rename it at once.
+    @discardableResult func addSection(named name: String, with project: String? = nil) -> UUID {
+        let s = Section(name: name)
+        data.sections.append(s)
+        if let project { assign(project: project, to: s.id) } else { save() }
+        return s.id
+    }
     func removeSection(_ id: UUID) { data.sections.removeAll { $0.id == id }; save() }
     func renameSection(_ id: UUID, to name: String) {
         if let i = data.sections.firstIndex(where: { $0.id == id }) { data.sections[i].name = name; save() }
@@ -115,10 +144,20 @@ final class LocalPrefs {
         if let section, let i = data.sections.firstIndex(where: { $0.id == section }) { data.sections[i].projects.append(key) }
         save()
     }
-    /// Reorder the projects of one section.
-    func moveProjects(in section: UUID, from: IndexSet, to: Int) {
-        guard let i = data.sections.firstIndex(where: { $0.id == section }) else { return }
-        data.sections[i].projects.move(fromOffsets: from, toOffset: to); save()
+    /// Reorder the projects of one group (nil: those in no section) as the list shows them (`shown`, whatever its
+    /// order): the group becomes manual, in the new order.
+    func moveProjects(in section: UUID?, shown: [String], from: IndexSet, to: Int) {
+        var order = shown
+        order.move(fromOffsets: from, toOffset: to)
+        if let section {
+            guard let i = data.sections.firstIndex(where: { $0.id == section }) else { return }
+            data.sections[i].projects = Self.merged(order, keeping: data.sections[i].projects)
+            data.sections[i].sort = .manual
+        } else {
+            data.unsortedOrder = Self.merged(order, keeping: data.unsortedOrder)
+            data.unsortedSort = .manual
+        }
+        save()
     }
 
     /// Put a project in a section (nil = unsorted) right before another project of it (nil = at the end): a drop in the
@@ -130,6 +169,62 @@ final class LocalPrefs {
             let at = other.flatMap { o in data.sections[i].projects.firstIndex(of: o) } ?? data.sections[i].projects.endIndex
             data.sections[i].projects.insert(key, at: at)
         }
+        save()
+    }
+
+    /// How a section (nil: the projects in none) orders its projects.
+    func sort(of section: UUID?) -> ProjectSort {
+        guard let section else { return data.unsortedSort }
+        return data.sections.first { $0.id == section }?.sort ?? .manual
+    }
+    /// `shown`: the order on screen, which becomes the manual one when switching to it, so nothing jumps.
+    func setSort(_ sort: ProjectSort, of section: UUID?, shown: [String]) {
+        if let section {
+            guard let i = data.sections.firstIndex(where: { $0.id == section }) else { return }
+            if sort == .manual && data.sections[i].sort != .manual { data.sections[i].projects = Self.merged(shown, keeping: data.sections[i].projects) }
+            data.sections[i].sort = sort
+        } else {
+            if sort == .manual && data.unsortedSort != .manual { data.unsortedOrder = Self.merged(shown, keeping: data.unsortedOrder) }
+            data.unsortedSort = sort
+        }
+        save()
+    }
+
+    /// A project dropped in a section (nil: in none) with that group's new order, `order` (`ProjectOrder.moving` over
+    /// what the group showed). A drop that reorders a group sorted by name or activity makes it manual: the person
+    /// put the project where they wanted it.
+    func place(project key: String, in section: UUID?, order: [String], reorder: Bool) {
+        for i in data.sections.indices where data.sections[i].id != section { data.sections[i].projects.removeAll { $0 == key } }
+        if let section, let i = data.sections.firstIndex(where: { $0.id == section }) {
+            if reorder || data.sections[i].sort == .manual {
+                data.sections[i].projects = Self.merged(order, keeping: data.sections[i].projects)
+                if reorder { data.sections[i].sort = .manual }
+            } else if !data.sections[i].projects.contains(key) {
+                data.sections[i].projects.append(key)
+            }
+        } else if section == nil {
+            if reorder || data.unsortedSort == .manual {
+                data.unsortedOrder = Self.merged(order, keeping: data.unsortedOrder)
+                if reorder { data.unsortedSort = .manual }
+            }
+        }
+        save()
+    }
+
+    /// `order` (what the sidebar showed, rearranged), then what the saved list held that was not on screen (hidden
+    /// projects, a box still connecting): those keep their section.
+    private static func merged(_ order: [String], keeping old: [String]) -> [String] {
+        let shown = Set(order)
+        return order + old.filter { !shown.contains($0) }
+    }
+
+    /// Move a section right before another (nil: to the end).
+    func moveSection(_ id: UUID, before other: UUID?) {
+        guard let s = data.sections.first(where: { $0.id == id }) else { return }
+        let ids = ProjectOrder.moving(id, before: other, in: data.sections.map(\.id))
+        var byID = Dictionary(uniqueKeysWithValues: data.sections.map { ($0.id, $0) })
+        byID[id] = s
+        data.sections = ids.compactMap { byID[$0] }
         save()
     }
 

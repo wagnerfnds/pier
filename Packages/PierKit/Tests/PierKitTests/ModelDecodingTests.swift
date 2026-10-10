@@ -44,6 +44,11 @@ import Testing
             "exec_gh_pr_view_merged.json": d(ExecResult.self), "exec_gh_pr_view_fork.json": d(ExecResult.self),
             "exec_gh_pr_view_approved.json": d(ExecResult.self), "exec_gh_pr_view_changes.json": d(ExecResult.self),
             "exec_gh_pr_diff.json": d(ExecResult.self),
+            "exec_git_log.json": d(ExecResult.self), "exec_git_show.json": d(ExecResult.self),
+            "exec_git_show_rename.json": d(ExecResult.self), "exec_git_commit_diff.json": d(ExecResult.self),
+            "files_root.json": d(DirListing.self), "files_src.json": d(DirListing.self),
+            "file_text.json": d(WorktreeFile.self), "file_binary.json": d(WorktreeFile.self), "file_stat.json": d(WorktreeFile.self),
+            "file_too_large.json": d(WorktreeFile.self), "file_written.json": d(WorktreeFile.self), "file_conflict.json": d(BoxError.self),
         ]
     }()
 

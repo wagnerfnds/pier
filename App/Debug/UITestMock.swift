@@ -78,6 +78,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
     private var removedWorktrees: Set<String> = []
     /// `-uiTestPRs 1`: pull requests (see the block at the end of the file).
     fileprivate var prs = MockPRs()
+    /// The worktrees' files and history (UITestMockWorkspace.swift).
+    private var workspace = MockWorkspace()
 
     init() {
         // `-uiTestShowcase 1`: the showcase dataset (English, or Portuguese with the app in Portuguese) instead of everything below (UITestShowcase.swift).
@@ -318,8 +320,13 @@ final class MockBox: PierTransport, @unchecked Sendable {
         if MockPRs.enabled, let r = pullRequestRoute(method, p, body) { return r }
         if let r = talkRoute(method, p, body) { return r }   // Falar's router (block at the end of the file)
         if let r = pairInviteRoute(method, p) { return r }   // "Levar para o iPhone" (block at the end of the file)
+        if let r = workspace.route(method, p, query, body) { return r }   // a worktree's files (UITestMockWorkspace.swift)
         switch (method, p[1]) {
-        case (.get, "info"): return (200, Self.fixture(MockFixtures.info))
+        case (.get, "info"):
+            // pierd with the file routes.
+            var info = Self.fixtureObject(MockFixtures.info)
+            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files"]
+            return (200, Self.json(info))
         case (.get, "doctor"): return (200, Self.json(doctorChecks()))
         case (.get, "stats"): return (200, Self.fixture(MockFixtures.stats))
         case (.get, "agents"): return (200, Self.fixture(MockFixtures.agents))
@@ -368,7 +375,9 @@ final class MockBox: PierTransport, @unchecked Sendable {
     }
 
     private func exec(_ body: Data?) -> (Int, Data) {
-        let cmd = ((body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? JSON)?["command"] as? String) ?? ""
+        let req = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? JSON) ?? [:]
+        let cmd = (req["command"] as? String) ?? ""
+        if let r = workspace.exec(cmd, location: (req["location"] as? String) ?? "sandbox") { return r }
         // --- Inbox: suggested next steps (`NextSteps.command`), answered like the model would (Portuguese, strict JSON). ---
         if cmd.contains(NextSteps.marker) {
             return (200, Self.json(["exit_code": 0, "output": #"{"replies":["Abra o PR","Rode os testes de novo"]}"#]))

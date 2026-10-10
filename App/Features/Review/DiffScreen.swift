@@ -10,29 +10,13 @@ struct DiffScreen: View {
     /// Another way to get the patch (a pull request's file: `PRCommands.fileDiff`), run in `execLocation`.
     var command: String? = nil
 
-    @Environment(AppModel.self) private var model
-    @State private var lines: [GitActions.DiffLine] = []
-    @State private var loading = true
-    @State private var error: String?
-    @State private var truncated = false
     @State private var wrap = false
 
     var body: some View {
-        Group {
-            if loading {
-                ProgressView().tint(Theme.accent).frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error {
-                EmptyState(symbol: "exclamationmark.triangle", title: "Não foi possível carregar o diff", message: LocalizedStringKey(error))
-                    .frame(maxHeight: .infinity)
-            } else if file.binary == true || lines.contains(where: { $0.kind == .meta && $0.text == "Binary file" }) {
-                EmptyState(symbol: "doc.zipper", title: "Arquivo binário", message: "Não há diff de texto para mostrar.")
-                    .frame(maxHeight: .infinity)
-            } else if lines.isEmpty {
-                EmptyState(symbol: "doc", title: "Sem diferenças", message: "O diff deste arquivo está vazio.")
-                    .frame(maxHeight: .infinity)
-            } else {
-                diffBody
-            }
+        PatchView(box: box, execLocation: execLocation,
+                 command: command ?? (committed ? GitActions.diffCommitted(file, base: base) : GitActions.diffUncommitted(file)),
+                 path: file.path, binary: file.binary == true, wrap: wrap) {
+            DiffHeader(badge: file.badge, path: file.from.map { "\($0) → \(file.path)" } ?? file.path, added: file.added, removed: file.removed)
         }
         .pierBackground()
         .navigationTitle(file.name)
@@ -46,7 +30,72 @@ struct DiffScreen: View {
             }
         }
         .toolbar(.hidden, for: .tabBar)
-        .task { await load() }
+    }
+}
+
+/// The file line above a patch: its status letter, its path and its line counts.
+struct DiffHeader: View {
+    let badge: (letter: String, color: Color)
+    let path: String
+    var added = 0
+    var removed = 0
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(badge.letter).font(.mono(12, weight: .bold)).foregroundStyle(badge.color)
+                .frame(width: 24, height: 24)
+                .background(badge.color.opacity(0.15), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            Text(path).font(.mono(12)).foregroundStyle(Theme.text).lineLimit(2).truncationMode(.head).textSelection(.enabled)
+            Spacer(minLength: 4)
+            if added + removed > 0 { PlusMinus(added: added, removed: removed, size: 12) }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Theme.card)
+    }
+}
+
+/// One patch read through `exec` (`command` in `execLocation`) and drawn with line numbers, colors and the file's
+/// syntax: the review's files, a commit's files, a pull request's. Scrolls both ways unless `wrap`.
+struct PatchView<Header: View>: View {
+    let box: String
+    let execLocation: String
+    let command: String
+    /// The file's path, for its language.
+    let path: String
+    var binary = false
+    var wrap = false
+    @ViewBuilder var header: () -> Header
+
+    @Environment(AppModel.self) private var model
+    @State private var lines: [GitActions.DiffLine] = []
+    @State private var loading = true
+    @State private var error: String?
+    @State private var truncated = false
+
+    var body: some View {
+        Group {
+            if loading {
+                ProgressView().tint(Theme.accent).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error {
+                EmptyState(symbol: "exclamationmark.triangle", title: "Não foi possível carregar o diff", message: LocalizedStringKey(error))
+                    .frame(maxHeight: .infinity)
+            } else if binary || lines.contains(where: { $0.kind == .meta && $0.text == "Binary file" }) {
+                VStack(spacing: 0) {
+                    header()
+                    EmptyState(symbol: "doc.zipper", title: "Arquivo binário", message: "Não há diff de texto para mostrar.")
+                        .frame(maxHeight: .infinity)
+                }
+            } else if lines.isEmpty {
+                VStack(spacing: 0) {
+                    header()
+                    EmptyState(symbol: "doc", title: "Sem diferenças", message: "O diff deste arquivo está vazio.")
+                        .frame(maxHeight: .infinity)
+                }
+            } else {
+                content
+            }
+        }
+        .task(id: command) { await load() }
     }
 
     private var maxChars: Int { lines.reduce(0) { max($0, $1.text.count) } }
@@ -55,59 +104,49 @@ struct DiffScreen: View {
         return max(2, String(m).count)
     }
 
-    private var diffBody: some View {
+    private var content: some View {
         let digits = gutterDigits
         let charW: CGFloat = 6.7
         let gutter = CGFloat(digits) * charW + 10
-        let contentW = max(CGFloat(maxChars + 2) * charW + gutter * 2 + 30, UIScreen.main.bounds.width)
-        return ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                scrolled(contentWidth: contentW) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(lines) { l in
-                            DiffLineRow(line: l, gutter: gutter, wrap: wrap, width: wrap ? nil : contentW, language: SyntaxLanguage.forFile(file.path))
+        let language = SyntaxLanguage.forFile(path)
+        return GeometryReader { geo in
+            let contentW = max(CGFloat(maxChars + 2) * charW + gutter * 2 + 30, geo.size.width)
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    header()
+                    scrolled {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(lines) { l in
+                                DiffLineRow(line: l, gutter: gutter, wrap: wrap, width: wrap ? nil : contentW, language: language)
+                            }
                         }
                     }
+                    if truncated {
+                        Text("Diff truncado: só o início/fim da saída é mostrado.")
+                            .font(.footnote).foregroundStyle(Theme.orange).padding(14)
+                    }
                 }
-                if truncated {
-                    Text("Diff truncado: só o início/fim da saída é mostrado.")
-                        .font(.footnote).foregroundStyle(Theme.orange).padding(14)
-                }
+                .padding(.bottom, 40)
             }
-            .padding(.bottom, 40)
         }
     }
 
     @ViewBuilder
-    private func scrolled<C: View>(contentWidth: CGFloat, @ViewBuilder _ c: () -> C) -> some View {
+    private func scrolled<C: View>(@ViewBuilder _ c: () -> C) -> some View {
         if wrap { c() } else { ScrollView(.horizontal, showsIndicators: true) { c() } }
-    }
-
-    private var header: some View {
-        HStack(spacing: 10) {
-            let b = file.badge
-            Text(b.letter).font(.mono(12, weight: .bold)).foregroundStyle(b.color)
-                .frame(width: 24, height: 24)
-                .background(b.color.opacity(0.15), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            Text(file.from.map { "\($0) → \(file.path)" } ?? file.path)
-                .font(.mono(12)).foregroundStyle(Theme.text).lineLimit(2).truncationMode(.head)
-            Spacer(minLength: 4)
-            PlusMinus(added: file.added, removed: file.removed, size: 12)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(Theme.card)
     }
 
     private func load() async {
         guard let client = model.client(for: box) else { error = String(localized: "Sem conexão com a box."); loading = false; return }
-        let cmd = command ?? (committed ? GitActions.diffCommitted(file, base: base) : GitActions.diffUncommitted(file))
+        loading = true
+        error = nil
         do {
-            let r = try await client.exec(location: execLocation, command: cmd, timeout: "60s")
+            let r = try await client.exec(location: execLocation, command: command, timeout: "60s")
             truncated = r.truncated == true
             lines = GitActions.parseDiff(r.output)
             if r.exitCode != 0 && lines.isEmpty && !r.output.isEmpty { error = r.output }
         } catch {
+            if error is CancellationError { return }
             self.error = ReviewStore.message(error)
         }
         loading = false

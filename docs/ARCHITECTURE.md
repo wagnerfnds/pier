@@ -16,7 +16,9 @@ code calls which route.
    becomes Stop while the agent works); the raw terminal is a secondary view remembered per session.
 5. Needs you: permission Allow once / Always / Deny (screen menu parsing) and question answering.
 6. Review: files changed, per-file diff, git actions (commit, push, open PR) and pull requests, via `exec` on the box.
-7. Projects: user-defined **sections** (stored on the device), renames, hide; worktrees per project; the agents board.
+7. Projects: user-defined **sections** (stored on the device), each ordered by hand, by name or by recent activity, renames,
+   hide; worktrees per project; the agents board. On the iPad and the Mac a project opens its **workspace**: the file
+   tree and an editor that saves to the box, the changes beside their patches, the git history.
 8. Notifications: push from pierd (APNs), local notifications from the event stream as a fallback; Live Activities and
    widgets; App Shortcuts; "Falar" (talk to the agents).
 
@@ -235,16 +237,57 @@ automation.
 ## Layouts: tabs (compact) and sidebar (regular width, Mac)
 
 `MainLayout` (RootView) picks by horizontal size class: the iPhone's TabView, or `MainSplit` (iPad, Mac Catalyst): a
-`NavigationSplitView` whose sidebar lists Início / Inbox / Quadro / Projetos / Ajustes (the tab bar's order) and the projects in the person's sections, each
+`NavigationSplitView` whose sidebar lists Início / Inbox / Quadro / Projetos (the tab bar's order) and the projects in the person's sections, each
 expandable to its worktrees and their agent sessions with live state dots. The detail column shows the stack of `Router.tab`,
 the same `homePath` / `inboxPath` / `boardPath` / `projectsPath` the tabs use, so notifications, `pier://` links and intents work unchanged
 in both. A sidebar pick is `Router.select(_:)`: a project, worktree or session goes on the Projetos stack above its parents
 (Back walks up the tree and `projectsPathChanged()` moves the highlight with it). Sidebar rows are buttons into the router,
 not a List selection: the split view resets the detail's stack on a selection change. Routes stay registered only in
-`pierDestinations()`.
+`pierDestinations()`; on regular width `ProjectRoute` and `WorktreeRoute` show the project workspace below, on the iPhone
+their lists.
+
+The sidebar (`Sidebar.swift`) is a ScrollView of its own rows, not a List: a List's drag handling swallowed the drops on
+the Mac. Sizes follow `Density` (13 pt text in 26 pt rows on the Mac, room for a finger on the iPad). Projects are dragged
+to reorder them or into another section (an insertion line, or the section highlighted), sections by their titles; the
+drag carries a type of the app's own (`<bundle id>.sidebar-item`, declared in project.yml, visible to this process
+only) so it never drops as text into a field. Each group orders its projects by hand, by name or by recent activity
+(`ProjectOrder`, PierKit, tested; `LocalPrefs.Section.sort`, `unsortedSort` / `unsortedOrder` for the projects in
+none); a drop that reorders a sorted group makes it manual, and a manual order keeps the keys it does not show (hidden
+projects, a box still connecting). "Nova seção" (the footer, where the Mac keeps "New Folder"), "Renomear seção" and
+"Renomear…" edit in place: Return keeps the name, Esc drops it, a click elsewhere keeps it. The footer also holds the
+Faxina and Ajustes.
+
+## The project workspace (iPad, Mac)
+
+`App/Features/Workspace`: `ProjectWorkspace` shows one worktree of a project (the picker on its bar switches through the
+router, so the sidebar's highlight follows) in four tabs, with a status bar (branch, ↑/↓, changes, sessions, port; the
+editor's line, column, language and line ending):
+
+- **Arquivos** (`FilesPane`): the tree loads a folder at a time (`GET …/files`, docs/API.md §2.7) with git's word per
+  entry (the status letter, a dot on a folder with changes, ignored entries faint and hideable); "Abrir rápido" (⇧⌘O)
+  matches every file of the worktree (`FileSearch`: `git ls-files` once through exec, a fuzzy score). Files open in tabs
+  in `CodeEditor`: a TextKit 1 UITextView per open file (its own undo, caret and scroll) with line numbers, colors from
+  `SyntaxHighlighter` a moment after typing, Return and Tab in the file's indentation and Shift-Tab (`EditorText`), the
+  system's find and replace (⌘F), wrap on or off. ⌘S (the menu bar's Salvar, through `FocusedValues.workspace`) saves
+  with `PUT …/file` naming the sha the edit started from: when an agent wrote the file meanwhile the box answers 409
+  `file_changed` and the editor asks (save over it, or reload). The open file is polled (`stat=1`, 3 s): without edits it
+  follows the box, with edits a banner says it changed there. Images show as pictures; files over 2 MiB are not opened.
+  A box whose pierd predates the routes says so.
+- **Alterações** (`ChangesPane`): the review (`ReviewStore`) as a list of files, uncommitted then the branch's commits,
+  beside the patch of the one picked (`PatchView`, shared with `DiffScreen`); Aprovar (commit, push, PR with the AI
+  draft), ask the agent for changes, discard.
+- **Histórico** (`HistoryPane`): `GitLog` through exec, a page at a time (more as the list scrolls), what is not pushed
+  marked, refs as badges; a commit's message, author, files with their counts, and the patch of the file picked.
+- **Visão geral** (`OverviewPane`): the project (path, remote, default branch), its worktrees with their git state, the
+  sessions running in this one.
+
+What each worktree holds (open files with their unsaved text, the folders open, the history read, the tab) lives in
+`WorkspaceState` for the app's run, so opening a session or another project and coming back finds it as it was. The
+menu bar adds ⌘S, ⇧⌘O, ⌘R (read the box again) and ⌥⌘1–4 (the tabs).
 
 Keyboard (iPad hardware keyboard, Mac menu "Ir", `PierCommands`; the palette lists the same): ⌘1 Início, ⌘2 Inbox,
-⌘3 the agents board, ⌘4 Projetos (the order of the tabs and the sidebar), ⌘, Ajustes, ⌘N new task, ⌘K / ⌘P the palette, ⇧⌘L Faxina, ⇧⌘Space Falar.
+⌘3 the agents board, ⌘4 Projetos (the order of the tabs and the sidebar), ⌘, Ajustes, ⌘N new task, ⌘K / ⌘P the palette, ⇧⌘L Faxina, ⇧⌘Space Falar;
+in a workspace ⌘S, ⇧⌘O, ⌘R and ⌥⌘1–4. Sheets answer Return (or ⌘Return where Return writes a line) and Esc.
 
 ## Live Activity details
 
@@ -263,7 +306,8 @@ follows it); only an exit (`ended`) ends the activity. Debug `-openLink pier://�
 `-sessionDetails 1`, `-sessionTerminal 1`, `-openInstallHelp 1` (the onboarding's "Ainda sem pierd na box?" sheet),
 `-runIntent postNotif|notifAction|notifDelivered …` (App/Intents/DebugIntentRunner.swift), `-openLink <pier://…>`,
 `-debugStartActivity 1`, `-widgetGallery home|lock|activity|island|all`, `-openTalk 1 [-talkText "…" -talkRoute 1]`,
-`-openPalette 1`, `-openFaxina 1`; Mac: `-macSurfaceDebug <commands>`, `-macFakeShot <png>`, `-macWindowSize 1280x800`.
+`-openPalette 1`, `-openFaxina 1`, `-openProject <loc>[/<worktree>] [-workspaceTab files|changes|history|overview]
+[-openFile <path>]` (a project's workspace); Mac: `-macSurfaceDebug <commands>`, `-macFakeShot <png>`, `-macWindowSize 1280x800`.
 `-uiTestShowcase 1` (with the mock) swaps the fixture data for an English showcase dataset (`App/Debug/UITestShowcase.swift`:
 four projects, a permission, a question with a recommended choice, a finished turn with a diff and next steps, agents at
 work, a chat, pull requests, CI, git activity, dev servers, the AI touches' answers) for screenshots; the widget gallery and
@@ -272,7 +316,9 @@ writes the system-UI shots: the Lock Screen and the island with a Live Activity,
 the iPad in landscape.
 `-uiTestMock 1` swaps the paired boxes for one in-memory box (`App/Debug/UITestMock.swift`, fixtures generated from
 `Packages/PierKit/Tests/PierKitTests/Fixtures` into `App/Debug/UITestMockFixtures.swift`): no network, keychain or push.
-It answers like pierd for the endpoints the app uses and is stateful for send, answer and create task. `-uiTestExtras 1`,
+It answers like pierd for the endpoints the app uses and is stateful for send, answer and create task; its worktrees
+have files and a history (`App/Debug/UITestMockWorkspace.swift`: the file routes with sha checks, `GitLog` and
+`FileSearch` commands), and saves stick for the run. `-uiTestExtras 1`,
 `-uiTestChats 1`, `-uiTestPRs 1`, `-uiTestAsk 1` (an agent asking a question with three choices) and `-uiTestHealth 1`
 (a doctor report with three things to fix) add to its data.
 

@@ -24,6 +24,9 @@ func TestErrorsCarryACode(t *testing.T) {
 		{errors.New("git worktree add: fatal: invalid reference: nope"), CodeGitFailed},
 		{errors.New("tmux kill-session: server exited"), CodeCommandFailed},
 		{badRequest("name is required"), CodeBadRequest},
+		{ErrFileChanged, CodeFileChanged},
+		{ErrFileDeleted, CodeFileChanged},
+		{ErrFileExists, CodeFileExists},
 	} {
 		if got := codeFor(tc.err); got != tc.code {
 			t.Errorf("codeFor(%q) = %s, want %s", tc.err, got, tc.code)

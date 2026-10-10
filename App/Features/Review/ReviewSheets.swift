@@ -66,13 +66,15 @@ struct ApproveSheet: View {
             .navigationTitle("Aprovar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() }.keyboardShortcut(.cancelAction) }
                 ToolbarItem(placement: .confirmationAction) {
                     if running { ProgressView() } else {
                         Button(result?.ok == true ? "Fechar" : "Executar") {
                             if result?.ok == true { dismiss() } else { Task { await run() } }
                         }
                         .disabled(!canRun)
+                        // ⌘Return: Return writes a line in the message.
+                        .keyboardShortcut(.return, modifiers: .command)
                     }
                 }
             }
@@ -172,11 +174,12 @@ struct SendBackSheet: View {
             .navigationTitle("Pedir ajustes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() }.keyboardShortcut(.cancelAction) }
                 ToolbarItem(placement: .confirmationAction) {
                     if sending { ProgressView() } else {
                         Button("Enviar") { Task { await send() } }
                             .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .keyboardShortcut(.return, modifiers: .command)
                     }
                 }
             }

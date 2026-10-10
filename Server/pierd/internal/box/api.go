@@ -93,6 +93,9 @@ func (b *Box) Mount(s *wire.Server) {
 	route("DELETE /v1/locations/{name}/worktrees/{worktree}", b.removeWorktree)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/attachments", b.worktreeAttachment)
 	route("GET /v1/locations/{name}/worktrees/{worktree}/touched", b.worktreeTouched)
+	route("GET /v1/locations/{name}/worktrees/{worktree}/files", b.listFiles)
+	route("GET /v1/locations/{name}/worktrees/{worktree}/file", b.readFile)
+	route("PUT /v1/locations/{name}/worktrees/{worktree}/file", b.writeFile)
 	route("GET /v1/locations/{name}/worktrees/{worktree}/services", b.listWorktreeServices)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/services/{service}/{action}", b.serviceAction)
 	route("GET /v1/worktrees", b.listWorktreeStatuses)
@@ -153,6 +156,8 @@ func statusFor(err error) int {
 	case errors.Is(err, ErrUnknownLocation), errors.Is(err, ErrUnknownWorktree), errors.Is(err, ErrUnknownSession), errors.Is(err, ErrUnknownUnit):
 		return http.StatusNotFound
 	case errors.Is(err, ErrSessionExists), errors.Is(err, ErrSessionExited):
+		return http.StatusConflict
+	case errors.Is(err, ErrFileChanged), errors.Is(err, ErrFileDeleted), errors.Is(err, ErrFileExists):
 		return http.StatusConflict
 	case errors.Is(err, errTmuxMissing):
 		return http.StatusServiceUnavailable

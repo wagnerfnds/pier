@@ -107,6 +107,22 @@ public final class BoxAPI: PierBoxClient, Sendable {
         return .removed(r.removed ?? worktree)
     }
 
+    private func worktreePath(_ location: String, _ worktree: String, _ tail: String) -> String {
+        "/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))\(tail)"
+    }
+
+    public func files(location: String, worktree: String, path: String) async throws -> DirListing {
+        try await get(Self.url(worktreePath(location, worktree, "/files"), [("path", path.isEmpty ? nil : path)]))
+    }
+
+    public func file(location: String, worktree: String, path: String, statOnly: Bool) async throws -> WorktreeFile {
+        try await get(Self.url(worktreePath(location, worktree, "/file"), [("path", path), ("stat", statOnly ? "1" : nil)]))
+    }
+
+    public func writeFile(location: String, worktree: String, path: String, _ req: FileWrite) async throws -> WorktreeFile {
+        try decode(try await call(.put, Self.url(worktreePath(location, worktree, "/file"), [("path", path)]), body: req).data)
+    }
+
     // MARK: 3 agents & tasks
 
     public func createTask(_ req: TaskRequest) async throws -> TaskResult {

@@ -14,6 +14,12 @@ public protocol PierBoxClient: Sendable {
     func branches(location: String) async throws -> BranchList            // GET /v1/locations/{l}/branches
     func createWorktree(location: String, _ req: WorktreeRequest) async throws -> Worktree
     func removeWorktree(location: String, worktree: String, force: Bool, deleteBranch: Bool) async throws -> WorktreeRemoval  // 200 or 202
+    /// One folder of a worktree (`path` "" for its root); capability `files`.
+    func files(location: String, worktree: String, path: String) async throws -> DirListing           // GET …/worktrees/{w}/files
+    /// One file with its content, or only its metadata (`statOnly`: the editor's check for changes on the box).
+    func file(location: String, worktree: String, path: String, statOnly: Bool) async throws -> WorktreeFile   // GET …/worktrees/{w}/file
+    /// Save a file; 409 `file_changed` when it moved on since `req.sha`, `file_exists` for a `create` over a file.
+    func writeFile(location: String, worktree: String, path: String, _ req: FileWrite) async throws -> WorktreeFile  // PUT …/worktrees/{w}/file
 
     // 3 Agents & tasks
     func createTask(_ req: TaskRequest) async throws -> TaskResult        // POST /v1/tasks

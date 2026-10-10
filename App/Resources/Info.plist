@@ -88,5 +88,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Pier sidebar item</string>
+			<key>UTTypeIdentifier</key>
+			<string>$(PIER_BUNDLE_ID).sidebar-item</string>
+		</dict>
+	</array>
 </dict>
 </plist>

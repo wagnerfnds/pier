@@ -18,9 +18,7 @@ struct ProjectsRoot: View {
     private var editing: Bool { editMode == .active }
     private var multiBox: Bool { model.boxes.count > 1 }
 
-    private func activity(_ e: ProjectEntry) -> Int {
-        model.connection(for: e.box)?.agentCounts(location: e.location.name).values.reduce(0, +) ?? 0
-    }
+    private func activity(_ e: ProjectEntry) -> Date? { ProjectGrouping.lastActivity(e, in: model.boxes) }
 
     var body: some View {
         let entries = ProjectGrouping.entries(in: model.boxes)
@@ -44,7 +42,7 @@ struct ProjectsRoot: View {
                     } else {
                         Section {
                             ForEach(g.entries) { row($0, in: g) }
-                                .onMove { from, to in if case .section(let id) = g.kind { prefs.moveProjects(in: id, from: from, to: to) } }
+                                .onMove { from, to in prefs.moveProjects(in: g.section, shown: g.entries.map(\.key), from: from, to: to) }
                             if g.entries.isEmpty && editing {
                                 Text("Seção vazia. Use “Mover para…” em um projeto.").font(.footnote).foregroundStyle(Theme.textFaint)
                                     .listRowBackground(Theme.card)
@@ -92,6 +90,7 @@ struct ProjectsRoot: View {
         .alert("Nova seção", isPresented: $newSection) {
             TextField("Nome", text: $newSectionName)
             Button("Criar") { let n = newSectionName.trimmingCharacters(in: .whitespaces); if !n.isEmpty { prefs.addSection(n) } }
+                .keyboardShortcut(.defaultAction)
             Button("Cancelar", role: .cancel) {}
         }
         .alert("Renomear seção", isPresented: Binding(get: { renamingSection != nil }, set: { if !$0 { renamingSection = nil } })) {
@@ -99,11 +98,13 @@ struct ProjectsRoot: View {
             Button("Salvar") {
                 if case .section(let id)? = renamingSection?.kind, !sectionName.trimmingCharacters(in: .whitespaces).isEmpty { prefs.renameSection(id, to: sectionName) }
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancelar", role: .cancel) {}
         }
         .alert("Renomear projeto", isPresented: Binding(get: { renamingProject != nil }, set: { if !$0 { renamingProject = nil } })) {
             TextField("Nome", text: $projectName)
             Button("Salvar") { if let e = renamingProject { prefs.rename(box: e.box, location: e.location.name, to: projectName) } }
+                .keyboardShortcut(.defaultAction)
             Button("Restaurar original", role: .destructive) { if let e = renamingProject { prefs.rename(box: e.box, location: e.location.name, to: nil) } }
             Button("Cancelar", role: .cancel) {}
         } message: { Text("O nome é só deste aparelho; a box não muda.") }
@@ -150,13 +151,27 @@ struct ProjectsRoot: View {
             if editing, case .section(let id) = g.kind {
                 Button { sectionName = g.title; renamingSection = g } label: { Image(systemName: "pencil") }
                 Menu {
+                    sortPicker(g)
                     Button("Mover para cima") { move(id, by: -1) }
                     Button("Mover para baixo") { move(id, by: 1) }
                     Button("Excluir seção", role: .destructive) { prefs.removeSection(id) }
                 } label: { Image(systemName: "ellipsis.circle") }
+            } else if editing, case .unsorted = g.kind {
+                Menu { sortPicker(g) } label: { Image(systemName: "arrow.up.arrow.down.circle") }
+                    .accessibilityLabel("Ordenar projetos")
             }
         }
         .textCase(nil).font(.footnote.weight(.semibold)).foregroundStyle(Theme.textDim)
+    }
+
+    /// By hand (dragging in "Organizar"), by name or by recent activity.
+    private func sortPicker(_ g: ProjectGroup) -> some View {
+        Picker(selection: Binding(get: { g.sort }, set: { prefs.setSort($0, of: g.section, shown: g.entries.map(\.key)) })) {
+            Label("Manualmente", systemImage: "hand.draw").tag(ProjectSort.manual)
+            Label("Por nome", systemImage: "textformat").tag(ProjectSort.name)
+            Label("Por atividade recente", systemImage: "clock").tag(ProjectSort.activity)
+        } label: { Label("Ordenar projetos", systemImage: "arrow.up.arrow.down") }
+        .pickerStyle(.menu)
     }
 
     private func move(_ id: UUID, by d: Int) {

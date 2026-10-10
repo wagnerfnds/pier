@@ -44,14 +44,14 @@ notifications).
 
 | Topic | Rule |
 | --- | --- |
-| Bodies | JSON, `Content-Type: application/json`. Bodies that carry a prompt (`POST /v1/tasks`, `POST /v1/sessions`, `.../send`) may be up to 2 MB; everything else 64 KB. |
+| Bodies | JSON, `Content-Type: application/json`. Bodies that carry a prompt (`POST /v1/tasks`, `POST /v1/sessions`, `.../send`) may be up to 2 MB, a file save (`PUT .../file`, 2.7) up to 4 MB; everything else 64 KB. |
 | Times | RFC 3339 with up to 9 fractional digits (`2026-10-07T19:07:42.53987405Z`). Zero times are omitted. Some fields are Unix milliseconds (transcript); they are named in place. |
 | Omitted fields | Most fields are omitted when empty: absent means zero, false or empty. Model every non-identity field as optional. |
 | Lists | Top-level empty lists are `[]`. Nested lists can be `null` or missing (`branches`, transcript `items`); decode defensively. |
-| Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
+| Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
-| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched`, plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
+| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files`, plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
 
 ### 0.3 Naming and addressing
 
@@ -195,11 +195,74 @@ recent commit first; a branch that exists locally and on origin appears once wit
 | Route | Purpose |
 | --- | --- |
 | `GET /v1/locations/{loc}/worktrees/{wt}/touched` | files the latest turn changed (8.2) |
+| `GET .../files?path=DIR`, `GET`/`PUT .../file?path=FILE` | browse, read and save the worktree's files (2.7) |
 | `POST /v1/locations/{loc}/worktrees/{wt}/attachments` | upload a file before an agent exists (4.9) |
 | `GET /v1/locations/{loc}/worktrees/{wt}/services` | `[{name, run, autostart?, state, unit, port?}]` |
 | `POST .../services/{service}/{start\|stop\|restart}` | run as systemd user units named `svc-<location>-<worktree>-<service>` |
 | `POST /v1/locations {name, path}`, `DELETE /v1/locations/{name}` | add or forget a repository (`pierd location add\|rm`) |
 | `GET`/`PUT /v1/locations/{name}/config`, `POST`/`DELETE .../config/trust` | box-local config and repository-config trust (`pierd location config`); the app does not call them |
+
+### 2.7 Files of a worktree (capability `files`)
+
+The file tree and editor. `{wt}` is a worktree's `name` (2.1). `path` is relative to the worktree's root, with `/`
+separators. An absolute path, a `..` or `.git` part, a NUL, a path through a file (`README/x`), or one that leads
+outside the worktree (or into its `.git`) once its links are followed: 400 `bad_request`. Nothing there, or a dangling
+link on the way: 404 `not_found`. What the box's user may not open: 403 `refused`.
+
+**`GET /v1/locations/{loc}/worktrees/{wt}/files[?path=DIR]`**: one folder; no `path` (or `.`) is the root.
+
+```json
+{"path":"src","entries":[
+  {"name":"lib","type":"dir","changed":true},
+  {"name":"node_modules","type":"dir","ignored":true},
+  {"name":"main.go","type":"file","size":1234,"status":" M"},
+  {"name":"new.txt","type":"file","size":10,"status":"??"},
+  {"name":"cfg","type":"link","target":"../shared/cfg","points":"dir"}],
+ "truncated":false}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `path` | the folder, cleaned; `""` for the root |
+| `type` | `dir`, `file`, `link` (a symlink) or `other` (a socket, a device, a fifo) |
+| `size` | bytes, files only (absent for an empty one) |
+| `status` | git's 2-character porcelain code for a file with changes (`" M"`, `"M "`, `"A "`, `"??"`, `"UU"`, ...); absent when clean |
+| `changed` | a folder with changes somewhere below it: modified, staged or untracked files |
+| `ignored` | git ignores it: what an ignore pattern matches (`--ignored=matching`; a folder of ignored files is not itself ignored) |
+| `target`, `points` | a link's own text; `points` (`dir` \| `file`) only when it leads inside the worktree, where these same routes open it |
+| `truncated` | over 5000 entries: the first 5000 are listed |
+
+Folders and links to folders (`points: "dir"`) come first, then the rest, each by name ignoring case. `.git` is never
+listed; dotfiles are. git's word comes from one `git status` of the folder; outside a repository, or when git fails,
+the entries come without it. A file's path: 400.
+
+**`GET .../file?path=FILE[&stat=1]`**: one file.
+
+```json
+{"path":"src/main.go","size":1234,"modified":"2026-10-10T12:00:00.123456789Z","sha":"<sha256 hex>",
+ "executable":false,"binary":false,"encoding":"utf8","content":"package main\n..."}
+```
+
+* `sha`: the sha256 of the file's bytes (lowercase hex), always over the whole file. A save names it.
+* `binary`: a NUL in the first 8000 bytes, or not UTF-8. `encoding`: `utf8` (`content` is the text) or `base64`.
+* `stat=1` leaves `encoding` and `content` out: poll it to notice an agent changing the open file (`sha` moves). A file
+  over 2 MiB comes the same way, with `too_large: true`.
+* A link to a file inside the worktree reads as that file. A folder: 400.
+
+**`PUT .../file?path=FILE`**: save. Body up to 4 MB (413 beyond):
+
+```json
+{"content":"...","encoding":"utf8","sha":"<sha256 the edit started from>","create":false,"force":false}
+```
+
+* `encoding`: `utf8` (default) or `base64`.
+* Agents edit these same files. Unless `force`: `sha` must be the file's sha as it is now, else 409 `file_changed`
+  (also when it was deleted since), and `create` is 409 `file_exists` when a file is there. A missing file is made,
+  with the folders it needs, under `create` or `force`; with neither and no `sha`, 404.
+* The file is replaced in one step (a temp file beside it, renamed over it) and keeps its permissions; a new one is
+  0644. Through a link to a file inside the worktree, that file is written and the link stays. A folder: 400.
+* Answer: the file as `GET ...?stat=1` reads it, with the `sha` of what was written. Gate `before:file.write
+  {location, worktree, path}`; event `file.written {location, worktree, path, size}`.
 
 ---
 
@@ -633,7 +696,8 @@ exit_code}` (every client's exec, the app's own background commands included: ne
 **Worktrees and locations**: `worktree.created {location, name, path, branch}`, `worktree.removed`,
 `worktree.setup.{started,finished,failed}` and `worktree.archive.{started,finished,failed}` `{location, name,
 path, script, log}` (failures set the envelope `error`), `location.added`, `location.removed`, `config.changed`,
-`service.started|stopped|failed`.
+`service.started|stopped|failed`, `file.written {location, worktree, path, size}` (a save through `PUT .../file`,
+2.7; `path` is relative to the worktree).
 
 **Box**: `client.paired`, `client.revoked {name, fingerprint}`, `pairing.invited`, `agents.found`.
 
@@ -792,7 +856,7 @@ Runs and gates (`/v1/runs…`, `run.*` events), `/v1/turns/{id}[/wait]`, termina
 (`/v1/tcp`), `/v1/ports`, `/v1/processes`, the memory guard, the phone web app and its token, units, shares, teams,
 flows and webhooks, browsers and visual diffs, `/v1/hooks`, `/v1/env`, secrets, skills, integrations install over
 HTTP, self-upgrade, agent CLI install, session commands/files/subagents/fork/rewind, worktree log/sync/pause/resume/
-files/rename, location clone, and service logs. A client asking for one gets a plain-text 404.
+rename, location clone, and service logs. A client asking for one gets a plain-text 404.
 
 ---
 
@@ -844,6 +908,7 @@ against a live box with `pierctl selftest` and against captured fixtures (`Tests
 | --- | --- |
 | Info | `info()`, `stats()`, `doctor()` |
 | Locations | `locations()`, `worktreeStatuses(location:)`, `branches(location:)`, `createWorktree(location:_:)`, `removeWorktree(location:worktree:force:deleteBranch:)` → `WorktreeRemoval` (`.removed` / `.archiving`) |
+| Files | `files(location:worktree:path:)` → `DirListing`, `file(location:worktree:path:statOnly:)` → `WorktreeFile`, `writeFile(location:worktree:path:_:)` → `WorktreeFile` (2.7) |
 | Agents | `createTask(_:)`, `startSession(_:)`, `installableAgents()` |
 | Sessions | `sessions()`, `screen(session:history:)`, `draft(session:)`, `send(session:_:)`, `keys(session:_:)`, `interrupt(session:)`, `kill(session:)`, `rename(session:title:)`, `controls(session:)`, `setMode(session:mode:)`, `heldPrompts`, `cancelHeld`, `sendHeldNow`, `turns`, `waitForSession`, `uploadAttachment` |
 | Needs you | `answerQuestions(session:tool:answers:)` |
@@ -866,6 +931,7 @@ with defaults and a tolerant decoder (missing keys, `null` lists).
 | --- | --- |
 | `Models/BoxModels.swift` | `BoxInfo`, `AgentPreset`, `AdapterCaps`, `AgentCLI`, `BoxStats`, `DoctorCheck` |
 | `Models/LocationModels.swift` | `Location`, `Worktree`, `Scripts`, `WorktreeStatus`, `Commit`, `BranchList`, `WorktreeRequest` |
+| `Models/FileModels.swift` | `DirListing`, `FileEntry`, `WorktreeFile`, `FileWrite` |
 | `Models/SessionModels.swift` | `Session`, `Ask`, `TaskRequest`, `TaskResult`, `SessionRequest`, `SendResult`, `InterruptResult`, `SessionControls`, `HeldPrompt`, `Turn`, `WaitResult`, `Draft`, `Attachment` |
 | `Models/QuestionModels.swift` | `Question`, `QuestionOption`, `QuestionAnswer` |
 | `Models/TranscriptModels.swift` | `TranscriptPage`, `TranscriptItem`, `CrewMember`, `ArtifactRef`, `Signals`, `ToolDetail` |
@@ -884,4 +950,6 @@ Use explicit `CodingKeys`, not `.convertFromSnakeCase`: keys are mixed (`oldStar
 | `Ask.classify`, `Session.needsYouKind`, `canUseAnswerEndpoint` | permission vs question (5.3, 5.4) |
 | `GitActions` | the exec strings of 8.3 and 8.4 and their parsers (`approveCommand`, `discard`, `prView`, `diffUncommitted`, `diffCommitted`, `commitDetail`, `statusCommand`, `parseStatus`, `parseDiff`, `sendBack`, `pullRequestURL`) |
 | `PRCommands`, `HomeCommands` | pull request and Home screen commands (8.5) |
+| `GitLog`, `FileSearch` | a worktree's history through exec (the log a page at a time with what is not pushed, one commit's message and files, one file's patch in it) and "Abrir rápido" (`git ls-files` once, a fuzzy match) |
+| `FileTree`, `EditorText` | the workspace's file tree (paths, the rows of the open folders, status badges) and the editor's text rules (line and column, indentation, Return, line endings) for 2.7 |
 | `NotificationText`, `DisplayNames` | notification text and names (9) |

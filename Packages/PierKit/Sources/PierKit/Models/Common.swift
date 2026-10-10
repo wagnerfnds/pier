@@ -188,7 +188,8 @@ public struct BoxError: Error, Decodable, Sendable, LocalizedError, Hashable {
     public enum Code: String, Sendable {
         case notFound = "not_found", sessionExited = "session_exited", sessionExists = "session_exists"
         case agentWaiting = "agent_waiting", refused, unsupported, tmuxMissing = "tmux_missing", gitFailed = "git_failed"
-        case commandFailed = "command_failed", tooMany = "too_many", fileChanged = "file_changed", badRequest = "bad_request"
+        case commandFailed = "command_failed", tooMany = "too_many", fileChanged = "file_changed", fileExists = "file_exists"
+        case badRequest = "bad_request"
         case `internal`
     }
 

@@ -47,14 +47,18 @@ final class SidebarUITests: XCTestCase {
         let project = element("sidebar-project-atlas-ios")
         XCTAssertTrue(project.waitForExistence(timeout: 10))
         project.tap()
-        XCTAssertTrue(app.buttons["Nova tarefa aqui"].waitForExistence(timeout: 5), "the project did not open in the detail")
+        // A project opens its workspace (files, changes, history) on its main worktree.
+        XCTAssertTrue(element("workspace-tabs").waitForExistence(timeout: 5), "the project did not open in the detail")
+        XCTAssertTrue(app.buttons["Nova tarefa aqui"].exists, "the workspace has no new task button")
+        XCTAssertTrue(element("workspace-worktree").label.contains("atlas-ios"), "the workspace is not on the main worktree")
         shot("sidebar-project")
 
         let worktree = element("sidebar-worktree-sandbox/subtract")
         if !worktree.exists { element("sidebar-project-sandbox").tap() }
         XCTAssertTrue(worktree.waitForExistence(timeout: 5), "sandbox does not list its worktrees")
         worktree.tap()
-        XCTAssertTrue(app.buttons["Revisar mudanças"].waitForExistence(timeout: 5), "the worktree did not open in the detail")
+        XCTAssertTrue(element("workspace-worktree").waitForExistence(timeout: 5), "the worktree did not open in the detail")
+        XCTAssertTrue(element("workspace-worktree").label.contains("subtract"), "the workspace is not on the picked worktree")
         shot("sidebar-worktree")
 
         let session = element("sidebar-session-sandbox-subtract-claude-6s1")
@@ -65,8 +69,62 @@ final class SidebarUITests: XCTestCase {
 
         // Back walks up to the worktree, in the detail and in the sidebar.
         app.buttons["BackButton"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["Revisar mudanças"].waitForExistence(timeout: 5), "Back did not show the worktree")
+        XCTAssertTrue(element("workspace-worktree").waitForExistence(timeout: 5), "Back did not show the worktree")
+        XCTAssertTrue(element("workspace-worktree").label.contains("subtract"))
         XCTAssertTrue(worktree.isSelected, "the sidebar did not follow Back")
+    }
+
+    func testWorkspaceOpensFilesHistoryAndChanges() {
+        let worktree = element("sidebar-worktree-sandbox/subtract")
+        if !worktree.waitForExistence(timeout: 10) { element("sidebar-project-sandbox").tap() }
+        XCTAssertTrue(worktree.waitForExistence(timeout: 5))
+        worktree.tap()
+        // Arquivos: the tree with git's status, a file in the editor.
+        let file = element("file-calc.py")
+        XCTAssertTrue(file.waitForExistence(timeout: 10), "the file tree did not load")
+        XCTAssertTrue(element("file-node_modules").exists, "ignored folders are not listed")
+        file.tap()
+        XCTAssertTrue(element("editor-tab-calc.py").waitForExistence(timeout: 5), "the file did not open in a tab")
+        let editor = element("code-editor")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "no editor")
+        XCTAssertTrue((editor.value as? String)?.contains("def subtract") == true, "the editor does not show the file")
+        shot("workspace-files")
+        // Typing makes it unsaved; ⌘S-equivalent Salvar saves it to the box.
+        editor.tap()
+        editor.typeText("# edited\n")
+        let save = element("editor-save")
+        XCTAssertTrue(save.isEnabled, "Salvar is not enabled after an edit")
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Salvo"].waitForExistence(timeout: 5), "the save did not go through")
+
+        // Histórico: the commits and the picked one's files.
+        element("workspace-tab-history").tap()
+        XCTAssertTrue(element("commit-5337933").waitForExistence(timeout: 10), "the history did not load")
+        XCTAssertTrue(app.staticTexts["subtract(a, b) returns a - b; test_calc.py covers it."].waitForExistence(timeout: 5), "the commit's message is not shown")
+        shot("workspace-history")
+
+        // Alterações: the changed files beside their patch.
+        element("workspace-tab-changes").tap()
+        XCTAssertTrue(element("changes-approve").waitForExistence(timeout: 10), "the changes did not load")
+        shot("workspace-changes")
+    }
+
+    func testNewSectionIsNamedInPlace() {
+        let add = element("sidebar-new-section")
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        let field = element("sidebar-edit-field")
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "no field for the new section's name")
+        field.typeText("Clientes\n")
+        XCTAssertTrue(element("sidebar-section-Clientes").waitForExistence(timeout: 5), "Return did not create the section")
+        XCTAssertFalse(field.exists, "the field stayed after Return")
+        shot("sidebar-new-section")
+        // Esc drops a name being typed.
+        add.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("Rascunho")
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+        XCTAssertFalse(element("sidebar-section-Rascunho").waitForExistence(timeout: 2), "Esc created the section")
     }
 
     func testOpeningSessionFromHomeShowsItInDetail() {

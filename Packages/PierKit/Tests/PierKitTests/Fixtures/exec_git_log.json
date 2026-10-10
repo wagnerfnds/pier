@@ -1,0 +1,4 @@
+{
+  "exit_code": 0,
+  "output": "ea9eb4b534b1b8d7c2c793520d940d554cc732d1\n\n--pier-log--\n\u001eea9eb4b534b1b8d7c2c793520d940d554cc732d1\u001fea9eb4b\u001f44bc2ec48838211a2b203533be378ee8a467b355\u001fMona Octocat\u001fmona@example.com\u001f2026-10-10T18:55:03-03:00\u001fHEAD -> subtract\u001fUnpushed tweak\n\u001e44bc2ec48838211a2b203533be378ee8a467b355\u001f44bc2ec\u001faa1ffb511be5238a6b6583d584dfcb37f4653d72\u001fMona Octocat\u001fmona@example.com\u001f2026-10-08T09:00:00-03:00\u001forigin/subtract\u001fRename readme, add a binary\n\u001eaa1ffb511be5238a6b6583d584dfcb37f4653d72\u001faa1ffb5\u001f6ecbc6f0ba3ef1a54e3d0c5164675098e4d4b891\u001fMona Octocat\u001fmona@example.com\u001f2026-10-07T21:36:28Z\u001f\u001fAdd subtract function\n\u001e6ecbc6f0ba3ef1a54e3d0c5164675098e4d4b891\u001f6ecbc6f\u001f\u001fMona Octocat\u001fmona@example.com\u001f2026-10-07T21:31:01Z\u001forigin/main, main\u001fInitial sandbox\n"
+}

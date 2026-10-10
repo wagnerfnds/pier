@@ -1,0 +1,10 @@
+{
+  "path": "calc.py",
+  "size": 71,
+  "modified": "2026-10-10T22:24:08.17854128Z",
+  "sha": "b0b445d76049f150627e577675aadb99193f64dee300658051d8c32e7eb0a2e9",
+  "executable": false,
+  "binary": false,
+  "encoding": "utf8",
+  "content": "def add(a, b):\n    return a + b\n\n\ndef subtract(a, b):\n    return a - b\n"
+}

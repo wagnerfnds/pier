@@ -77,11 +77,13 @@ func (b *Box) handleInfo(w http.ResponseWriter, r *http.Request) error {
 // (PATCH /v1/sessions/{name}); answer: POST …/answer fills in Claude Code's
 // question form; session.home: POST /v1/sessions takes "home": true;
 // session.chat: it takes "chat": true, and sessions say "chat"; draft:
-// GET …/draft; journal: GET /v1/events?since=SEQ; turns, queue, ask and
-// controls come with the turn ledger; pair.invite: POST /v1/pair/invite;
-// push: the /v1/push routes (when push is configured).
+// GET …/draft; journal: GET /v1/events?since=SEQ; touched: GET
+// …/worktrees/{w}/touched; files: a worktree's files, GET …/files and GET
+// and PUT …/file; turns, queue, ask and controls come with the turn ledger;
+// pair.invite: POST /v1/pair/invite; push: the /v1/push routes (when push
+// is configured).
 func (b *Box) Capabilities() []string {
-	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched"}
+	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files"}
 	if b.Turns != nil {
 		caps = append(caps, "turns", "queue", "ask", "controls")
 	}

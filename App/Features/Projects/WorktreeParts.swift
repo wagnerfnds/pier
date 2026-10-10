@@ -80,7 +80,7 @@ struct RemoveWorktreeSheet: View {
             .pierBackground()
             .navigationTitle("Remover worktree")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() }.keyboardShortcut(.cancelAction) } }
         }
         .presentationDetents([.medium, .large])
         .presentationBackground(Theme.bg)
@@ -143,6 +143,8 @@ struct NewWorktreeSheet: View {
                 Section("Nome (e branch)") {
                     TextField("nome-da-worktree", text: $name).font(.mono(16))
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        // Return creates it, as on the Mac's sheets.
+                        .onSubmit { if valid && !working { Task { await create() } } }
                     if taken.contains(name) { Text("Já existe uma worktree com esse nome.").font(.footnote).foregroundStyle(Theme.red) }
                 }.listRowBackground(Theme.card)
                 Section("Criar a partir de") {
@@ -156,9 +158,9 @@ struct NewWorktreeSheet: View {
             .navigationTitle("Nova worktree")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() }.keyboardShortcut(.cancelAction) }
                 ToolbarItem(placement: .confirmationAction) {
-                    if working { ProgressView() } else { Button("Criar") { Task { await create() } }.disabled(!valid) }
+                    if working { ProgressView() } else { Button("Criar") { Task { await create() } }.disabled(!valid).keyboardShortcut(.defaultAction) }
                 }
             }
             .task { branches = try? await model.client(for: box)?.branches(location: location.name) }

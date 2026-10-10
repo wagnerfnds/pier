@@ -59,6 +59,7 @@ struct ComposeScreenPlaceholder: View {
                 let t = newPromptTitle.trimmingCharacters(in: .whitespaces)
                 prefs.addPrompt(title: t.isEmpty ? String(vm.prompt.prefix(30)) : t, text: vm.prompt)
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancelar", role: .cancel) {}
         } message: { Text("Guarde este texto para reaproveitar em outras tarefas.") }
         .alert(customChoice == .model ? "Modelo" : "Esforço", isPresented: Binding(get: { customChoice != nil }, set: { if !$0 { customChoice = nil } })) {
@@ -69,6 +70,7 @@ struct ComposeScreenPlaceholder: View {
                 if WorktreeNaming.isValidChoice(v) { if customChoice == .model { vm.model = v } else { vm.effort = v } }
                 else if !v.isEmpty { vm.error = String(localized: "Valor inválido: use letras, números, ponto, dois-pontos ou hífen.") }
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancelar", role: .cancel) {}
         } message: { Text("Digite o nome exato aceito pelo agente.") }
         .onAppear {

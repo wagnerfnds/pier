@@ -1,0 +1,16 @@
+{
+  "path": "src",
+  "entries": [
+    {
+      "name": "lib",
+      "type": "dir"
+    },
+    {
+      "name": "main.go",
+      "type": "file",
+      "size": 29,
+      "status": "M "
+    }
+  ],
+  "truncated": false
+}

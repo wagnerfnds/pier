@@ -39,7 +39,7 @@ struct ProjectPickerSheet: View {
                 if query.isEmpty {
                     let recents = prefs.recentProjects.compactMap { k in entries.first { $0.key == k } }.prefix(4)
                     if !recents.isEmpty { Section("Recentes") { rows(Array(recents)) } }
-                    let groups = ProjectGrouping.groups(entries: entries, prefs: prefs, activity: { _ in 0 }, includeEmptySections: false)
+                    let groups = ProjectGrouping.groups(entries: entries, prefs: prefs, activity: { _ in nil }, includeEmptySections: false)
                     ForEach(groups.filter { if case .hidden = $0.kind { return false } else { return true } }) { g in
                         Section(g.title) { rows(g.entries) }
                     }
