@@ -75,7 +75,12 @@ final class LocalPrefs {
     }
 
     static var defaultURL: URL {
-        Shared.supportDirectory.appendingPathComponent("prefs.json")
+        #if DEBUG
+        // A mock run (UI tests, screenshots) seeds sections and marks of its own: on the Mac it shares the installed app's
+        // container, so it keeps them in a file of its own instead of the person's prefs.
+        if UITestMock.enabled { return Shared.supportDirectory.appendingPathComponent("prefs-mock.json") }
+        #endif
+        return Shared.supportDirectory.appendingPathComponent("prefs.json")
     }
 
     static func key(box: String, location: String) -> String { "\(box)/\(location)" }

@@ -93,6 +93,8 @@ struct Sidebar: View {
             content(entries: entries, groups: groups, hidden: hidden, working: working, archived: archived, chats: chats)
         }
         .listStyle(.sidebar)
+        .environment(\.defaultMinListRowHeight, 26)
+        .listSectionSpacing(.compact)
         .scrollIndicators(.never)   // the Mac would otherwise keep a bar visible whenever a mouse is connected
         .scrollContentBackground(.hidden)
         .searchable(text: $query, placement: .sidebar, prompt: Text("Buscar projeto, worktree ou sessão"))
@@ -179,24 +181,18 @@ struct Sidebar: View {
                     Text("Nova tarefa").font(.subheadline.weight(.semibold)).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12).frame(height: 36)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .contentShape(Rectangle())
+                .padding(.horizontal, 12).frame(height: 32)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SidebarButtonStyle(kind: .primary))
             .disabled(defaultBox == nil)
             .help("Nova tarefa (⌘N)")
             .accessibilityIdentifier("sidebar-new-task")
 
             Button { newChat() } label: {
                 Image(systemName: "bubble.left.and.text.bubble.right").font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.text)
-                    .frame(width: 40, height: 36)
-                    .background(Theme.washStrong, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .contentShape(Rectangle())
+                    .frame(width: 38, height: 32)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SidebarButtonStyle(kind: .secondary))
             .disabled(defaultBox == nil)
             .help("Nova conversa (⇧⌘N)")
             .accessibilityLabel("Nova conversa")
@@ -219,11 +215,9 @@ struct Sidebar: View {
                 Button { PaletteActions.open(HousekeepingRoute(), router) } label: { Label("Faxina", systemImage: "sparkles") }
             } label: {
                 Image(systemName: "ellipsis").font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.textDim)
-                    .frame(width: 32, height: 36)
-                    .contentShape(Rectangle())
+                    .frame(width: 32, height: 32)
             }
-            .menuStyle(.button).buttonStyle(.plain)
+            .menuStyle(.button).buttonStyle(SidebarButtonStyle(kind: .quiet))
             .accessibilityLabel("Criar")
             .accessibilityIdentifier("sidebar-create-menu")
         }
@@ -379,10 +373,10 @@ struct Sidebar: View {
             Divider()
             Button(role: .destructive) { prefs.removeSection(id) } label: { Label("Excluir seção", systemImage: "trash") }
         } label: {
-            Image(systemName: "ellipsis").font(.caption.weight(.bold)).foregroundStyle(Theme.textFaint)
-                .frame(width: 22, height: 18).contentShape(Rectangle())
+            Image(systemName: "ellipsis").font(.caption.weight(.bold))
+                .frame(width: 24, height: 20)
         }
-        .menuStyle(.button).buttonStyle(.plain)
+        .menuStyle(.button).buttonStyle(SidebarButtonStyle(kind: .quiet, radius: 6))
         .accessibilityLabel("Opções da seção \(title)")
     }
 
@@ -428,6 +422,7 @@ struct Sidebar: View {
                 .padding(14).frame(minWidth: 220, alignment: .leading).background(Theme.card)
             }
         }
+        .listRowInsets(rowInsets)
     }
 
     @ViewBuilder private func projectMenu(_ e: ProjectEntry, name: String) -> some View {
@@ -480,6 +475,7 @@ struct Sidebar: View {
             DisclosureGroup(isExpanded: expansion("\(e.key)/\(wt.name)")) {
                 ForEach(sessions) { s in session(s, box: e.box, in: route, all: conn?.sessions ?? []) }
             } label: { label }
+            .listRowInsets(rowInsets)
         }
     }
 
@@ -616,6 +612,9 @@ struct Sidebar: View {
         HStack(spacing: 6) { Text(title); CountCapsule(count: count); Spacer() }.accessibilityIdentifier(id)
     }
 
+    /// Rows sit close together; the label carries the vertical room (see `pickable`).
+    private var rowInsets: EdgeInsets { EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 12) }
+
     /// A pickable row: a button into the router (or `action`), highlighted while the detail shows that item.
     /// `accessory` sits beside it, outside the button (the "+" that shows under the pointer).
     private func pickable(_ item: SidebarItem?, id: String, session: Session? = nil, selected: Bool? = nil,
@@ -626,7 +625,8 @@ struct Sidebar: View {
             Button {
                 if let action { action() } else if let item { router.select(item, session: session) }
             } label: {
-                label().frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                // The vertical room is the label's, not the row's: the whole row is the target, with no gap between rows.
+                label().padding(.vertical, 5).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.text)
@@ -638,16 +638,17 @@ struct Sidebar: View {
         // by the Mac sidebar.
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.accent.opacity(0.24))
-                    .padding(.horizontal, -10).padding(.vertical, -6)
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.accent.opacity(0.22))
+                    .padding(.horizontal, -8)
             } else if hovered == id {
-                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.wash)
-                    .padding(.horizontal, -10).padding(.vertical, -6)
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.washStrong)
+                    .padding(.horizontal, -8)
             }
         }
         .onHover { inside in
             if inside { hovered = id } else if hovered == id { hovered = nil }
         }
+        .listRowInsets(rowInsets)
     }
 
     /// The "+" of a project or worktree row, shown while the pointer is over the row.
@@ -750,6 +751,57 @@ struct Sidebar: View {
 
     private func activity(_ e: ProjectEntry) -> Int {
         model.connection(for: e.box)?.agentCounts(location: e.location.name).values.reduce(0, +) ?? 0
+    }
+}
+
+/// The sidebar's buttons: a fill that answers the pointer (brighter on hover) and the press (darker, a touch smaller).
+/// `primary` is the accent "Nova tarefa", `secondary` a tinted square, `quiet` an icon that gets a fill on hover.
+private struct SidebarButtonStyle: ButtonStyle {
+    enum Kind { case primary, secondary, quiet }
+    let kind: Kind
+    var radius: CGFloat = 9
+
+    func makeBody(configuration: Configuration) -> some View { StyledButton(configuration: configuration, kind: kind, radius: radius) }
+
+    private struct StyledButton: View {
+        let configuration: Configuration
+        let kind: Kind
+        let radius: CGFloat
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+
+        private var fill: Color {
+            let pressed = configuration.isPressed
+            switch kind {
+            case .primary: return pressed ? Theme.accent.opacity(0.78) : hovering ? Theme.accent.opacity(0.9) : Theme.accent
+            case .secondary: return pressed ? Theme.accent.opacity(0.24) : hovering ? Theme.accent.opacity(0.15) : Theme.washStrong
+            case .quiet: return pressed ? Theme.laneTarget.opacity(2) : hovering ? Theme.washStrong : .clear
+            }
+        }
+        private var tint: Color {
+            switch kind {
+            case .primary: .white
+            case .secondary: hovering || configuration.isPressed ? Theme.accent : Theme.text
+            case .quiet: hovering || configuration.isPressed ? Theme.text : Theme.textDim
+            }
+        }
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(tint)
+                .background(fill, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .overlay {
+                    if kind == .primary && hovering {
+                        RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(.white.opacity(0.25))
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .scaleEffect(configuration.isPressed ? 0.97 : 1)
+                .opacity(enabled ? 1 : 0.45)
+                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+                .onHover { hovering = $0 }
+        }
     }
 }
 
