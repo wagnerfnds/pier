@@ -330,6 +330,19 @@ final class EditorStore {
         }
     }
 
+    /// A new, empty file at `path` (its folders made as needed), opened in a tab; nil when made, else why not.
+    func create(_ path: String) async -> String? {
+        guard let client else { return String(localized: "Sem conexão com a box.") }
+        do {
+            _ = try await client.writeFile(location: ref.location, worktree: ref.worktree, path: path, FileWrite(text: "", sha: nil, create: true))
+            open(path)
+            return nil
+        } catch {
+            if let e = error as? BoxError, e.kind == .fileExists { return String(localized: "Já existe um arquivo com esse nome.") }
+            return WorkspaceError.message(error)
+        }
+    }
+
     enum SaveOutcome { case saved, conflict, failed(String) }
 
     /// Save the file; `force` overwrites what the box has (after a conflict the person chose to keep theirs).

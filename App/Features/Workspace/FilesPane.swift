@@ -42,6 +42,11 @@ private struct FileTreePane: View {
     @State private var picked = 0
     @FocusState private var searchFocused: Bool
     @State private var focus = WorkspaceFocus.shared
+    /// The folder a new file is being named in ("" for the root), in place at the top of the tree.
+    @State private var creatingIn: String?
+    @State private var newName = ""
+    @State private var createError: String?
+    @FocusState private var newFocused: Bool
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
     private var results: [String] { searching ? FileSearch.search(query, in: tree.allFiles ?? []) : [] }
@@ -104,6 +109,7 @@ private struct FileTreePane: View {
         default:
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    if let folder = creatingIn { newFileRow(in: folder) }
                     ForEach(tree.rows) { row in
                         FileTreeRow(row: row, open: tree.open.contains(row.path), loading: tree.loading.contains(row.path),
                                     selected: editor.active == row.path) {
@@ -130,10 +136,60 @@ private struct FileTreePane: View {
         if row.entry.isFile {
             Button { editor.open(row.path) } label: { Label("Abrir", systemImage: "doc.text") }
         }
+        let folder = row.entry.isFolder ? row.path : FileTree.parent(of: row.path)
+        Button { startNewFile(in: folder) } label: { Label("Novo arquivo aqui…", systemImage: "doc.badge.plus") }
         if row.entry.isFolder {
             Button { Task { await tree.load(row.path) } } label: { Label("Recarregar pasta", systemImage: "arrow.clockwise") }
         }
         Button { UIPasteboard.general.string = row.path } label: { Label("Copiar caminho", systemImage: "doc.on.doc") }
+    }
+
+    /// The name of a new file, typed in place: Return makes it (folders in the name too) and opens it, Esc drops it.
+    private func newFileRow(in folder: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.badge.plus").font(.system(size: Density.small)).foregroundStyle(Theme.accent).frame(width: 16)
+                if !folder.isEmpty { Text(folder + "/").font(.system(size: Density.text - 1)).foregroundStyle(Theme.textFaint).lineLimit(1).truncationMode(.head) }
+                TextField("nome-do-arquivo", text: $newName)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: Density.text - 0.5))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($newFocused)
+                    .onSubmit { createFile(in: folder) }
+                    .onKeyPress(.escape) { creatingIn = nil; return .handled }
+                    .accessibilityIdentifier("tree-new-file-field")
+            }
+            .padding(.horizontal, 6).frame(height: Density.row - 2)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5))
+            if let createError {
+                Text(createError).font(.system(size: Density.small - 1)).foregroundStyle(Theme.red).padding(.leading, 4)
+            }
+        }
+        .padding(.vertical, 3)
+        .task { newFocused = true }
+    }
+
+    private func startNewFile(in folder: String) {
+        newName = ""
+        createError = nil
+        creatingIn = folder
+    }
+
+    private func createFile(in folder: String) {
+        let name = newName.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !name.isEmpty else { creatingIn = nil; return }
+        let path = FileTree.join(folder, name)
+        Task {
+            if let error = await editor.create(path) {
+                createError = error
+            } else {
+                creatingIn = nil
+                await tree.load(folder)
+                await tree.reveal(path)
+            }
+        }
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -180,23 +236,34 @@ private struct FileTreePane: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 2) {
-            Toggle(isOn: Binding(get: { !tree.hideIgnored }, set: { tree.hideIgnored = !$0 })) {
-                Image(systemName: tree.hideIgnored ? "eye.slash" : "eye")
+        HStack(spacing: 4) {
+            footerButton(tree.hideIgnored ? "eye.slash" : "eye",
+                         help: tree.hideIgnored ? "Mostrar arquivos ignorados pelo git" : "Ocultar arquivos ignorados pelo git",
+                         label: "Arquivos ignorados") { tree.hideIgnored.toggle() }
+            footerButton("rectangle.compress.vertical", help: "Recolher tudo", label: "Recolher tudo") {
+                withAnimation(.snappy(duration: 0.15)) { tree.open.removeAll() }
             }
-            .toggleStyle(.button).buttonStyle(.borderless)
-            .help(tree.hideIgnored ? "Mostrar arquivos ignorados pelo git" : "Ocultar arquivos ignorados pelo git")
-            .accessibilityLabel("Arquivos ignorados")
-            Button { withAnimation(.snappy(duration: 0.15)) { tree.open.removeAll() } } label: { Image(systemName: "rectangle.compress.vertical") }
-                .buttonStyle(.borderless).help("Recolher tudo").accessibilityLabel("Recolher tudo")
+            footerButton("doc.badge.plus", help: "Novo arquivo", label: "Novo arquivo") {
+                startNewFile(in: editor.active.map(FileTree.parent(of:)) ?? "")
+            }
+            .accessibilityIdentifier("tree-new-file")
             Spacer()
-            Button { Task { await tree.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.borderless).help("Recarregar (⌘R)").accessibilityLabel("Recarregar")
+            footerButton("arrow.clockwise", help: "Recarregar (⌘R)", label: "Recarregar") { Task { await tree.refresh() } }
         }
-        .font(.system(size: Density.small))
-        .foregroundStyle(Theme.textDim)
-        .padding(.horizontal, 8).frame(height: Platform.isMac ? 28 : 36)
+        .padding(.horizontal, 6).frame(height: Platform.isMac ? 28 : 36)
         .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
+    }
+
+    private func footerButton(_ symbol: String, help: LocalizedStringKey, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: Density.small + 1))
+                .frame(width: 26, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(Theme.textDim)
+        .help(help)
+        .accessibilityLabel(label)
     }
 
     private func openPicked() {

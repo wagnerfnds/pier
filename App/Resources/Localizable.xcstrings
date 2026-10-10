@@ -5193,6 +5193,16 @@
         }
       }
     },
+    "Já existe um arquivo com esse nome." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A file with that name already exists."
+          }
+        }
+      }
+    },
     "Já existe uma sessão com esse nome. Tente de novo." : {
       "localizations" : {
         "en" : {
@@ -6203,6 +6213,16 @@
         }
       }
     },
+    "Nenhum agente agora" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No agents right now"
+          }
+        }
+      }
+    },
     "Nenhum agente ativo." : {
       "localizations" : {
         "en" : {
@@ -6749,6 +6769,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Worktree…"
+          }
+        }
+      }
+    },
+    "Novo arquivo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New File"
+          }
+        }
+      }
+    },
+    "Novo arquivo aqui…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New File Here…"
           }
         }
       }
@@ -11329,6 +11369,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "worktree-name"
+          }
+        }
+      }
+    },
+    "nome-do-arquivo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "file-name"
           }
         }
       }
