@@ -127,7 +127,7 @@ struct CompactFileScreen: View {
             if let doc {
                 switch doc.state {
                 case .loaded where doc.editable:
-                    CodeEditor(doc: doc, open: Set(editor.docs.map(\.path)), wrap: true, container: state.editorView,
+                    CodeEditor(doc: doc, open: Set(editor.docs.map(\.path)), container: state.editorView,
                                onChange: { editor.setText($0, for: doc.path) },
                                onSelection: { editor.setSelection($0, for: doc.path) })
                 case .failed(let m):

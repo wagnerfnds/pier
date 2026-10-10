@@ -243,7 +243,6 @@ final class EditorStore {
     var active: String?
     /// The caret's line and column in the active file (the status bar).
     var caret = (line: 1, column: 1)
-    var wrap = UserDefaults.standard.bool(forKey: "editor.wrap")
     @ObservationIgnored private var client: (any PierBoxClient)?
 
     init(ref: WorkspaceRef) { self.ref = ref }

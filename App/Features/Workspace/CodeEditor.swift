@@ -4,12 +4,12 @@ import PierKit
 
 /// The workspace's editor: one UITextView per open file (so each keeps its own undo, caret and scroll), line numbers
 /// beside it, syntax colors from `SyntaxHighlighter`, Return and Tab in the file's own indentation (`EditorText`),
-/// Shift-Tab to outdent, the system's find and replace (⌘F) and no smart quotes or autocorrection.
+/// Shift-Tab to outdent, the system's find and replace (⌘F) and no smart quotes or autocorrection. Long lines wrap: a
+/// UITextView does not scroll sideways reliably.
 struct CodeEditor: UIViewRepresentable {
     let doc: EditorDoc
     /// The files open, so the text views of the others go.
     var open: Set<String>
-    var wrap: Bool
     /// The container to show: kept by the workspace, so undo, carets and scrolls outlive this view (a tab switch, a
     /// session opened and closed).
     let container: EditorContainer
@@ -31,7 +31,7 @@ struct CodeEditor: UIViewRepresentable {
         c.onSelection = onSelection
         host.adopt()
         container.keep(open)
-        container.show(doc: doc, wrap: wrap, coordinator: c)
+        container.show(doc: doc, coordinator: c)
     }
 
     /// Text view delegate for every file's text view; reports edits and the caret to the store.
@@ -126,7 +126,7 @@ final class EditorContainer: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(doc: EditorDoc, wrap: Bool, coordinator: CodeEditor.Coordinator) {
+    func show(doc: EditorDoc, coordinator: CodeEditor.Coordinator) {
         let tv: CodeTextView
         if let v = views[doc.path] {
             tv = v
@@ -142,7 +142,6 @@ final class EditorContainer: UIView {
             tv.load(doc.text, selection: doc.selection)
         }
         tv.isEditable = doc.editable
-        tv.setWrap(wrap)
         if current !== tv {
             current?.removeFromSuperview()
             current = tv
@@ -181,7 +180,6 @@ final class CodeTextView: UITextView {
     /// UTF-16 offsets where lines start, for the gutter's numbers.
     private(set) var lineStarts: [Int] = [0]
     private var highlightTask: Task<Void, Never>?
-    private var wrapping: Bool?
 
     static let fontSize: CGFloat = Platform.isMac ? 12.5 : 14
     static let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
@@ -240,21 +238,6 @@ final class CodeTextView: UITextView {
         selectedRange = NSRange(location: min(selection.location, length), length: 0)
         undoManager?.removeAllActions()
         textChanged(immediately: true)
-    }
-
-    func setWrap(_ on: Bool) {
-        guard wrapping != on else { return }
-        wrapping = on
-        if on {
-            textContainer.widthTracksTextView = true
-            textContainer.size = CGSize(width: bounds.width, height: .greatestFiniteMagnitude)
-        } else {
-            textContainer.widthTracksTextView = false
-            textContainer.size = CGSize(width: 100_000, height: CGFloat.greatestFiniteMagnitude)
-        }
-        showsHorizontalScrollIndicator = !on
-        alwaysBounceHorizontal = false
-        gutter?.setNeedsDisplay()
     }
 
     /// After every edit: the line starts now, the colors a moment later.
@@ -379,15 +362,6 @@ final class CodeTextView: UITextView {
         findInteraction?.presentFindNavigator(showingReplace: false)
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        if wrapping == true, textContainer.size.width != bounds.width { textContainer.size = CGSize(width: bounds.width, height: .greatestFiniteMagnitude) }
-        if wrapping == false {
-            // Without wrapping, scroll as wide as the longest line laid out so far.
-            let used = layoutManager.usedRect(for: textContainer).width + textContainerInset.left + textContainerInset.right
-            if abs(contentSize.width - max(used, bounds.width)) > 1 { contentSize.width = max(used, bounds.width) }
-        }
-    }
 }
 
 /// The line numbers beside the text, drawn for the lines on screen.

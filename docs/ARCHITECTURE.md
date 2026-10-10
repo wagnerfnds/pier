@@ -268,7 +268,7 @@ editor's line, column, language and line ending):
   matches every file of the worktree (`FileSearch`: `git ls-files` once through exec, a fuzzy score). Files open in tabs
   in `CodeEditor`: a TextKit 1 UITextView per open file (its own undo, caret and scroll) with line numbers, colors from
   `SyntaxHighlighter` a moment after typing, Return and Tab in the file's indentation and Shift-Tab (`EditorText`), the
-  system's find and replace (⌘F), wrap on or off. ⌘S (the menu bar's Salvar, through `FocusedValues.workspace`) saves
+  system's find and replace (⌘F); long lines wrap. ⌘S (the menu bar's Salvar, through `FocusedValues.workspace`) saves
   with `PUT …/file` naming the sha the edit started from: when an agent wrote the file meanwhile the box answers 409
   `file_changed` and the editor asks (save over it, or reload). The open file is polled (`stat=1`, 3 s): without edits it
   follows the box, with edits a banner says it changed there. Images show as pictures; files over 2 MiB are not opened.

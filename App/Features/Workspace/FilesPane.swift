@@ -496,10 +496,6 @@ private struct EditorPane: View {
             if doc.editable {
                 Button { handle?.find() } label: { Image(systemName: "magnifyingglass") }
                     .help("Buscar no arquivo (⌘F)").accessibilityLabel("Buscar no arquivo")
-                Button { editor.wrap.toggle(); UserDefaults.standard.set(editor.wrap, forKey: "editor.wrap") } label: {
-                    Image(systemName: editor.wrap ? "text.alignleft" : "arrow.left.and.right.text.vertical")
-                }
-                .help(editor.wrap ? "Não quebrar linhas" : "Quebrar linhas").accessibilityLabel("Quebrar linhas")
                 Button { save(doc) } label: {
                     Text("Salvar").font(.system(size: Density.small, weight: .semibold))
                         .padding(.horizontal, 10).padding(.vertical, 3)
@@ -572,7 +568,7 @@ private struct EditorPane: View {
             } else if doc.binary {
                 BinaryPreview(doc: doc)
             } else {
-                CodeEditor(doc: doc, open: Set(editor.docs.map(\.path)), wrap: editor.wrap, container: state.editorView,
+                CodeEditor(doc: doc, open: Set(editor.docs.map(\.path)), container: state.editorView,
                            onChange: { editor.setText($0, for: doc.path) },
                            onSelection: { editor.setSelection($0, for: doc.path) },
                            onReady: { handle = $0 })

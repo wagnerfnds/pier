@@ -7093,16 +7093,6 @@
         }
       }
     },
-    "Não quebrar linhas" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Don't wrap lines"
-          }
-        }
-      }
-    },
     "Não salvar" : {
       "localizations" : {
         "en" : {
