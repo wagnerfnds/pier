@@ -70,7 +70,9 @@ final class WorkspaceState {
 @MainActor @Observable
 final class WorkspaceRegistry {
     static let shared = WorkspaceRegistry()
-    private(set) var states: [String: WorkspaceState] = [:]
+    /// Not observed itself: it grows while views are being made (a workspace's init), and a state starts with nothing
+    /// unsaved; what the sidebar follows is each state's `dirtyPaths`.
+    @ObservationIgnored private(set) var states: [String: WorkspaceState] = [:]
 
     func state(_ ref: WorkspaceRef) -> WorkspaceState {
         if let s = states[ref.key] { return s }

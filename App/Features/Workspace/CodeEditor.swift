@@ -20,18 +20,18 @@ struct CodeEditor: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeUIView(context: Context) -> EditorContainer {
-        container.removeFromSuperview()
+    func makeUIView(context: Context) -> EditorHost {
         onReady?(CodeEditorHandle(container: container))
-        return container
+        return EditorHost(container: container)
     }
 
-    func updateUIView(_ v: EditorContainer, context: Context) {
+    func updateUIView(_ host: EditorHost, context: Context) {
         let c = context.coordinator
         c.onChange = onChange
         c.onSelection = onSelection
-        v.keep(open)
-        v.show(doc: doc, wrap: wrap, coordinator: c)
+        host.adopt()
+        container.keep(open)
+        container.show(doc: doc, wrap: wrap, coordinator: c)
     }
 
     /// Text view delegate for every file's text view; reports edits and the caret to the store.
@@ -79,6 +79,33 @@ struct CodeEditor: UIViewRepresentable {
 
     func find() { container?.current?.showFind() }
     func focus() { _ = container?.current?.becomeFirstResponder() }
+}
+
+/// Where an editor shows: it takes the workspace's one container whenever it is on screen, so two screens of the same
+/// worktree on a navigation stack (a project and its main worktree) each get it back when they show again.
+final class EditorHost: UIView {
+    let container: EditorContainer
+
+    init(container: EditorContainer) {
+        self.container = container
+        super.init(frame: .zero)
+        adopt()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func adopt() {
+        guard container.superview !== self else { return }
+        container.removeFromSuperview()
+        addSubview(container)
+        container.frame = bounds
+        container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { adopt() }
+    }
 }
 
 /// Holds the gutter and the text view of the file on screen; keeps the other files' text views for their tabs.
