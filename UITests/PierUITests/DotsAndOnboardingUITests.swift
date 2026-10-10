@@ -1,6 +1,6 @@
 import XCTest
 
-/// Status dots (Home and sidebar), the 3-step onboarding and "Levar para o iPhone", against the mock box.
+/// Status dots (the Home), the 3-step onboarding and "Levar para o iPhone", against the mock box.
 /// Runs on iPhone and iPad; the ⌥ labels test needs the iPad sidebar (skipped on compact width).
 final class DotsAndOnboardingUITests: XCTestCase {
     var app: XCUIApplication!
@@ -34,7 +34,7 @@ final class DotsAndOnboardingUITests: XCTestCase {
         XCTAssertTrue(dot(Self.running).exists && dot(Self.finished).exists, "a live agent has no dot")
         // One dot per live agent: the mock has three (an exited or archived one has none).
         let all = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'agent-dot-'"))
-        // One strip on screen: the Home's on iPhone, the sidebar's with the sidebar (the Home then shows none).
+        // One strip on screen: the Home's (the sidebar lists the live work under "Trabalhando" instead).
         XCTAssertEqual(all.count, 3, "expected one strip with a dot per live agent")
         // Colors as states: amber needs you, blue working, green your turn.
         XCTAssertTrue((dot(Self.waiting).value as? String)?.hasPrefix("Precisa de você") == true)

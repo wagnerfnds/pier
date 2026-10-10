@@ -42,6 +42,9 @@ final class LocalPrefs {
         var dismissed: [String: Date] = [:]
         /// Box health cards ignored for a while (card id -> until when).
         var snoozedHealth: [String: Date] = [:]
+        /// Sidebar sections the person opened or folded (section id, or "working" / "chats" / "archived" / "hidden" /
+        /// "unsorted" -> open). Missing means the section's default.
+        var sidebarExpanded: [String: Bool] = [:]
 
         init() {}
         init(from d: Decoder) throws {
@@ -59,6 +62,7 @@ final class LocalPrefs {
             seen = try c.decodeIfPresent([String: Date].self, forKey: .seen) ?? [:]
             dismissed = try c.decodeIfPresent([String: Date].self, forKey: .dismissed) ?? [:]
             snoozedHealth = try c.decodeIfPresent([String: Date].self, forKey: .snoozedHealth) ?? [:]
+            sidebarExpanded = try c.decodeIfPresent([String: Bool].self, forKey: .sidebarExpanded) ?? [:]
         }
     }
 
@@ -110,6 +114,25 @@ final class LocalPrefs {
     func moveProjects(in section: UUID, from: IndexSet, to: Int) {
         guard let i = data.sections.firstIndex(where: { $0.id == section }) else { return }
         data.sections[i].projects.move(fromOffsets: from, toOffset: to); save()
+    }
+
+    /// Put a project in a section (nil = unsorted) right before another project of it (nil = at the end): a drop in the
+    /// sidebar. Unsorted projects keep their activity order, so `before` only matters inside a section.
+    func place(project key: String, in section: UUID?, before other: String?) {
+        guard key != other else { return }
+        for i in data.sections.indices { data.sections[i].projects.removeAll { $0 == key } }
+        if let section, let i = data.sections.firstIndex(where: { $0.id == section }) {
+            let at = other.flatMap { o in data.sections[i].projects.firstIndex(of: o) } ?? data.sections[i].projects.endIndex
+            data.sections[i].projects.insert(key, at: at)
+        }
+        save()
+    }
+
+    func isSidebarExpanded(_ id: String, default open: Bool = true) -> Bool { data.sidebarExpanded[id] ?? open }
+    func setSidebarExpanded(_ id: String, _ open: Bool) {
+        guard data.sidebarExpanded[id] != open else { return }
+        data.sidebarExpanded[id] = open
+        save()
     }
 
     // MARK: composer memory & saved prompts

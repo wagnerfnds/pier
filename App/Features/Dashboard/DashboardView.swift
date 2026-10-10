@@ -18,7 +18,7 @@ struct DashboardView: View {
             VStack(spacing: 14) {
                 BoxesHeader()
                 // A dot per live agent (App/Features/Dots); with the sidebar (iPad, Mac) its own strip already shows them.
-                if sizeClass != .regular { AgentDotStrip(style: .home) }
+                AgentDotStrip()
                 let kinds = layout.visible
                 if kinds.isEmpty {
                     HomeEmpty(symbol: "square.grid.2x2", title: "Nenhum widget visível", hint: HL("Toque em Personalizar para escolher o que aparece no início."))
