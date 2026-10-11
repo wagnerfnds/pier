@@ -15,4 +15,7 @@ enum Density {
     static var glyph: CGFloat { Platform.isMac ? 18 : 24 }
     static var indent: CGFloat { Platform.isMac ? 14 : 18 }
     static var icon: CGFloat { Platform.isMac ? 13 : 16 }
+    /// The bars at the bottom of the window (the sidebar's footer, the workspace's status bar): one height, so their
+    /// top lines meet across the split.
+    static var bar: CGFloat { Platform.isMac ? 30 : 40 }
 }

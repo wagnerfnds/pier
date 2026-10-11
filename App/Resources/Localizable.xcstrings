@@ -7639,16 +7639,6 @@
         }
       }
     },
-    "Ocultar arquivos ignorados pelo git" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hide files git ignores"
-          }
-        }
-      }
-    },
     "Ocultos" : {
       "localizations" : {
         "en" : {
@@ -8987,16 +8977,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reload"
-          }
-        }
-      }
-    },
-    "Recarregar (⌘R)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reload (⌘R)"
           }
         }
       }

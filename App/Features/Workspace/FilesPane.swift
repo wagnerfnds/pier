@@ -53,7 +53,7 @@ private struct FileTreePane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            searchField
+            header
             Group {
                 if searching {
                     searchResults
@@ -62,9 +62,8 @@ private struct FileTreePane: View {
                 }
             }
             .frame(maxHeight: .infinity)
-            footer
         }
-        .background(Theme.bg)
+        .background(Theme.card)
         .onChange(of: state.quickOpenRequested, initial: true) { _, requested in
             guard requested else { return }
             state.quickOpenRequested = false
@@ -76,6 +75,38 @@ private struct FileTreePane: View {
             // A repository too large to list whole: git looks for what is typed.
             if searching { await tree.match(query) }
         }
+    }
+
+    /// "Abrir rápido", and beside it what the tree does: a new file, and a menu with the ignored files, collapse and
+    /// reload. On top, not in a bar at the bottom: the workspace's status bar is the window's only bottom bar.
+    private var header: some View {
+        HStack(spacing: 2) {
+            searchField
+            toolButton("doc.badge.plus", help: "Novo arquivo", label: "Novo arquivo") {
+                startNewFile(in: editor.active.map(FileTree.parent(of:)) ?? "")
+            }
+            .accessibilityIdentifier("tree-new-file")
+            Menu {
+                Toggle(isOn: Binding(get: { !tree.hideIgnored }, set: { tree.hideIgnored = !$0 })) {
+                    Label("Mostrar arquivos ignorados pelo git", systemImage: "eye")
+                }
+                Button { withAnimation(.snappy(duration: 0.15)) { tree.open.removeAll() } } label: {
+                    Label("Recolher tudo", systemImage: "rectangle.compress.vertical")
+                }
+                Divider()
+                Button { Task { await tree.refresh() } } label: { Label("Recarregar", systemImage: "arrow.clockwise") }
+            } label: {
+                Image(systemName: "ellipsis.circle").font(.system(size: Density.small + 1))
+                    .frame(width: 26, height: Density.row + 2)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button).buttonStyle(.borderless).menuIndicator(.hidden).fixedSize()
+            .tint(Theme.textDim)
+            .help("Mais")
+            .accessibilityLabel("Mais")
+            .accessibilityIdentifier("tree-menu")
+        }
+        .padding(8)
     }
 
     private var searchField: some View {
@@ -105,7 +136,6 @@ private struct FileTreePane: View {
         }
         .padding(.horizontal, 8).frame(height: Density.row + 2)
         .background(Theme.washStrong, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .padding(8)
     }
 
     @ViewBuilder private var treeList: some View {
@@ -269,29 +299,10 @@ private struct FileTreePane: View {
         }
     }
 
-    private var footer: some View {
-        HStack(spacing: 4) {
-            footerButton(tree.hideIgnored ? "eye.slash" : "eye",
-                         help: tree.hideIgnored ? "Mostrar arquivos ignorados pelo git" : "Ocultar arquivos ignorados pelo git",
-                         label: "Arquivos ignorados") { tree.hideIgnored.toggle() }
-            footerButton("rectangle.compress.vertical", help: "Recolher tudo", label: "Recolher tudo") {
-                withAnimation(.snappy(duration: 0.15)) { tree.open.removeAll() }
-            }
-            footerButton("doc.badge.plus", help: "Novo arquivo", label: "Novo arquivo") {
-                startNewFile(in: editor.active.map(FileTree.parent(of:)) ?? "")
-            }
-            .accessibilityIdentifier("tree-new-file")
-            Spacer()
-            footerButton("arrow.clockwise", help: "Recarregar (⌘R)", label: "Recarregar") { Task { await tree.refresh() } }
-        }
-        .padding(.horizontal, 6).frame(height: Platform.isMac ? 28 : 36)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
-    }
-
-    private func footerButton(_ symbol: String, help: LocalizedStringKey, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+    private func toolButton(_ symbol: String, help: LocalizedStringKey, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: Density.small + 1))
-                .frame(width: 26, height: 22)
+                .frame(width: 26, height: Density.row + 2)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
@@ -460,7 +471,7 @@ private struct EditorPane: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Theme.bg)
+        .background(Theme.card)
         .onChange(of: state.findRequested, initial: true) { _, requested in
             guard requested else { return }
             state.findRequested = false
@@ -521,8 +532,9 @@ private struct EditorPane: View {
         }
         .scrollIndicators(.hidden)
         .frame(height: Platform.isMac ? 30 : 38)
-        .background(Theme.card)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 1) }
+        // A gray strip with its line under the tabs: the open file's tab, the editor's white, covers it and runs into
+        // the editor.
+        .background { ZStack(alignment: .bottom) { Theme.bg; Rectangle().fill(Theme.stroke).frame(height: 1) } }
     }
 
     private func close(_ path: String) {
@@ -657,7 +669,7 @@ private struct EditorTab: View {
         }
         .padding(.horizontal, 10)
         .frame(maxHeight: .infinity)
-        .background(active ? Theme.bg : .clear)
+        .background(active ? Theme.card : .clear)
         .overlay(alignment: .top) { if active { Rectangle().fill(Theme.accent).frame(height: 2) } }
         .overlay(alignment: .trailing) { Rectangle().fill(Theme.stroke).frame(width: 1) }
         .contentShape(Rectangle())

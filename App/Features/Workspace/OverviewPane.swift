@@ -38,7 +38,7 @@ struct OverviewPane: View {
             .frame(maxWidth: 820, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .background(Theme.bg)
+        .background(Theme.card)
         .task { await loadStatuses() }
         .refreshable { await loadStatuses() }
     }

@@ -730,13 +730,14 @@ struct Sidebar: View {
 
     // MARK: footer
 
-    /// "Nova seção" where the Mac keeps "New Folder" (bottom left), and Ajustes.
+    /// "Nova seção" where the Mac keeps "New Folder" (bottom left), and Ajustes. As tall as the workspace's status bar
+    /// (`Density.bar`): their top lines meet across the split.
     private func footer(entries: [ProjectEntry]) -> some View {
         HStack(spacing: 2) {
             Button { startEdit(.newSection(project: nil), text: "") } label: {
-                Label("Nova seção", systemImage: "plus")
-                    .font(.system(size: Density.small + 1, weight: .medium))
-                    .padding(.horizontal, 8).frame(height: Density.row)
+                Label("Nova seção", systemImage: "plus.circle")
+                    .font(.system(size: Density.small + 1))
+                    .padding(.horizontal, 6).frame(height: Density.row - 2)
             }
             .buttonStyle(SidebarButtonStyle(kind: .quiet, radius: 6))
             .disabled(entries.isEmpty)
@@ -744,13 +745,13 @@ struct Sidebar: View {
             .accessibilityIdentifier("sidebar-new-section")
             Spacer(minLength: 4)
             Button { PaletteActions.open(HousekeepingRoute(), router) } label: {
-                Image(systemName: "sparkles").font(.system(size: Density.icon)).frame(width: Density.row + 2, height: Density.row)
+                Image(systemName: "sparkles").font(.system(size: Density.icon)).frame(width: Density.row, height: Density.row - 2)
             }
             .buttonStyle(SidebarButtonStyle(kind: .quiet, radius: 6))
             .help("Faxina (⇧⌘L)")
             .accessibilityLabel("Faxina")
             Button { router.select(.tab(.settings)) } label: {
-                Image(systemName: "gearshape").font(.system(size: Density.icon)).frame(width: Density.row + 2, height: Density.row)
+                Image(systemName: "gearshape").font(.system(size: Density.icon)).frame(width: Density.row, height: Density.row - 2)
             }
             .buttonStyle(SidebarButtonStyle(kind: router.sidebarSelection == .tab(.settings) ? .secondary : .quiet, radius: 6))
             .help("Ajustes (⌘,)")
@@ -758,7 +759,7 @@ struct Sidebar: View {
             .accessibilityAddTraits(router.sidebarSelection == .tab(.settings) ? .isSelected : [])
             .accessibilityIdentifier("sidebar-settings")
         }
-        .padding(.horizontal, 8).padding(.vertical, 6)
+        .padding(.horizontal, 8).frame(height: Density.bar)
         .background(Theme.bg)
         .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
     }

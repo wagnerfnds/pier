@@ -39,7 +39,10 @@ struct ProjectWorkspace: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .pierBackground()
+        // White from the toolbar to the status bar: the panes, the tab bar and the window's toolbar above it (which takes
+        // the color at the top of the content) read as one surface beside the gray sidebar.
+        .background(Theme.card.ignoresSafeArea())
+        .scrollContentBackground(.hidden)
         .navigationTitle(prefs.displayName(box: box, location: location))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -255,7 +258,7 @@ private struct WorkspaceContent: View {
         .font(.system(size: Density.small))
         .foregroundStyle(Theme.textDim)
         .padding(.horizontal, 12)
-        .frame(height: Platform.isMac ? 24 : 30)
+        .frame(height: Density.bar)
         .background(Theme.card)
         .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
     }

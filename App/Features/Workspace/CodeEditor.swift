@@ -120,8 +120,8 @@ final class EditorContainer: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = UIColor(Theme.bg)
-        gutter.backgroundColor = UIColor(Theme.bg)
+        backgroundColor = UIColor(Theme.card)
+        gutter.backgroundColor = UIColor(Theme.card)
         separator.backgroundColor = UIColor(Theme.stroke)
         addSubview(gutter)
         addSubview(separator)
@@ -207,7 +207,7 @@ final class CodeTextView: UITextView {
         container.widthTracksTextView = true
         manager.addTextContainer(container)
         super.init(frame: .zero, textContainer: container)
-        backgroundColor = UIColor(Theme.bg)
+        backgroundColor = UIColor(Theme.card)
         font = Self.font
         typingAttributes = Self.baseAttributes
         autocorrectionType = .no
@@ -391,7 +391,7 @@ final class GutterView: UIView {
     }
 
     override func draw(_ rect: CGRect) {
-        UIColor(Theme.bg).setFill()
+        UIColor(Theme.card).setFill()
         UIRectFill(rect)
         guard let tv = textView else { return }
         let lm = tv.layoutManager

@@ -89,7 +89,7 @@ struct ChangesPane: View {
             }
             .padding(12)
         }
-        .background(Theme.bg)
+        .background(Theme.card)
         .refreshable { await store.load() }
     }
 

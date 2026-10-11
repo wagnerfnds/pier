@@ -53,7 +53,7 @@ private struct CommitList: View {
                 }
                 .padding(6)
             }
-            .background(Theme.bg)
+            .background(Theme.card)
             .onKeyPress(.downArrow) { step(1, proxy); return .handled }
             .onKeyPress(.upArrow) { step(-1, proxy); return .handled }
             .refreshable { await store.load() }
