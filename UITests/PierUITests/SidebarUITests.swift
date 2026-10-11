@@ -124,21 +124,66 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(element("sidebar-section-Clientes").waitForExistence(timeout: 5), "Return did not create the section")
         XCTAssertFalse(field.exists, "the field stayed after Return")
         shot("sidebar-new-section")
-        // Esc drops a name being typed.
+        // Nova seção again while its field is open: the same field, with what is typed.
         add.tap()
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.typeText("Rascunho")
-        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
-        XCTAssertFalse(element("sidebar-section-Rascunho").waitForExistence(timeout: 2), "Esc created the section")
-        // × drops it too: a screen without a keyboard has no Esc.
+        field.typeText("Lix")
         add.tap()
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.typeText("Lixo")
+        // (It used to close a moment later.)
+        XCTAssertFalse(wait(1.5) { !field.exists }, "Nova seção again closed the field")
+        XCTAssertEqual(field.value as? String, "Lix", "Nova seção again lost what was typed")
+        field.typeText("o")
+        // × drops it (Esc does too, on the Mac and with a keyboard: a simulator's UI test can't press Esc, it reaches
+        // not even a sheet's Cancelar).
         element("sidebar-edit-cancel").tap()
-        let deadline = Date().addingTimeInterval(3)
-        while field.exists && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
-        XCTAssertFalse(field.exists, "× did not close the field")
+        XCTAssertTrue(wait(3) { !field.exists }, "× did not close the field")
         XCTAssertFalse(element("sidebar-section-Lixo").waitForExistence(timeout: 1), "× created the section")
+        XCTAssertFalse(element("sidebar-section-Lix").exists, "Nova seção again created the section")
+    }
+
+    /// Drag and drop with a finger (a long press, then a move): a project to the top of its section, into another
+    /// section, and a section's title above another's.
+    func testDraggingReordersProjectsAndSections() {
+        let site = element("sidebar-project-acme-site"), web = element("sidebar-project-acme-web"), ios = element("sidebar-project-atlas-ios")
+        XCTAssertTrue(site.waitForExistence(timeout: 10) && web.exists && ios.exists, "the seeded projects are not in the sidebar")
+        let (first, second) = site.frame.minY < web.frame.minY ? (site, web) : (web, site)
+
+        // Acme's second project onto the top half of its first: it goes first.
+        drag(second, onto: first, at: 0.2)
+        XCTAssertTrue(wait(5) { second.frame.minY < first.frame.minY }, "a project dropped on the top half of another did not go before it")
+
+        // Onto the bottom half of Atlas' project: it moves to Atlas, after it; the other one stays in Acme.
+        let atlas = element("sidebar-section-Atlas")
+        drag(second, onto: ios, at: 0.8)
+        XCTAssertTrue(wait(5) { second.frame.minY > ios.frame.minY }, "a project dropped on another section's project did not move there")
+        XCTAssertGreaterThan(ios.frame.minY, atlas.frame.minY)
+        XCTAssertLessThan(first.frame.minY, atlas.frame.minY, "the project left in Acme moved too")
+        shot("sidebar-dragged-project")
+
+        // A section's title onto the top of another's: Atlas above Acme, with its projects.
+        let acme = element("sidebar-section-Acme")
+        drag(atlas, onto: acme, at: 0.3)
+        XCTAssertTrue(wait(5) { atlas.frame.minY < acme.frame.minY }, "a section dropped on the top of another did not go before it")
+        XCTAssertGreaterThan(second.frame.minY, atlas.frame.minY)
+        XCTAssertLessThan(second.frame.minY, acme.frame.minY, "the section's projects did not move with it")
+        shot("sidebar-dragged-section")
+    }
+
+    /// A press on `item`, then a move to `target` at a height of it (0 its top, 1 its bottom). The move starts before
+    /// the row's context menu opens: a finger that stays still for a second gets the menu instead, as on any iPad list.
+    private func drag(_ item: XCUIElement, onto target: XCUIElement, at height: CGFloat) {
+        let from = item.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
+        let to = target.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: height))
+        from.press(forDuration: 0.6, thenDragTo: to, withVelocity: .fast, thenHoldForDuration: 0.5)
+    }
+
+    private func wait(_ timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline { return false }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return true
     }
 
     func testOpeningSessionFromHomeShowsItInDetail() {

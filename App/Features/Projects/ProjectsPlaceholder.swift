@@ -172,15 +172,16 @@ struct ProjectsRoot: View {
     }
 
     #if DEBUG
-    /// Test hook: `-seedSections 1` puts the projects in two sections (once the projects are loaded; sections an earlier run
-    /// left on the simulator are replaced).
+    /// Test hook: `-seedSections 1` puts the projects in two sections, once a launch (when the projects are loaded): what
+    /// an earlier run left on the simulator is replaced, what this run does to them is kept.
+    private static var seeded = false
     static func seedSectionsIfRequested(prefs: LocalPrefs, boxes: [BoxConnection]) {
         let entries = ProjectGrouping.entries(in: boxes)
-        guard UserDefaults.standard.bool(forKey: "seedSections"), !entries.isEmpty else { return }
+        guard UserDefaults.standard.bool(forKey: "seedSections"), !seeded, !entries.isEmpty else { return }
+        seeded = true
         if UITestShowcase.enabled {
             // The showcase's four projects in two sections (screenshots of the sidebar and the Projects tab).
             let names = [UITestShowcase.t("Product", "Produto"), UITestShowcase.t("Platform", "Plataforma")]
-            guard prefs.sections.map(\.name) != names else { return }
             for s in prefs.sections { prefs.removeSection(s.id) }
             prefs.addSection(names[0]); prefs.addSection(names[1])
             for e in entries {
@@ -189,7 +190,6 @@ struct ProjectsRoot: View {
             }
             return
         }
-        guard prefs.sections.map(\.name) != ["Acme", "Atlas"] else { return }
         for s in prefs.sections { prefs.removeSection(s.id) }
         prefs.addSection("Acme"); prefs.addSection("Atlas")
         for e in entries {

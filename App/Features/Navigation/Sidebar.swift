@@ -101,8 +101,12 @@ struct Sidebar: View {
                 .refreshable { await model.refreshAll() }
                 .onChange(of: scrollTarget) { _, id in
                     guard let id else { return }
-                    withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
                     scrollTarget = nil
+                    // Once the change that asked for it is laid out (a section the open edit adds pushes the row down).
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(80))
+                        withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
+                    }
                 }
             }
             footer(entries: entries)
@@ -603,11 +607,14 @@ struct Sidebar: View {
         .padding(.leading, 6).padding(.trailing, 3).frame(height: Density.row - 4)
         .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.card))
         .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5))
-        .task { editFocus = e }
+        // By edit: the new section's row stays on screen when "Mover para → Nova seção…" replaces a new section.
+        .task(id: e) { editFocus = e }
     }
 
     /// The field takes the focus once it is on screen (`inlineField`).
     private func startEdit(_ e: SidebarEdit, text: String) {
+        // The same edit again ("Nova seção" with its field open): back in the field, with what is typed.
+        if edit == e { editFocus = e; return }
         // Another edit still open keeps what was typed in it, as a click elsewhere would.
         if edit != nil { commitEdit() }
         editText = text
