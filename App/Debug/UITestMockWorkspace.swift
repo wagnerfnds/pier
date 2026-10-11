@@ -1,4 +1,3 @@
-#if DEBUG
 import CryptoKit
 import Foundation
 import PierKit
@@ -245,4 +244,3 @@ struct MockWorkspace {
 
     private static func json(_ any: Any) -> Data { (try? JSONSerialization.data(withJSONObject: any)) ?? Data("{}".utf8) }
 }
-#endif

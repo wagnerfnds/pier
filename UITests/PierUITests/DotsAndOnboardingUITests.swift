@@ -150,6 +150,35 @@ final class DotsAndOnboardingUITests: XCTestCase {
         XCTAssertTrue(element("onboarding-step-3").waitForExistence(timeout: 3), "closing the help did not return to pairing")
     }
 
+    // MARK: demo
+
+    /// No box yet: "Explorar com dados de exemplo" opens the demo's made-up box (the showcase's projects and agents), it
+    /// comes back after a relaunch, and leaving it in Ajustes brings the onboarding back. No mock: the app's own start.
+    func testDemoFromTheOnboarding() {
+        app.launchArguments = ["-uiTestDemoReset", "1", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
+        app.launch()
+        let demo = element("onboarding-demo")
+        XCTAssertTrue(demo.waitForExistence(timeout: 15), "the onboarding offers no demo")
+        shot("demo-offer")
+        demo.tap()
+        XCTAssertTrue(element("home-demo-banner").waitForExistence(timeout: 15), "the demo's Home has no banner")
+        let stripe = "storefront-stripe-checkout-claude-7f2a"
+        XCTAssertTrue(app.buttons.matching(identifier: "agent-dot-\(stripe)").firstMatch.waitForExistence(timeout: 15),
+                      "the demo box's agents are not on the Home")
+        shot("demo-home")
+
+        // Still the demo after a relaunch.
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
+        app.launch()
+        XCTAssertTrue(element("home-demo-banner").waitForExistence(timeout: 15), "the demo did not come back after a relaunch")
+
+        // The banner's button leaves it: the onboarding again.
+        element("home-leave-demo").tap()
+        XCTAssertTrue(element("onboarding-demo").waitForExistence(timeout: 15), "leaving the demo did not bring the onboarding back")
+        XCTAssertFalse(element("home-demo-banner").exists)
+    }
+
     // MARK: Levar para o iPhone
 
     func testInviteShowsAQRCode() {

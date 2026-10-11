@@ -89,6 +89,7 @@ struct OnboardingView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
                     .accessibilityIdentifier("onboarding-next")
+                if step == .hello && !embedded { demoButton }
             case .pair:
                 // The Mac pairs by pasting the link (or opening it: the app handles pier://); no camera to scan with.
                 #if targetEnvironment(macCatalyst)
@@ -107,6 +108,7 @@ struct OnboardingView: View {
                 Button { showInstallHelp = true } label: { Text("Ainda sem pierd na box?") }
                     .font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
                     .accessibilityIdentifier("onboarding-install-help")
+                if !embedded { demoButton }
             case .done:
                 EmptyView()
             }
@@ -119,6 +121,16 @@ struct OnboardingView: View {
             }
         }
         .animation(.snappy, value: step)
+    }
+
+    /// No box yet: look around on the demo's made-up box first (`DemoMode`).
+    private var demoButton: some View {
+        Button {
+            router.onboardingFinishing = false
+            model.startDemo()
+        } label: { Text("Explorar com dados de exemplo") }
+            .font(.subheadline.weight(.medium)).foregroundStyle(Theme.textDim)
+            .accessibilityIdentifier("onboarding-demo")
     }
 
     private var slide: AnyTransition {

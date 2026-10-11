@@ -3355,6 +3355,16 @@
         }
       }
     },
+    "Demonstração" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demo"
+          }
+        }
+      }
+    },
     "Desarquivar" : {
       "localizations" : {
         "en" : {
@@ -4583,6 +4593,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Exploring…"
+          }
+        }
+      }
+    },
+    "Explorar com dados de exemplo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Explore with sample data"
           }
         }
       }
@@ -7789,6 +7809,16 @@
         }
       }
     },
+    "Os projetos, agentes e pull requests da demonstração são inventados. Para usar o Pier com os seus agentes, instale o pierd na sua máquina e adicione a box." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The demo's projects, agents and pull requests are made up. To use Pier with your own agents, install pierd on your machine and add the box."
+          }
+        }
+      }
+    },
     "Os revisores pedidos são avisados." : {
       "localizations" : {
         "en" : {
@@ -8721,6 +8751,16 @@
         }
       }
     },
+    "Projetos, agentes e pull requests inventados, para conhecer o Pier." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Made-up projects, agents and pull requests, to get to know Pier."
+          }
+        }
+      }
+    },
     "Prompt" : {
       "localizations" : {
         "en" : {
@@ -9497,6 +9537,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Run"
+          }
+        }
+      }
+    },
+    "Sair da demonstração" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leave the demo"
           }
         }
       }

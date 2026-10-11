@@ -102,6 +102,8 @@ final class PushManager {
     // MARK: registration
 
     private func client(for conn: BoxConnection) -> PushClient? {
+        // The demo's box is in memory: nothing to register with.
+        guard !conn.isDemo else { return nil }
         let key = conn.name
         if let c = clients[key] { return c }
         guard let identity = model?.identity else { return nil }
@@ -116,7 +118,7 @@ final class PushManager {
         let state = PushStateStore.load()
         deviceToken = state.deviceToken
         guard state.deviceToken != nil else { return }
-        let conns = model.boxes
+        let conns = model.boxes.filter { !$0.isDemo }
         for c in conns where !(status[c.name]?.isRegistered ?? false) { status[c.name] = .registering }
         let work: [(String, PushClient)] = conns.compactMap { c in client(for: c).map { (c.name, $0) } }
         await withTaskGroup(of: (String, BoxPushStatus).self) { g in

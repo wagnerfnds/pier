@@ -16,6 +16,7 @@ struct DashboardView: View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(spacing: 14) {
+                if model.demoBox != nil { DemoBanner() }
                 BoxesHeader()
                 // A dot per live agent (App/Features/Dots); with the sidebar (iPad, Mac) its own strip already shows them.
                 AgentDotStrip()
@@ -139,6 +140,33 @@ struct DashboardView: View {
         }
         .animation(.snappy(duration: 0.22), value: TalkCenter.shared.holding)
         .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)
+    }
+}
+
+/// While the demo is on, at the top of the Home: what shows is made up, and the way out (`DemoMode`).
+private struct DemoBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "sparkles").font(.title3).foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Demonstração").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text("Projetos, agentes e pull requests inventados, para conhecer o Pier.")
+                    .font(.footnote).foregroundStyle(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("Sair da demonstração") { model.stopDemo() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("home-leave-demo")
+        }
+        .padding(14)
+        .background(Theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.accent.opacity(0.25)))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("home-demo-banner")
     }
 }
 

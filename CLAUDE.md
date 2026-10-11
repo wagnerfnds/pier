@@ -13,7 +13,7 @@ There is no cloud or relay: the app pairs with each box once (QR code / `pier://
 
 | Path | What | Language |
 |---|---|---|
-| `App/` | The app target (SwiftUI): `Core/` (AppModel, BoxConnection, EventHub, Router), `Features/*` (one folder per screen), `Shared/` (compiled into the app *and* the extensions), `Debug/` (mock box), `DesignSystem/`, `Intents/`, `Resources/` | Swift |
+| `App/` | The app target (SwiftUI): `Core/` (AppModel, BoxConnection, EventHub, Router), `Features/*` (one folder per screen), `Shared/` (compiled into the app *and* the extensions), `Debug/` (mock box, also the in-app demo), `DesignSystem/`, `Intents/`, `Resources/` | Swift |
 | `Extensions/PierWidgets` | Home Screen / desktop widgets and Live Activities | Swift |
 | `Extensions/PierNotificationService` | Turns a push's `options` into notification buttons | Swift |
 | `Mac/PierMenuBar` | AppKit plugin: menu bar item, edge tab, side panel | Swift |

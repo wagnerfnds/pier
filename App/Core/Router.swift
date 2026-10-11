@@ -160,6 +160,11 @@ final class Router {
         }
     }
 
+    /// Every stack back to its root, on the Home: leaving the demo, whose screens show a box that is gone.
+    func resetStacks() {
+        for t in [AppTab.inbox, .board, .projects, .settings, .home] { select(.tab(t)) }
+    }
+
     /// Back in the detail went below the picked item: move the sidebar selection up the tree with it.
     func projectsPathChanged() {
         while let f = projectsFocus, f.depth > projectsPath.count { projectsFocus = f.parent }

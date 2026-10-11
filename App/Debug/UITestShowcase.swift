@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import PierKit
 
@@ -15,7 +14,8 @@ import PierKit
 enum UITestShowcase {
     typealias JSON = [String: Any]
 
-    static var enabled: Bool { UserDefaults.standard.bool(forKey: "uiTestShowcase") }
+    /// Screenshots (`-uiTestShowcase 1`), and the demo (`DemoMode`), which shows the same box.
+    static var enabled: Bool { UserDefaults.standard.bool(forKey: "uiTestShowcase") || DemoMode.isOn }
 
     /// Portuguese first in the preferred languages: the showcase speaks Brazilian Portuguese.
     static var portuguese: Bool { Locale.preferredLanguages.first?.lowercased().hasPrefix("pt") ?? false }
@@ -957,4 +957,3 @@ struct ActivitySamples {
         )
     }
 }
-#endif

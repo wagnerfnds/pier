@@ -1,10 +1,10 @@
-#if DEBUG
 import Foundation
 import PierKit
 
 /// `-uiTestMock 1`: the app runs against an in-memory box (no network, no keychain, no pairing) so XCUITests are
 /// deterministic. The data comes from the PierKit test fixtures (see `MockFixtures`); a few endpoints are stateful
-/// (send, answer, create task) so the conversation really changes while a test types.
+/// (send, answer, create task) so the conversation really changes while a test types. Release builds have it too: the
+/// demo's box is this one with the showcase's data (`DemoMode`).
 enum UITestMock {
     static var enabled: Bool {
         UserDefaults.standard.bool(forKey: "uiTestMock") || ProcessInfo.processInfo.arguments.contains("-uiTestMock")
@@ -764,13 +764,24 @@ extension MockBox {
             return (200, Self.json(all.filter { !removedWorktrees.contains("\($0["location"] ?? "")/\($0["name"] ?? "")") }))
         case (.get, "review"): return (200, Data(UITestShowcase.review.utf8))
         case (.get, "services"): return (200, Data(UITestShowcase.services.utf8))
-        case (.post, "exec"): return showcaseExec((req["command"] as? String) ?? "")
+        case (.post, "exec"): return showcaseExec((req["command"] as? String) ?? "", location: (req["location"] as? String) ?? "")
         default: return nil
         }
     }
 
     /// The box's `exec`: the markers come first (their commands name the model too), then git / gh.
-    private func showcaseExec(_ cmd: String) -> (Int, Data)? {
+    private func showcaseExec(_ cmd: String, location: String) -> (Int, Data)? {
+        // The workspace's history and quick open are the generic routes' (their commands carry `--no-ext-diff`, which
+        // the "diff" below would take).
+        if cmd.contains("# pier-log:") || cmd.contains("# pier-files:") { return nil }
+        // A worktree the review does not list: git's status, clean, on that worktree's branch (not a diff).
+        if cmd == GitActions.statusCommand {
+            let parts = location.split(separator: "/", maxSplits: 1).map(String.init)
+            let wts = UITestShowcase.worktrees(location: parts.first)
+            let w = wts.first { parts.count > 1 ? $0["name"] as? String == parts[1] : ($0["main"] as? Bool) == true }
+            let branch = w?["branch"] as? String ?? "main"
+            return ok("## \(branch)...origin/\(branch)\0\n--pier-numstat--\n")
+        }
         if cmd.contains(NextSteps.marker) { return ok(UITestShowcase.nextSteps) }
         if cmd.contains(AITitle.marker) { return ok("\"\(UITestShowcase.aiTitle(prompt: MockPRs.sentText(cmd)))\"\n") }
         if cmd.contains(TalkRouter.marker) {
@@ -823,4 +834,3 @@ extension MockBox {
     }
 }
 // MARK: - end of showcase ----------------------------------------------------------------------------------------------
-#endif

@@ -140,6 +140,8 @@ final class AppModel {
         SharedKeychain.migrateLegacyIfNeeded()
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "testKeychainMigration") { SharedKeychain.debugSelfTest() }
+        // Test hook: `-uiTestDemoReset 1` starts outside the demo, whatever an earlier run left.
+        if UserDefaults.standard.bool(forKey: "uiTestDemoReset") { DemoMode.isOn = false; prefs.reload() }
         #endif
         #if DEBUG
         if UITestMock.enabled { startMock(); return }
@@ -150,11 +152,29 @@ final class AppModel {
         } catch {
             loadError = error.localizedDescription
         }
+        // The demo comes back where it was left; a box of the person's own has ended it.
+        if DemoMode.isOn { if boxes.isEmpty { addDemoBox() } else { DemoMode.isOn = false; prefs.reload() } }
         startPathMonitor()
         liveActivities.begin()
         push.begin()
         Task { await notifications.refreshStatus() }
         #if DEBUG
+        if let name = UserDefaults.standard.string(forKey: "openSession") {
+            // Test hook: `-openSession <name>` opens that session on the first box.
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                if let c = boxes.first { openSession(box: c.name, name: name) }
+            }
+        }
+        runLaunchHooks()
+        openProjectIfRequested()
+        #endif
+    }
+
+    #if DEBUG
+    /// Test and screenshot hooks, after either start (a real one, the mock's): a banner, Live Activities, the compose
+    /// form, the first session, Talk, the palette, Faxina.
+    private func runLaunchHooks() {
         // Test hook: `-debugBanner 1` shows an in-app banner for the first session after a few seconds.
         if UserDefaults.standard.bool(forKey: "debugBanner") {
             Task {
@@ -173,13 +193,6 @@ final class AppModel {
             Task {
                 try? await Task.sleep(for: .seconds(3))
                 if let c = boxes.first { router.push(ComposeRoute(box: c.name)) }
-            }
-        }
-        if let name = UserDefaults.standard.string(forKey: "openSession") {
-            // Test hook: `-openSession <name>` opens that session on the first box.
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                if let c = boxes.first { openSession(box: c.name, name: name) }
             }
         }
         if UserDefaults.standard.bool(forKey: "openFirstSession") {
@@ -203,11 +216,8 @@ final class AppModel {
         if UserDefaults.standard.bool(forKey: "openFaxina") {
             Task { try? await Task.sleep(for: .seconds(3)); router.push(HousekeepingRoute()) }
         }
-        openProjectIfRequested()
-        #endif
     }
 
-    #if DEBUG
     /// `-openProject <loc>[/<worktree>]` opens a project's workspace (iPad, Mac), `-workspaceTab
     /// files|changes|history|overview` on that tab, `-openFile <path>` with that file open in the editor.
     private func openProjectIfRequested() {
@@ -245,6 +255,7 @@ final class AppModel {
         activate(conn)
         // `-openSession <name>` works with the mock too (sessions the Home does not list, e.g. an idle agent).
         if let name = UserDefaults.standard.string(forKey: "openSession") { openSession(box: conn.name, name: name) }
+        runLaunchHooks()
         openProjectIfRequested()
     }
     #endif
@@ -277,6 +288,8 @@ final class AppModel {
             next.append(conn)
             if isActive { activate(conn) }
         }
+        // The demo's box is not in the keychain.
+        if DemoMode.isOn, let demo = demoBox { next.append(demo) }
         for gone in boxes where !next.contains(where: { $0 === gone }) { hub.stop(gone.name) }
         boxes = next
         sessionsChanged()
@@ -436,7 +449,49 @@ final class AppModel {
             if out.paired.isEmpty, let f = out.failures.first { throw f.error }
         }
         try reloadBoxes()
+        // A box of the person's own: the demo has done its job.
+        if !out.paired.isEmpty { stopDemo() }
         return out
+    }
+
+    // MARK: demo
+
+    /// The demo's made-up box, while the demo is on (`DemoMode`).
+    var demoBox: BoxConnection? { boxes.first { $0.isDemo } }
+
+    /// From the onboarding, with no box yet: look around on the demo's box.
+    func startDemo() {
+        guard boxes.isEmpty else { return }
+        DemoMode.isOn = true
+        prefs.reload()
+        addDemoBox()
+    }
+
+    /// Ajustes, the Home's banner, or a box of the person's own: the demo's box goes and the person's prefs come back;
+    /// with no box left, the onboarding shows again.
+    func stopDemo() {
+        guard DemoMode.isOn else { return }
+        let demo = demoBox
+        DemoMode.isOn = false
+        prefs.reload()
+        if let conn = demo {
+            hub.stop(conn.name)
+            boxes.removeAll { $0 === conn }
+            StateSnapshot.forget(box: conn.name)
+        }
+        UITestMock.headless = nil
+        router.resetStacks()
+        sessionsChanged()
+        if boxes.isEmpty { WidgetPublisher.publish(.empty, minInterval: 0) }
+    }
+
+    private func addDemoBox() {
+        let conn = UITestMock.makeConnection()
+        conn.onTransition = { [weak self] c, s, _, to in self?.transition(c, s, to) }
+        conn.onChange = { [weak self] _ in self?.sessionsChanged() }
+        boxes.append(conn)
+        activate(conn)
+        sessionsChanged()
     }
 
     private func pairOne(_ link: BoxPairingLink, identity: PierIdentity) async throws -> BoxRecord {
@@ -448,6 +503,7 @@ final class AppModel {
 
     /// Forget a box locally; also asks the box to drop this client when it allows it (best effort).
     func unpair(_ conn: BoxConnection) async {
+        if conn.isDemo { stopDemo(); return }
         hub.stop(conn.name)
         await push.unregister(conn)
         if identity != nil, let name = UserDefaults.standard.string(forKey: "clientName.\(conn.record.fingerprint.description)") {

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en" data-title-en="Support — Pier" data-title-pt="Suporte — Pier">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support — Pier</title>
+  <meta name="description" content="Set up pierd on your box, pair the app, and fix the usual problems.">
+  <link rel="icon" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/lang.js"></script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="assets/icon.png" alt="">Pier</a>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="pt-BR" aria-pressed="false">PT</button>
+    </div>
+  </div>
+</header>
+
+<main class="doc">
+
+<div lang="en">
+  <h1>Support</h1>
+  <p class="updated">Questions, bugs and ideas: <a href="https://github.com/wagnerfnds/pier/issues">open an issue on GitHub</a>.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A box: a Linux machine (x86-64 or arm64) with git, tmux, systemd and the agents you use (Claude Code, Codex),
+      signed in. <code>gh</code> for the pull request features.</li>
+    <li>An iPhone or iPad with iOS 17 or later, or a Mac.</li>
+  </ul>
+  <p>No box yet? Open the app and tap <strong>Explore with sample data</strong>: a demo with made-up projects and agents.</p>
+
+  <h2>1. Install pierd on the box</h2>
+  <p>pierd is built from the repository (Go 1.25 or later, standard library only):</p>
+<pre>git clone https://github.com/wagnerfnds/pier
+cd pier/Server/pierd
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o pierd ./cmd/pierd
+scp pierd you@devbox:~/.local/bin/</pre>
+  <p>Then, on the box, as the user your agents run as:</p>
+<pre>pierd install --listen &lt;box-ip&gt;:7444   # a user service, and the agents' hooks
+sudo loginctl enable-linger $USER        # keeps it running after you log out
+pierd location add web ~/code/web        # the repositories the app should see
+pierd doctor                             # checks the setup</pre>
+
+  <h2>2. Pair the app</h2>
+<pre>pierd pair</pre>
+  <p>It prints a single-use <code>pier://</code> link and its QR code. On the iPhone or iPad, scan it from the app; on the
+  Mac, paste the link. Another device can be invited from Settings → <em>Take it to iPhone</em>.</p>
+
+  <h2>Common problems</h2>
+  <details>
+    <summary>The app can't reach the box</summary>
+    <p>The device must reach the address given to <code>--listen</code>: the same network, or a VPN such as Tailscale.
+    On the box, <code>systemctl --user status pierd</code> tells whether it is running and <code>pierd doctor</code> what to fix.</p>
+  </details>
+  <details>
+    <summary>The pairing link doesn't work</summary>
+    <p>Links work once and for 10 minutes. Run <code>pierd pair</code> again for a new one.</p>
+  </details>
+  <details>
+    <summary>Files and the editor say the box needs a newer pierd</summary>
+    <p>Build pierd again from the repository, replace the binary and restart it: <code>systemctl --user restart pierd</code>.
+    Running agents keep running.</p>
+  </details>
+  <details>
+    <summary>Notifications</summary>
+    <p>Pier shows what needs you while it is open. Push notifications to a locked phone are sent by your box through
+    Apple's service, with an APNs key for the app: today that works when you build the app yourself
+    (<a href="https://github.com/wagnerfnds/pier/blob/main/docs/PUSH.md">docs/PUSH.md</a>).</p>
+  </details>
+  <details>
+    <summary>Remove a device</summary>
+    <p>In the app, Settings → swipe the box → Unpair. On the box, <code>pierd clients</code> lists the paired devices and
+    <code>pierd revoke &lt;name&gt;</code> removes one.</p>
+  </details>
+</div>
+
+<div lang="pt-BR">
+  <h1>Suporte</h1>
+  <p class="updated">Dúvidas, bugs e ideias: <a href="https://github.com/wagnerfnds/pier/issues">abra uma issue no GitHub</a>.</p>
+
+  <h2>O que você precisa</h2>
+  <ul>
+    <li>Uma box: uma máquina Linux (x86-64 ou arm64) com git, tmux, systemd e os agentes que você usa (Claude Code,
+      Codex), já logados. O <code>gh</code> para os recursos de pull request.</li>
+    <li>Um iPhone ou iPad com iOS 17 ou mais novo, ou um Mac.</li>
+  </ul>
+  <p>Ainda sem box? Abra o app e toque em <strong>Explorar com dados de exemplo</strong>: uma demonstração com projetos e
+  agentes inventados.</p>
+
+  <h2>1. Instale o pierd na box</h2>
+  <p>O pierd é compilado a partir do repositório (Go 1.25 ou mais novo, só a biblioteca padrão):</p>
+<pre>git clone https://github.com/wagnerfnds/pier
+cd pier/Server/pierd
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o pierd ./cmd/pierd
+scp pierd voce@devbox:~/.local/bin/</pre>
+  <p>Depois, na box, com o usuário que roda os seus agentes:</p>
+<pre>pierd install --listen &lt;ip-da-box&gt;:7444   # um serviço de usuário e os hooks dos agentes
+sudo loginctl enable-linger $USER          # continua rodando depois do logout
+pierd location add web ~/code/web          # os repositórios que o app deve ver
+pierd doctor                               # confere a instalação</pre>
+
+  <h2>2. Pareie o app</h2>
+<pre>pierd pair</pre>
+  <p>Ele mostra um link <code>pier://</code> de uso único e o QR code dele. No iPhone ou no iPad, escaneie pelo app; no Mac,
+  cole o link. Outro aparelho pode ser convidado em Ajustes → <em>Levar para o iPhone</em>.</p>
+
+  <h2>Problemas comuns</h2>
+  <details>
+    <summary>O app não alcança a box</summary>
+    <p>O aparelho precisa chegar ao endereço passado em <code>--listen</code>: a mesma rede ou uma VPN como o Tailscale.
+    Na box, <code>systemctl --user status pierd</code> diz se ele está rodando e <code>pierd doctor</code> o que corrigir.</p>
+  </details>
+  <details>
+    <summary>O link de pareamento não funciona</summary>
+    <p>Os links valem uma vez e por 10 minutos. Rode <code>pierd pair</code> de novo para gerar outro.</p>
+  </details>
+  <details>
+    <summary>Arquivos e editor dizem que a box precisa de um pierd mais novo</summary>
+    <p>Compile o pierd de novo a partir do repositório, troque o binário e reinicie: <code>systemctl --user restart pierd</code>.
+    Os agentes que estão rodando continuam rodando.</p>
+  </details>
+  <details>
+    <summary>Notificações</summary>
+    <p>O Pier mostra o que precisa de você enquanto está aberto. As notificações push com o celular bloqueado são enviadas
+    pela sua box através do serviço da Apple, com uma chave APNs do app: hoje isso funciona quando você compila o app
+    (<a href="https://github.com/wagnerfnds/pier/blob/main/docs/PUSH.md">docs/PUSH.md</a>).</p>
+  </details>
+  <details>
+    <summary>Remover um aparelho</summary>
+    <p>No app, Ajustes → deslize a box → Desparear. Na box, <code>pierd clients</code> lista os aparelhos pareados e
+    <code>pierd revoke &lt;nome&gt;</code> remove um.</p>
+  </details>
+</div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Pier</span>
+    <div class="links">
+      <a href="./"><span lang="en">Home</span><span lang="pt-BR">Início</span></a>
+      <a href="privacy.html"><span lang="en">Privacy</span><span lang="pt-BR">Privacidade</span></a>
+      <a href="https://github.com/wagnerfnds/pier">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -16,6 +16,15 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var router = router
         Form {
+            if model.demoBox != nil {
+                Section {
+                    Button(role: .destructive) { model.stopDemo() } label: { Label("Sair da demonstração", systemImage: "xmark.circle") }
+                        .accessibilityIdentifier("settings-leave-demo")
+                        .listRowBackground(Theme.card)
+                } header: { Text("Demonstração") } footer: {
+                    Text("Os projetos, agentes e pull requests da demonstração são inventados. Para usar o Pier com os seus agentes, instale o pierd na sua máquina e adicione a box.")
+                }
+            }
             Section("Boxes") {
                 ForEach(model.boxes) { conn in
                     BoxSettingsRow(conn: conn)
@@ -27,7 +36,7 @@ struct SettingsView: View {
                 Button { router.showAddBox = true } label: { Label("Adicionar box", systemImage: "plus.circle") }
                     .listRowBackground(Theme.card)
                 // Pair another device with the same boxes, no terminal needed (InviteDeviceScreen).
-                if !model.boxes.isEmpty {
+                if model.boxes.contains(where: { !$0.isDemo }) {
                     NavigationLink { InviteDeviceScreen() } label: {
                         Label(InviteDeviceScreen.title, systemImage: "qrcode")
                     }

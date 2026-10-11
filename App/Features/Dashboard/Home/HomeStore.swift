@@ -28,6 +28,9 @@ final class HomeStore {
         var prs = Remote<HomePRs>()
         var ci = Remote<[CIFailure]>()
         var git = Remote<GitActivity>()
+        /// The boxes these came from (fingerprints): with others (one unpaired, the demo's, a UI test's mock box on the
+        /// same Mac) the Home starts over instead of showing what is not theirs.
+        var boxes: [String]?
     }
 
     private(set) var prs = Remote<HomePRs>()
@@ -46,14 +49,25 @@ final class HomeStore {
     @ObservationIgnored weak var model: AppModel?
     @ObservationIgnored private let signals = SessionSignals.shared
     @ObservationIgnored private let cacheURL: URL
+    @ObservationIgnored private var cachedBoxes: [String]?
 
     static let interval: [HomeWidgetKind: TimeInterval] = [.prs: 300, .ci: 600, .git: 900, .services: 30]
 
     init(cacheURL: URL? = nil) {
         self.cacheURL = cacheURL ?? Shared.supportDirectory.appendingPathComponent("home-cache.json")
         if let d = try? Data(contentsOf: self.cacheURL), let c = try? Self.decoder.decode(Cache.self, from: d) {
-            prs = c.prs; ci = c.ci; git = c.git
+            prs = c.prs; ci = c.ci; git = c.git; cachedBoxes = c.boxes
         }
+    }
+
+    /// The cache is the paired boxes' or it goes (`Cache.boxes`).
+    private func matchBoxes() {
+        guard let model else { return }
+        let now = model.boxes.map { $0.record.fingerprint.description }.sorted()
+        guard now != cachedBoxes else { return }
+        cachedBoxes = now
+        prs = Remote(); ci = Remote(); git = Remote()
+        saveCache()
     }
 
     private static let decoder: JSONDecoder = { let d = JSONDecoder(); d.dateDecodingStrategy = .secondsSince1970; return d }()
@@ -61,7 +75,7 @@ final class HomeStore {
 
     private func saveCache() {
         try? FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let d = try? Self.encoder.encode(Cache(prs: prs, ci: ci, git: git)) { try? d.write(to: cacheURL, options: .atomic) }
+        if let d = try? Self.encoder.encode(Cache(prs: prs, ci: ci, git: git, boxes: cachedBoxes)) { try? d.write(to: cacheURL, options: .atomic) }
     }
 
     // MARK: driving
@@ -88,6 +102,7 @@ final class HomeStore {
     }
 
     func refreshStale() async {
+        matchBoxes()
         async let a: Void = refresh(.prs)
         async let b: Void = refresh(.ci)
         async let c: Void = refresh(.git)
@@ -98,6 +113,7 @@ final class HomeStore {
 
     /// Pull-to-refresh.
     func refreshAll() async {
+        matchBoxes()
         async let a: Void = refresh(.prs, force: true)
         async let b: Void = refresh(.ci, force: true)
         async let c: Void = refresh(.git, force: true)

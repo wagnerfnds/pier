@@ -41,7 +41,7 @@ App/                        # the app target (SwiftUI)
                Palette, Projects, PullRequests, Review, Session, Settings, Talk
   Intents/     App Intents and App Shortcuts
   Shared/      compiled into the app and the widget extension (identifiers, keychain, snapshot, push support)
-  Debug/       the mock box for UI tests (`-uiTestMock 1`), window snapshots
+  Debug/       the mock box for UI tests (`-uiTestMock 1`) and the in-app demo (Release too), window snapshots
   DesignSystem/ colors, typography, components
   Resources/   Assets, AppIcon.icon, Info.plist and entitlements (generated from project.yml), string catalogs
 Extensions/PierWidgets/     # Home Screen widgets and Live Activities (iPhone/iPad)
@@ -324,7 +324,9 @@ four projects, a permission, a question with a recommended choice, a finished tu
 work, a chat, pull requests, CI, git activity, dev servers, the AI touches' answers) for screenshots; the widget gallery and
 `-seedSections 1` follow it. `UITests/PierUITests/ShowcaseShots.swift` (skipped unless `TEST_RUNNER_SHOWCASE_SHOTS=<dir>`)
 writes the system-UI shots: the Lock Screen and the island with a Live Activity, a notification with its choice buttons,
-the iPad in landscape.
+the iPad in landscape. `UITests/PierUITests/StoreShots.swift` (skipped unless `TEST_RUNNER_STORE_SHOTS=<dir>`;
+`TEST_RUNNER_STORE_LANG=pt-BR` for Portuguese) writes the App Store's raw screenshots, the iPhone upright and the iPad on
+its side. The hooks above run with the mock as with real boxes (`AppModel.runLaunchHooks`).
 `-uiTestMock 1` swaps the paired boxes for one in-memory box (`App/Debug/UITestMock.swift`, fixtures generated from
 `Packages/PierKit/Tests/PierKitTests/Fixtures` into `App/Debug/UITestMockFixtures.swift`): no network, keychain or push.
 It answers like pierd for the endpoints the app uses and is stateful for send, answer and create task; its worktrees
@@ -447,6 +449,12 @@ Revisar button is tapped by position in that test.
   paste into the agent already running on the box, which builds, installs and pairs pierd and prints the link, and the
   same steps as commands with Copiar.
   Debug `-uiTestMock 1 -uiTestOnboarding 1` starts with no box; pairing any link "pairs" the mock box.
+- **Demo**: the first step and the pairing step offer "Explorar com dados de exemplo" (`DemoMode`): the mock box with the
+  showcase's data (`UITestMock.makeConnection`, compiled into Release builds), one more box for the app — no network,
+  keychain or push — until the person leaves it (Ajustes, the Home's banner) or pairs a box of their own; it comes back
+  after a relaunch. It is how App Review sees the app. Its sections and marks are `prefs-demo.json`, push registration
+  skips it, and the Home's cache remembers the boxes it came from (`HomeStore.Cache.boxes`), so neither the demo nor a
+  mock run on the Mac leaves its data on the person's Home. Debug `-uiTestDemoReset 1` starts outside the demo.
 - **Links from outside**: a `pier://` pairing or join link that reaches the app through `onOpenURL` (a tap in a
   message or a web page) opens the pairing sheet in a confirm phase (`PendingPair.confirm`: address and pinned
   fingerprint, Parear / Cancelar) because pairing hands the box this device's name and push tokens. Links the person

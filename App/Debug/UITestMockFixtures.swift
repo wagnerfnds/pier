@@ -1,4 +1,3 @@
-#if DEBUG
 // Generated from Packages/PierKit/Tests/PierKitTests/Fixtures (captured from a real box) for `-uiTestMock`.
 // Trimmed to what the UI tests need; edit by hand when a screen needs more data.
 enum MockFixtures {
@@ -554,4 +553,3 @@ enum MockFixtures {
 }
 """#
 }
-#endif

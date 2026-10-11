@@ -89,7 +89,7 @@ final class LocalPrefs {
     }
 
     private(set) var data = Data()
-    private let url: URL
+    private var url: URL
 
     init(url: URL? = nil) {
         self.url = url ?? Self.defaultURL
@@ -99,12 +99,19 @@ final class LocalPrefs {
     }
 
     static var defaultURL: URL {
-        #if DEBUG
         // A mock run (UI tests, screenshots) seeds sections and marks of its own: on the Mac it shares the installed app's
-        // container, so it keeps them in a file of its own instead of the person's prefs.
+        // container, so it keeps them in a file of its own instead of the person's prefs. The demo keeps its own too, so
+        // leaving it leaves the person's sections as they were.
         if UITestMock.enabled { return Shared.supportDirectory.appendingPathComponent("prefs-mock.json") }
-        #endif
+        if DemoMode.isOn { return Shared.supportDirectory.appendingPathComponent("prefs-demo.json") }
         return Shared.supportDirectory.appendingPathComponent("prefs.json")
+    }
+
+    /// Entering or leaving the demo: the prefs of the other side.
+    func reload() {
+        url = Self.defaultURL
+        data = Data()
+        load()
     }
 
     static func key(box: String, location: String) -> String { "\(box)/\(location)" }
@@ -365,11 +372,10 @@ final class LocalPrefs {
     }
 
     /// The widget extension shows display names and honours hidden projects, so mirror them into the App Group. Not a
-    /// mock run's: on the Mac it shares the installed app's group, and its made-up projects would replace the person's.
+    /// mock run's or the demo's: on the Mac a mock run shares the installed app's group, and made-up projects would
+    /// replace the person's.
     private func mirrorForWidgets() {
-        #if DEBUG
-        if UITestMock.enabled { return }
-        #endif
+        if UITestMock.enabled || DemoMode.isOn { return }
         let mirror = SharedDisplayPrefs(renames: data.renames, hidden: data.hidden)
         let current = SharedDisplayPrefs.load()
         guard current.renames != mirror.renames || current.hidden != mirror.hidden else { return }
