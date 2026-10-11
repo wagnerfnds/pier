@@ -1,4 +1,4 @@
 {
   "exit_code": 0,
-  "output": "44bc2ec48838211a2b203533be378ee8a467b355\u001f44bc2ec\u001faa1ffb511be5238a6b6583d584dfcb37f4653d72\u001fMona Octocat\u001fmona@example.com\u001f2026-10-08T09:00:00-03:00\u001fMona Octocat\u001f2026-10-08T09:00:00-03:00\u001forigin/subtract\u001fRename readme, add a binary\n\n\n--pier-files--\nR100\u0000README.md\u0000DOCS.md\u0000A\u0000logo.bin\u0000\n--pier-numstat--\n0\t0\t\u0000README.md\u0000DOCS.md\u0000-\t-\tlogo.bin\u0000"
+  "output": "44bc2ec48838211a2b203533be378ee8a467b355\u001f44bc2ec\u001faa1ffb511be5238a6b6583d584dfcb37f4653d72\u001fMona Octocat\u001fmona@example.com\u001f2026-10-08T09:00:00-03:00\u001fMona Octocat\u001f2026-10-08T09:00:00-03:00\u001frefs/remotes/origin/subtract\u001fRename readme, add a binary\n\n\n--pier-files--\nR100\u0000README.md\u0000DOCS.md\u0000A\u0000logo.bin\u0000\n--pier-numstat--\n0\t0\t\u0000README.md\u0000DOCS.md\u0000-\t-\tlogo.bin\u0000"
 }

@@ -2,12 +2,22 @@ import Foundation
 
 /// "Abrir rápido" in a worktree: every file (tracked and untracked, not ignored) listed once through `POST /v1/exec`,
 /// then matched as the person types, the way editors' quick open does (the letters in order, the file's own name
-/// first). Pure apart from the command.
+/// first). Paths are relative to the worktree's top folder, like the file routes'. Pure apart from the commands.
 public enum FileSearch {
     /// The listing is cut here so it fits the 64 KB `exec` keeps (its tail): the parser drops a path cut in two.
     static let maxBytes = 60_000
 
-    public static let command = "git ls-files -co --exclude-standard -z | head -c \(maxBytes) # pier-files:list"
+    public static let command = "\(GitLog.top) && git ls-files -co --exclude-standard -z | head -c \(maxBytes) # pier-files:list"
+
+    /// For a repository too large to list whole: only the files with `query`'s letters in order, any case, anywhere in
+    /// the path (a pathspec `*a*b*c*`, which `search` then ranks). Nil when nothing in the query can narrow it.
+    public static func command(matching query: String) -> String? {
+        // Glob's own characters would be read as glob, so they don't narrow (`search` still weighs them).
+        let letters = query.filter { !$0.isWhitespace && !"*?[]\\".contains($0) }
+        guard !letters.isEmpty else { return nil }
+        let spec = ":(icase)*" + letters.map { "\($0)*" }.joined()
+        return "\(GitLog.top) && git ls-files -co --exclude-standard -z -- \(GitActions.q(spec)) | head -c \(maxBytes) # pier-files:match"
+    }
 
     /// The paths of `command`'s output, and whether the list was cut (a very large repository).
     public static func parse(_ output: String) -> (paths: [String], truncated: Bool) {

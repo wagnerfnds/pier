@@ -265,26 +265,32 @@ editor's line, column, language and line ending):
 
 - **Arquivos** (`FilesPane`): the tree loads a folder at a time (`GET …/files`, docs/API.md §2.7) with git's word per
   entry (the status letter, a dot on a folder with changes, ignored entries faint and hideable); "Abrir rápido" (⇧⌘O)
-  matches every file of the worktree (`FileSearch`: `git ls-files` once through exec, a fuzzy score). Files open in tabs
+  matches every file of the worktree (`FileSearch`: `git ls-files` through exec, read again after the box changed, a
+  fuzzy score; in a repository whose list doesn't fit exec's 64 KB, git also narrows by what is typed). git commands run
+  from the worktree's top folder, the file routes' root, even for a location inside a repository. Files open in tabs
   in `CodeEditor`: a TextKit 1 UITextView per open file (its own undo, caret and scroll) with line numbers, colors from
   `SyntaxHighlighter` a moment after typing, Return and Tab in the file's indentation and Shift-Tab (`EditorText`), the
   system's find and replace (⌘F); long lines wrap. ⌘S (the menu bar's Salvar, through `FocusedValues.workspace`) saves
-  with `PUT …/file` naming the sha the edit started from: when an agent wrote the file meanwhile the box answers 409
-  `file_changed` and the editor asks (save over it, or reload). The open file is polled (`stat=1`, 3 s): without edits it
-  follows the box, with edits a banner says it changed there. Images show as pictures; files over 2 MiB are not opened.
+  with `PUT …/file` naming the sha the edit started from (one save at a time): when an agent wrote the file meanwhile
+  the box answers 409 `file_changed` and that worktree's editor asks (save over it, or reload). The open text file is
+  polled (`stat=1`, 3 s): without edits it follows the box, with edits (typed even while it was being read) a banner says
+  it changed there, and one deleted says so until it is back. Images show as pictures; files over 2 MiB are not opened.
   A box whose pierd predates the routes says so.
 - **Alterações** (`ChangesPane`): the review (`ReviewStore`) as a list of files, uncommitted then the branch's commits,
   beside the patch of the one picked (`PatchView`, shared with `DiffScreen`); Aprovar (commit, push, PR with the AI
-  draft), ask the agent for changes, discard.
-- **Histórico** (`HistoryPane`): `GitLog` through exec, a page at a time (more as the list scrolls), what is not pushed
-  marked, refs as badges; a commit's message, author, files with their counts, and the patch of the file picked.
+  draft), ask the agent for changes, discard (confirmed twice, as on the review screen).
+- **Histórico** (`HistoryPane`): `GitLog` through exec, a page at a time (more as the list scrolls; reading the first
+  page again keeps the older ones and the commit picked), what is not pushed marked, local and remote branches and tags
+  as badges (`--decorate=full`); a commit's message, author, files with their counts, and the patch of the file picked.
 - **Visão geral** (`OverviewPane`): the project (path, remote, default branch), its worktrees with their git state, the
   sessions running in this one.
 
 What each worktree holds (open files with their unsaved text, the folders open, the history read, the tab) lives in
 `WorkspaceState` for the app's run (`WorkspaceRegistry`), so opening a session or another project and coming back finds it
-as it was; the sidebar and the Projetos cards mark projects with unsaved files. The menu bar adds ⌘S, ⇧⌘O (Ir), ⌘R (read
-the box again) and ⌥⌘1–4 (the tabs). Projetos itself is a grid of project cards on regular width.
+as it was; the sidebar and the Projetos cards mark projects with unsaved files. A worktree removed (`worktree.removed`, or
+Remover worktree, which warns of unsaved files) takes its state with it. The menu bar adds ⌘S, ⇧⌘O (Ir), ⌘R (read the
+box again) and ⌥⌘1–4 (the tabs), handed to the workspace in front as requests on its `WorkspaceState`. Projetos itself is
+a grid of project cards on regular width; a location that is not a git repository keeps its project screen.
 
 On the iPhone the worktree screen has **Arquivos** and **Histórico**, the same stores one screen at a time
 (`CompactWorkspace.swift`): a folder per screen, a file full screen in the editor with Salvar, the commits, a commit's

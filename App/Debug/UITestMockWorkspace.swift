@@ -27,7 +27,8 @@ struct MockWorkspace {
         let key = "\(p[2])/\(p[4])"
         seed(key, location: p[2], worktree: p[4])
         let path = (query["path"] ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if path.split(separator: "/").contains("..") || path.hasPrefix(".git") {
+        // As pierd: a ".." or a ".git" component (".gitignore" and ".github/" are files like any other).
+        if path.split(separator: "/").contains(where: { $0 == ".." || $0 == ".git" }) {
             return (400, Self.json(["error": "\(path) is not in this worktree", "code": "bad_request"]))
         }
         switch (method, p[5]) {
@@ -169,17 +170,17 @@ struct MockWorkspace {
         var out: [Commit] = []
         if let worktree {
             out.append(Commit(sha: "5337933256f547a1f3068c9e9bf81d2e4d6b0e2c", parents: "ae6d87978ce613d68d039e0d63b5c672001bb409", author: "Claude",
-                              email: "claude@example.com", date: "2026-10-10T18:40:12-03:00", refs: "HEAD -> \(worktree)",
+                              email: "claude@example.com", date: "2026-10-10T18:40:12-03:00", refs: "HEAD -> refs/heads/\(worktree)",
                               subject: "Add subtract() to calc.py with a test", body: "subtract(a, b) returns a - b; test_calc.py covers it.",
                               files: [("M", "calc.py", 3, 0, "diff --git a/calc.py b/calc.py\n--- a/calc.py\n+++ b/calc.py\n@@ -1,2 +1,5 @@\n def add(a, b):\n     return a + b\n+\n+def subtract(a, b):\n+    return a - b\n"),
                                       ("M", "test_calc.py", 4, 1, "diff --git a/test_calc.py b/test_calc.py\n--- a/test_calc.py\n+++ b/test_calc.py\n@@ -1,5 +1,8 @@\n-from calc import add\n+from calc import add, subtract\n \n \n def test_add():\n     assert add(2, 3) == 5\n+\n+def test_subtract():\n+    assert subtract(3, 2) == 1\n")]))
         }
         out.append(Commit(sha: "ae6d87978ce613d68d039e0d63b5c672001bb409", parents: "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e", author: "Mona Octocat",
-                          email: "mona@example.com", date: "2026-10-09T15:12:40-03:00", refs: worktree == nil ? "HEAD -> main, origin/main" : "origin/main, main",
+                          email: "mona@example.com", date: "2026-10-09T15:12:40-03:00", refs: worktree == nil ? "HEAD -> refs/heads/main, refs/remotes/origin/main" : "refs/remotes/origin/main, refs/heads/main",
                           subject: "Format the totals with two decimals", body: "Money shows as 12.50, never 12.5.",
                           files: [("M", "src/lib/format.ts", 6, 2, "diff --git a/src/lib/format.ts b/src/lib/format.ts\n--- a/src/lib/format.ts\n+++ b/src/lib/format.ts\n@@ -1,4 +1,8 @@\n-export function money(n: number) {\n-  return `$${n}`\n+export function money(n: number): string {\n+  return new Intl.NumberFormat(\"en-US\", {\n+    style: \"currency\",\n+    currency: \"USD\",\n+    minimumFractionDigits: 2,\n+  }).format(n)\n }\n")]))
         out.append(Commit(sha: "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e", parents: "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d", author: "Mona Octocat",
-                          email: "mona@example.com", date: "2026-10-08T11:03:09-03:00", refs: "tag: v0.2.0",
+                          email: "mona@example.com", date: "2026-10-08T11:03:09-03:00", refs: "tag: refs/tags/v0.2.0",
                           subject: "Add the guide and the logo", files: [("A", "docs/guide.md", 12, 0, "diff --git a/docs/guide.md b/docs/guide.md\nnew file mode 100644\n--- /dev/null\n+++ b/docs/guide.md\n@@ -0,0 +1,3 @@\n+# Guide\n+\n+Run `pytest` to check the calculator.\n"), ("A", "assets/logo.png", 0, 0, "Binary files /dev/null and b/assets/logo.png differ\n")]))
         for i in 0..<9 {
             let sha = String(format: "%02x", 0x10 + i) + "f1e2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d"

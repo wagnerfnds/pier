@@ -56,6 +56,11 @@ struct OverviewPane: View {
                     if model.boxes.count > 1 { info("shippingbox", ref.box) }
                 }
                 .padding(.top, 2)
+                if let e = status?.error, !e.isEmpty {
+                    Label(e, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: Density.small)).foregroundStyle(Theme.red).textSelection(.enabled)
+                        .padding(.top, 4)
+                }
             }
             Spacer(minLength: 0)
             CountPills(counts: model.connection(for: ref.box)?.agentCounts(location: project.name) ?? [:])

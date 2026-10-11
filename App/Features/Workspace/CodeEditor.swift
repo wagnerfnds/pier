@@ -14,7 +14,8 @@ struct CodeEditor: UIViewRepresentable {
     /// session opened and closed).
     let container: EditorContainer
     var onChange: (String) -> Void
-    var onSelection: (NSRange) -> Void
+    /// The caret, with the text it is in (the store may not have that text yet: UIKit tells of the caret first).
+    var onSelection: (NSRange, String) -> Void
     /// Hands the screen a way to drive the text view of the file on screen (find, go to line).
     var onReady: ((CodeEditorHandle) -> Void)? = nil
 
@@ -29,7 +30,8 @@ struct CodeEditor: UIViewRepresentable {
         let c = context.coordinator
         c.onChange = onChange
         c.onSelection = onSelection
-        host.adopt()
+        // Only a host on screen takes the container: one covered on the navigation stack must not take it away.
+        if host.window != nil { host.adopt() }
         container.keep(open)
         container.show(doc: doc, coordinator: c)
     }
@@ -37,7 +39,7 @@ struct CodeEditor: UIViewRepresentable {
     /// Text view delegate for every file's text view; reports edits and the caret to the store.
     @MainActor final class Coordinator: NSObject, UITextViewDelegate {
         var onChange: (String) -> Void = { _ in }
-        var onSelection: (NSRange) -> Void = { _ in }
+        var onSelection: (NSRange, String) -> Void = { _, _ in }
 
         func textViewDidChange(_ textView: UITextView) {
             guard let tv = textView as? CodeTextView else { return }
@@ -46,7 +48,7 @@ struct CodeEditor: UIViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
-            onSelection(textView.selectedRange)
+            onSelection(textView.selectedRange, textView.text ?? "")
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -89,7 +91,8 @@ final class EditorHost: UIView {
     init(container: EditorContainer) {
         self.container = container
         super.init(frame: .zero)
-        adopt()
+        // A container another host shows stays there until this one is on screen.
+        if container.superview == nil { adopt() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -338,7 +341,9 @@ final class CodeTextView: UITextView {
         var out = ""
         var removedFirst = 0, removed = 0
         var first = true
-        for (i, line) in ns.substring(with: lines).split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+        // Split on the "\n" code unit (a "\r" before it stays on its line): to Swift "\r\n" is one Character, which a
+        // split on "\n" would never find.
+        for (i, line) in (ns.substring(with: lines) as NSString).components(separatedBy: "\n").enumerated() {
             var l = Substring(line)
             var cut = 0
             if l.hasPrefix("\t") { l = l.dropFirst(); cut = 1 }

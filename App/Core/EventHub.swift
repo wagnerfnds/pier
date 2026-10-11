@@ -69,6 +69,10 @@ final class EventHub {
         if t.hasPrefix("worktree.") || t.hasPrefix("location.") || t == "task.created" {
             conn.scheduleRefresh(locations: true)
         }
+        // A worktree removed (here, by another client or by an agent): its workspace, unsaved files included, goes too.
+        if t == "worktree.removed", let location = h.event.str("location"), let name = h.event.str("name") {
+            WorkspaceRegistry.shared.forget(box: h.box, location: location, worktree: name)
+        }
         for c in subscribers.values { c.yield(h) }
     }
 }

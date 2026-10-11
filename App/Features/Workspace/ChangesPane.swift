@@ -15,6 +15,7 @@ struct ChangesPane: View {
     @State private var showApprove = false
     @State private var showSendBack = false
     @State private var confirmDiscard = false
+    @State private var confirmDiscard2 = false
     @State private var result: ReviewStore.ActionResult?
     @State private var busy = false
     @State private var wrap = false
@@ -44,12 +45,17 @@ struct ChangesPane: View {
         .onAppear { keepPick(store.item) }
         .sheet(isPresented: $showApprove) { ApproveSheet(store: store) { result = $0 } }
         .sheet(isPresented: $showSendBack) { SendBackSheet(store: store) {} }
-        .confirmationDialog("Descartar todas as alterações não commitadas?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+        // Twice, as on the review screen: nothing brings the files back.
+        .confirmationDialog("Descartar mudanças?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Continuar", role: .destructive) { confirmDiscard2 = true }
+            Button("Cancelar", role: .cancel) {}
+        } message: { Text("Todas as alterações não commitadas deste worktree serão perdidas.") }
+        .alert("Tem certeza?", isPresented: $confirmDiscard2) {
             Button("Descartar tudo", role: .destructive) {
                 Task { busy = true; result = await store.discard(); busy = false }
             }
             Button("Cancelar", role: .cancel) {}
-        } message: { Text("Arquivos novos são apagados e os modificados voltam ao último commit. Não dá para desfazer.") }
+        } message: { Text("Isso apaga arquivos novos e reverte os modificados. Não dá para desfazer.") }
     }
 
     /// Keep the picked file while it is still changed; otherwise the first one.

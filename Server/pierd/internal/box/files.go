@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode"
@@ -118,7 +119,7 @@ var maxDirEntries = 5000
 
 // GET /v1/locations/{name}/worktrees/{worktree}/files?path=DIR
 func (b *Box) listFiles(w http.ResponseWriter, r *http.Request) error {
-	_, wt, err := b.worktreeRef(r.Context(), r.PathValue("name"), r.PathValue("worktree"))
+	_, wt, err := b.fileWorktree(r.Context(), r.PathValue("name"), r.PathValue("worktree"))
 	if err != nil {
 		return err
 	}
@@ -138,7 +139,7 @@ func (b *Box) listFiles(w http.ResponseWriter, r *http.Request) error {
 // stat=1 leaves the content out: the app asks that way, often, to notice an
 // agent changing the file it shows.
 func (b *Box) readFile(w http.ResponseWriter, r *http.Request) error {
-	_, wt, err := b.worktreeRef(r.Context(), r.PathValue("name"), r.PathValue("worktree"))
+	_, wt, err := b.fileWorktree(r.Context(), r.PathValue("name"), r.PathValue("worktree"))
 	if err != nil {
 		return err
 	}
@@ -157,7 +158,7 @@ func (b *Box) readFile(w http.ResponseWriter, r *http.Request) error {
 // PUT /v1/locations/{name}/worktrees/{worktree}/file?path=FILE saves a file
 // and answers what GET …/file?stat=1 says of it then.
 func (b *Box) writeFile(w http.ResponseWriter, r *http.Request) error {
-	loc, wt, err := b.worktreeRef(r.Context(), r.PathValue("name"), r.PathValue("worktree"))
+	loc, wt, err := b.fileWorktree(r.Context(), r.PathValue("name"), r.PathValue("worktree"))
 	if err != nil {
 		return err
 	}
@@ -173,10 +174,17 @@ func (b *Box) writeFile(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := b.before(r, "file.write", map[string]any{"location": loc.Name, "worktree": wt.Name, "path": t.rel}); err != nil {
+	// As in every event, "path" is the worktree's folder (hooks run there,
+	// in order per worktree); "file" is where the save really lands, links
+	// followed, so a gate that refuses a path can't be gone around by a link.
+	scope := map[string]any{"location": loc.Name, "worktree": wt.Name, "path": wt.Path, "file": t.realRel}
+	if err := b.before(r, "file.write", scope); err != nil {
 		return err
 	}
-	if err := saveFile(t, req, data); err != nil {
+	unlock := lockPath(t.real)
+	err = saveFile(t, req, data)
+	unlock()
+	if err != nil {
 		return err
 	}
 	st, err := os.Stat(t.real)
@@ -186,9 +194,42 @@ func (b *Box) writeFile(w http.ResponseWriter, r *http.Request) error {
 	// What was written, not what is there by now: an agent's write right
 	// after this one must still read as a change to the app.
 	sum := sha256.Sum256(data)
-	b.publish(r, "file.written", map[string]any{"location": loc.Name, "worktree": wt.Name, "path": t.rel, "size": len(data)})
+	scope["size"] = len(data)
+	b.publish(r, "file.written", scope)
 	writeJSON(w, fileState(t.rel, st, hex.EncodeToString(sum[:]), int64(len(data)), data))
 	return nil
+}
+
+// fileWorktree is worktreeRef for the file routes, which refuse a name two
+// worktrees share (one added outside pier can take another's name): reading
+// or saving the wrong checkout's files is worse than an error.
+func (b *Box) fileWorktree(ctx context.Context, location, name string) (Location, Worktree, error) {
+	loc, wt, err := b.worktreeRef(ctx, location, name)
+	if err != nil {
+		return loc, wt, err
+	}
+	n := 0
+	for _, w := range loc.Worktrees {
+		if w.Name == name {
+			n++
+		}
+	}
+	if n > 1 {
+		return loc, wt, badRequest("%d worktrees of %s are called %s; rename one (git worktree move) to reach its files", n, loc.Name, name)
+	}
+	return loc, wt, nil
+}
+
+// Saves through pierd take turns per file, so two clients saving the same
+// version can't both pass the sha check: the second gets file_changed.
+// Agents write without asking; their writes still race a save.
+var saveLocks sync.Map // real path -> *sync.Mutex
+
+func lockPath(p string) (unlock func()) {
+	m, _ := saveLocks.LoadOrStore(p, &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // worktreeTarget is a path a client named in a worktree, checked.
@@ -292,6 +333,19 @@ func fsErr(err error, rel string) error {
 		return badRequest("part of %s is a file, not a folder", rel)
 	case errors.Is(err, fs.ErrPermission):
 		return httpError{http.StatusForbidden, fmt.Sprintf("the box's user has no permission for %s", rel)}
+	case errors.Is(err, syscall.ENAMETOOLONG):
+		return badRequest("the name %s is too long for the box's file system", rel)
+	case errors.Is(err, syscall.ELOOP):
+		return badRequest("%s goes through too many links", rel)
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EDQUOT):
+		return httpError{http.StatusInsufficientStorage, fmt.Sprintf("the box's disk is full: %s was not saved", rel)}
+	case errors.Is(err, syscall.EROFS):
+		return httpError{http.StatusInternalServerError, fmt.Sprintf("the box's file system is read-only: %s was not saved", rel)}
+	}
+	// Anything else is the box's trouble, told without its absolute paths.
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return httpError{http.StatusInternalServerError, fmt.Sprintf("can't %s %s: %v", pe.Op, rel, pe.Err)}
 	}
 	return err
 }
@@ -624,6 +678,7 @@ func (req FileWrite) bytes() ([]byte, error) {
 // lock agents would honour.
 func saveFile(t worktreeTarget, req FileWrite, data []byte) error {
 	mode := fs.FileMode(0o644)
+	var old fs.FileInfo
 	st, err := os.Stat(t.real)
 	switch {
 	case err == nil:
@@ -631,6 +686,7 @@ func saveFile(t worktreeTarget, req FileWrite, data []byte) error {
 			return err
 		}
 		mode = st.Mode().Perm()
+		old = st
 		if req.Force {
 			break
 		}
@@ -655,16 +711,21 @@ func saveFile(t worktreeTarget, req FileWrite, data []byte) error {
 			return fsErr(err, t.rel)
 		}
 	}
-	if err := replaceFile(t.real, data, mode); err != nil {
+	if err := replaceFile(t.real, data, mode, old); err != nil {
 		return fsErr(err, t.rel)
 	}
 	return nil
 }
 
-// replaceFile puts data at path in one step, a temp file beside it renamed
-// over it, so an agent or a dev server reading the file never sees half of
-// it.
-func replaceFile(path string, data []byte, mode fs.FileMode) error {
+// replaceFile puts data at path. Usually in one step, a temp file beside it
+// renamed over it, so an agent or a dev server reading the file never sees
+// half of it; the temp file takes the old file's mode and, where the box's
+// user may give them, its owner and group. A file with other hard links is
+// written in place instead, so the links keep sharing it.
+func replaceFile(path string, data []byte, mode fs.FileMode, old fs.FileInfo) error {
+	if old != nil && hardLinks(old) > 1 {
+		return writeInPlace(path, data)
+	}
 	pattern := "." + filepath.Base(path) + ".pier-*"
 	if len(pattern) > 200 {
 		// A long name leaves no room for the temp file's own.
@@ -680,6 +741,9 @@ func replaceFile(path string, data []byte, mode fs.FileMode) error {
 	if err == nil {
 		err = f.Chmod(mode)
 	}
+	if err == nil && old != nil {
+		keepOwner(f, old)
+	}
 	if err == nil {
 		err = f.Sync()
 	}
@@ -690,4 +754,21 @@ func replaceFile(path string, data []byte, mode fs.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// writeInPlace rewrites a file's own bytes, for a file other hard links
+// share.
+func writeInPlace(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }

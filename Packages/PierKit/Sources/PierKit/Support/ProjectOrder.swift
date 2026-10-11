@@ -57,9 +57,11 @@ public enum ProjectOrder {
         return out
     }
 
-    /// `list` after moving `item` right after `target`.
+    /// `list` after moving `item` right after `target` (to the end when `target` is not in it). Dropping an item on
+    /// itself changes nothing.
     public static func moving<T: Equatable>(_ item: T, after target: T, in list: [T]) -> [T] {
-        guard item != target, let i = list.firstIndex(of: target) else { return moving(item, before: nil, in: list) }
+        guard item != target else { return list }
+        guard let i = list.firstIndex(of: target) else { return moving(item, before: nil, in: list) }
         let next = list[(i + 1)...].first { $0 != item }
         return moving(item, before: next, in: list)
     }

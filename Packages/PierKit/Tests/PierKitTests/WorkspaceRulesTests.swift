@@ -36,6 +36,9 @@ import Testing
         #expect(ProjectOrder.moving("a", after: "c", in: l) == ["b", "c", "a", "d"])
         #expect(ProjectOrder.moving("d", after: "c", in: l) == l)
         #expect(ProjectOrder.moving("a", after: "d", in: l) == ["b", "c", "d", "a"])
+        // A drop on itself, either way, changes nothing.
+        #expect(ProjectOrder.moving("b", after: "b", in: l) == l)
+        #expect(ProjectOrder.moving("a", after: "missing", in: l) == ["b", "c", "d", "a"])
     }
 
     @Test func sortDecodesTolerantly() throws {
@@ -106,6 +109,9 @@ import Testing
         #expect(EditorText.indentUnit(of: "a:\n  b:\n    c: 1\n  d: 2\n") == "  ")
         #expect(EditorText.indentUnit(of: "def f():\n    return 1\n\nclass A:\n    def g(self):\n        pass\n") == "    ")
         #expect(EditorText.indentUnit(of: "no indentation at all\n") == "    ")
+        // Windows line ends: "\r\n" is one Character.
+        #expect(EditorText.indentUnit(of: "func a() {\r\n\tb()\r\n\tif x {\r\n\t\tc()\r\n\t}\r\n}\r\n") == "\t")
+        #expect(EditorText.indentUnit(of: "a:\r\n  b:\r\n    c: 1\r\n  d: 2\r\n") == "  ")
     }
 
     @Test func newlines() {
@@ -125,7 +131,12 @@ import Testing
 
 @Suite struct FileSearchTests {
     @Test func command() {
-        #expect(FileSearch.command == "git ls-files -co --exclude-standard -z | head -c 60000 # pier-files:list")
+        let top = #"cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && "#
+        #expect(FileSearch.command == top + "git ls-files -co --exclude-standard -z | head -c 60000 # pier-files:list")
+        // A repository too large to list: git narrows by the letters in order, any case.
+        #expect(FileSearch.command(matching: "Calc py") == top + "git ls-files -co --exclude-standard -z -- ':(icase)*C*a*l*c*p*y*' | head -c 60000 # pier-files:match")
+        #expect(FileSearch.command(matching: "it's") == top + #"git ls-files -co --exclude-standard -z -- ':(icase)*i*t*'\''*s*' | head -c 60000 # pier-files:match"#)
+        #expect(FileSearch.command(matching: "*[") == nil && FileSearch.command(matching: "  ") == nil)
     }
 
     @Test func parsesAndDropsACutPath() {

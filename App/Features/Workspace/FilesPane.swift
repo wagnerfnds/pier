@@ -11,7 +11,7 @@ struct FilesPane: View {
             UnsupportedBox()
         } else {
             SplitPane(key: "workspace.tree", initial: 260, minLeading: 190, minTrailing: 360) {
-                FileTreePane(tree: state.tree, editor: state.editor)
+                FileTreePane(state: state)
             } trailing: {
                 EditorPane(state: state)
             }
@@ -36,20 +36,20 @@ private struct UnsupportedBox: View {
 // MARK: - tree
 
 private struct FileTreePane: View {
-    let tree: FileTreeStore
-    let editor: EditorStore
+    let state: WorkspaceState
     @State private var query = ""
     @State private var picked = 0
     @FocusState private var searchFocused: Bool
-    @State private var focus = WorkspaceFocus.shared
     /// The folder a new file is being named in ("" for the root), in place at the top of the tree.
     @State private var creatingIn: String?
     @State private var newName = ""
     @State private var createError: String?
     @FocusState private var newFocused: Bool
 
+    private var tree: FileTreeStore { state.tree }
+    private var editor: EditorStore { state.editor }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
-    private var results: [String] { searching ? FileSearch.search(query, in: tree.allFiles ?? []) : [] }
+    private var results: [String] { searching ? FileSearch.search(query, in: tree.searchable) : [] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,10 +65,16 @@ private struct FileTreePane: View {
             footer
         }
         .background(Theme.bg)
-        .onChange(of: focus.quickOpen) {
+        .onChange(of: state.quickOpenRequested, initial: true) { _, requested in
+            guard requested else { return }
+            state.quickOpenRequested = false
             // The editor is a UIKit text view SwiftUI's focus does not take the keyboard from: let it go first.
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             Task { @MainActor in searchFocused = true }
+        }
+        .task(id: query) {
+            // A repository too large to list whole: git looks for what is typed.
+            if searching { await tree.match(query) }
         }
     }
 
@@ -196,8 +202,19 @@ private struct FileTreePane: View {
         if tree.allFiles == nil {
             ProgressView().tint(Theme.accent).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if results.isEmpty {
-            Text("Nenhum arquivo encontrado").font(.system(size: Density.small)).foregroundStyle(Theme.textFaint)
-                .frame(maxWidth: .infinity).padding(.top, 20)
+            VStack(spacing: 8) {
+                if tree.matching {
+                    ProgressView().controlSize(.small)
+                    Text("Buscando na box…").font(.system(size: Density.small)).foregroundStyle(Theme.textFaint)
+                } else if let e = tree.allFilesError {
+                    Text("Não foi possível listar os arquivos").font(.system(size: Density.small)).foregroundStyle(Theme.textDim)
+                    Text(e).font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint).multilineTextAlignment(.center)
+                } else {
+                    Text("Nenhum arquivo encontrado").font(.system(size: Density.small)).foregroundStyle(Theme.textFaint)
+                }
+                largeRepositoryHint
+            }
+            .frame(maxWidth: .infinity).padding(.top, 20).padding(.horizontal, 10)
             Spacer()
         } else {
             ScrollViewReader { proxy in
@@ -224,14 +241,19 @@ private struct FileTreePane: View {
                             .buttonStyle(.plain)
                             .id(i)
                         }
-                        if tree.allFilesTruncated {
-                            Text("Repositório grande: a busca cobre parte dos arquivos.").font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint).padding(8)
-                        }
+                        largeRepositoryHint.padding(8)
                     }
                     .padding(.horizontal, 6)
                 }
                 .onChange(of: picked) { _, i in withAnimation { proxy.scrollTo(i) } }
             }
+        }
+    }
+
+    /// A repository too large to list whole: say so while git is still looking, or when what it found was cut too.
+    @ViewBuilder private var largeRepositoryHint: some View {
+        if tree.allFilesTruncated && (tree.matching || tree.matchedTruncated) {
+            Text("Repositório grande: a busca cobre parte dos arquivos.").font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint)
         }
     }
 
@@ -403,7 +425,6 @@ struct FileIcon: View {
 
 private struct EditorPane: View {
     let state: WorkspaceState
-    @State private var focus = WorkspaceFocus.shared
     @State private var handle: CodeEditorHandle?
     @State private var closing: String?
     @State private var saveError: String?
@@ -428,23 +449,39 @@ private struct EditorPane: View {
             }
         }
         .background(Theme.bg)
-        .onChange(of: focus.find) { handle?.find() }
+        .onChange(of: state.findRequested, initial: true) { _, requested in
+            guard requested else { return }
+            state.findRequested = false
+            handle?.find()
+        }
         .alert("Salvar as alterações em “\(closing.map(FileTree.name(of:)) ?? "")”?", isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } })) {
             Button("Salvar") {
                 guard let p = closing else { return }
-                Task { if case .saved = await editor.save(p) { editor.close(p) } }
+                Task {
+                    switch await editor.save(p) {
+                    case .saved:
+                        editor.close(p)
+                        await state.tree.refresh()
+                    case .conflict:
+                        editor.active = p
+                        editor.conflict = p
+                    case .failed(let m): if !m.isEmpty { saveError = m }
+                    }
+                }
             }
             .keyboardShortcut(.defaultAction)
             Button("Não salvar", role: .destructive) { if let p = closing { editor.close(p) } }
             Button("Cancelar", role: .cancel) {}
         } message: { Text("Se não salvar, o que você digitou se perde.") }
-        .alert("O arquivo mudou na box", isPresented: Binding(get: { focus.conflict != nil }, set: { if !$0 { focus.conflict = nil } })) {
+        .alert("O arquivo mudou na box", isPresented: Binding(get: { editor.conflict != nil }, set: { if !$0 { editor.conflict = nil } })) {
             Button("Salvar por cima") {
-                guard let p = focus.conflict else { return }
-                Task { await editor.save(p, force: true) }
+                guard let p = editor.conflict else { return }
+                Task {
+                    if case .failed(let m) = await editor.save(p, force: true), !m.isEmpty { saveError = m }
+                }
             }
             Button("Recarregar da box", role: .destructive) {
-                guard let p = focus.conflict else { return }
+                guard let p = editor.conflict else { return }
                 Task { await editor.revert(p) }
             }
             Button("Cancelar", role: .cancel) {}
@@ -528,7 +565,7 @@ private struct EditorPane: View {
         Task {
             switch await editor.save(doc.path) {
             case .saved: await state.tree.refresh()
-            case .conflict: focus.conflict = doc.path
+            case .conflict: editor.conflict = doc.path
             case .failed(let m): if !m.isEmpty { saveError = m }
             }
         }
@@ -540,14 +577,15 @@ private struct EditorPane: View {
         EditorBanner(symbol: "exclamationmark.triangle.fill", color: Theme.orange,
                      text: "Este arquivo mudou na box depois que você o abriu (um agente pode tê-lo editado).") {
             Button("Recarregar") { Task { await editor.revert(doc.path) } }
-            Button("Manter o meu") { focus.conflict = doc.path }
+            Button("Manter o meu") { editor.conflict = doc.path }
         }
     }
 
     private func deletedBanner(_ doc: EditorDoc) -> some View {
         EditorBanner(symbol: "trash", color: Theme.red, text: "Este arquivo foi apagado na box.") {
-            if doc.dirty { Button("Salvar de novo") { save(doc) } }
-            Button("Fechar") { editor.close(doc.path) }
+            if doc.dirty { Button("Salvar de novo") { save(doc) }.disabled(doc.saving) }
+            // As the tab's ×: with edits, it asks first (the box no longer has them anywhere).
+            Button("Fechar") { close(doc.path) }
         }
     }
 
@@ -570,7 +608,7 @@ private struct EditorPane: View {
             } else {
                 CodeEditor(doc: doc, open: Set(editor.docs.map(\.path)), container: state.editorView,
                            onChange: { editor.setText($0, for: doc.path) },
-                           onSelection: { editor.setSelection($0, for: doc.path) },
+                           onSelection: { editor.setSelection($0, text: $1, for: doc.path) },
                            onReady: { handle = $0 })
             }
         }

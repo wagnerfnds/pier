@@ -10,13 +10,18 @@ struct WorktreeIndicators: View {
     var body: some View {
         FlowLayout(spacing: 10, lineSpacing: 4) {
             if let s = status {
-                if s.ahead > 0 { tag("arrow.up", "\(s.ahead)", Theme.green) }
-                if s.behind > 0 { tag("arrow.down", "\(s.behind)", Theme.orange) }
-                let changes = s.changed + s.untracked
-                if changes > 0 {
-                    tag("pencil.line", changes == 1 ? String(localized: "1 alterado") : String(localized: "\(changes) alterados"), Theme.accent)
-                } else if s.ahead == 0 && s.behind == 0 {
-                    tag("checkmark", String(localized: "limpa"), Theme.textFaint)
+                if let e = s.error, !e.isEmpty {
+                    // git couldn't read it: its counts are zeros, not "clean".
+                    tag("exclamationmark.triangle.fill", String(localized: "erro do git"), Theme.red).help(e)
+                } else {
+                    if s.ahead > 0 { tag("arrow.up", "\(s.ahead)", Theme.green) }
+                    if s.behind > 0 { tag("arrow.down", "\(s.behind)", Theme.orange) }
+                    let changes = s.changed + s.untracked
+                    if changes > 0 {
+                        tag("pencil.line", changes == 1 ? String(localized: "1 alterado") : String(localized: "\(changes) alterados"), Theme.accent)
+                    } else if s.ahead == 0 && s.behind == 0 {
+                        tag("checkmark", String(localized: "limpa"), Theme.textFaint)
+                    }
                 }
             }
             if sessions > 0 { tag("terminal", sessions == 1 ? String(localized: "1 sessão") : String(localized: "\(sessions) sessões"), Theme.textDim) }
@@ -50,11 +55,19 @@ struct RemoveWorktreeSheet: View {
     @State private var working = false
     @State private var error: String?
 
+    /// Files typed in the app's editor and not saved: they go with the worktree.
+    private var unsaved: Int { WorkspaceRegistry.shared.unsaved(box: box, location: location, worktree: worktree) }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     Text("Remover “\(worktree)”").font(.headline).foregroundStyle(Theme.text)
+                    if unsaved > 0 {
+                        Label(unsaved == 1 ? String(localized: "1 arquivo aberto no editor tem alterações não salvas, que se perdem.")
+                                           : String(localized: "\(unsaved) arquivos abertos no editor têm alterações não salvas, que se perdem."),
+                              systemImage: "square.and.pencil").foregroundStyle(Theme.orange).font(.subheadline)
+                    }
                     if sessions > 0 {
                         Label(sessions == 1 ? "Isto encerra 1 sessão em andamento nesta worktree." : "Isto encerra \(sessions) sessões em andamento nesta worktree.",
                               systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.orange).font(.subheadline)
@@ -96,6 +109,7 @@ struct RemoveWorktreeSheet: View {
         defer { working = false }
         do {
             let r = try await conn.client.removeWorktree(location: location, worktree: worktree, force: force, deleteBranch: deleteBranch)
+            if case .removed = r { WorkspaceRegistry.shared.forget(box: box, location: location, worktree: worktree) }
             // Keep only the main, up to date: fast-forward it now that the worktree is gone.
             var mainNote = ""
             if case .removed = r, let u = try? await conn.client.exec(location: location, command: GitActions.updateMain, timeout: "90s"),

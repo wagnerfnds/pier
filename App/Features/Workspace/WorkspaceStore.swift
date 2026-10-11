@@ -48,6 +48,10 @@ final class WorkspaceState {
     let history: HistoryStore
     /// The editor's views (a text view per open file), kept with the rest.
     @ObservationIgnored private(set) lazy var editorView = EditorContainer()
+    /// Requests from the menu bar (⇧⌘O, ⌘F) for the views of this workspace, taken by the view that serves them: a flag,
+    /// not a counter, so a view that only appears with the request (Arquivos opened by ⇧⌘O) still sees it.
+    var quickOpenRequested = false
+    var findRequested = false
 
     init(ref: WorkspaceRef) {
         self.ref = ref
@@ -86,6 +90,19 @@ final class WorkspaceRegistry {
     func hasUnsaved(box: String, location: String) -> Bool {
         states.values.contains { $0.ref.box == box && $0.ref.location == location && $0.editor.hasUnsaved }
     }
+
+    /// The files typed in and not saved in one worktree.
+    func unsaved(box: String, location: String, worktree: String) -> Int {
+        states["\(box)/\(location)/\(worktree)"]?.editor.dirtyPaths.count ?? 0
+    }
+
+    /// A worktree removed: its workspace goes with it (a new one by the same name starts empty), and with it the mark of
+    /// its unsaved files.
+    func forget(box: String, location: String, worktree: String) {
+        guard let s = states.removeValue(forKey: "\(box)/\(location)/\(worktree)") else { return }
+        // The sidebar follows the dirty sets, not this dictionary: empty the one going away so its mark goes too.
+        s.editor.discardAll()
+    }
 }
 
 /// Loading and error state shared by the stores.
@@ -99,6 +116,11 @@ enum WorkspaceError {
     static func message(_ error: Error) -> String {
         if let e = error as? BoxError { return e.error.isEmpty ? String(localized: "Não encontrado na box.") : e.error }
         return (error as? PierError)?.localizedDescription ?? error.localizedDescription
+    }
+
+    /// A request given up because the view that asked went away: not an error to show.
+    static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled
     }
 
     /// A box whose pierd predates the file routes answers 404 in plain text for them.
@@ -123,15 +145,27 @@ final class FileTreeStore {
     /// The box's pierd has no file routes (older than this app).
     private(set) var unsupported = false
     var hideIgnored = false
-    /// Every file of the worktree for "Abrir rápido" (`FileSearch`), read once when first needed.
+    /// Every file of the worktree for "Abrir rápido" (`FileSearch`), read when first needed and again, keeping this one
+    /// meanwhile, the next time it is needed after the box changed.
     private(set) var allFiles: [String]?
     private(set) var allFilesTruncated = false
+    private(set) var allFilesError: String?
+    @ObservationIgnored private var allFilesStale = false
+    /// The read of the list under way: every caller waits for the same one.
+    @ObservationIgnored private var allFilesTask: Task<Void, Never>?
+    /// A repository too large to list whole: the files git found for what is being typed (`FileSearch.command(matching:)`).
+    private(set) var matched: [String] = []
+    private(set) var matchedTruncated = false
+    /// Searches under way (a newer one can start before an older one, given up, has its answer).
+    private var matches = 0
+    var matching: Bool { matches > 0 }
     @ObservationIgnored private var client: (any PierBoxClient)?
 
     init(ref: WorkspaceRef) { self.ref = ref }
 
+    /// Takes the box's client every time: pairing the box again (a new address, a new certificate) makes a new one.
     func bind(_ model: AppModel) {
-        if client == nil { client = model.client(for: ref.box) }
+        client = model.client(for: ref.box)
     }
 
     var rows: [FileTree.Row] { FileTree.rows(listings: listings, open: open, hideIgnored: hideIgnored) }
@@ -184,16 +218,61 @@ final class FileTreeStore {
     func refresh() async {
         let dirs = [""] + open.sorted().filter { listings[$0] != nil }
         for d in dirs { await load(d) }
-        allFiles = nil
+        allFilesStale = true
     }
 
+    /// The list "Abrir rápido" searches: read once, read again when the box changed since (the old list stays on
+    /// screen meanwhile). The read goes on when the caller goes away (a keystroke replaces the view's task).
     func loadAllFiles() async {
-        guard allFiles == nil, let client else { return }
-        if let r = try? await client.exec(location: ref.execLocation, command: FileSearch.command, timeout: "30s") {
+        if let running = allFilesTask { await running.value; return }
+        guard allFiles == nil || allFilesStale, client != nil else { return }
+        let read = Task { await readAllFiles() }
+        allFilesTask = read
+        await read.value
+        allFilesTask = nil
+    }
+
+    private func readAllFiles() async {
+        guard let client else { return }
+        allFilesStale = false
+        do {
+            let r = try await client.exec(location: ref.execLocation, command: FileSearch.command, timeout: "30s")
             let (paths, cut) = FileSearch.parse(r.output)
+            if r.exitCode != 0 && paths.isEmpty {
+                allFilesError = r.output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init) ?? "git"
+                if allFiles == nil { allFiles = [] }
+                return
+            }
             allFiles = paths
             allFilesTruncated = cut
+            allFilesError = nil
+        } catch {
+            if WorkspaceError.isCancellation(error) { allFilesStale = true; return }
+            allFilesError = WorkspaceError.message(error)
+            if allFiles == nil { allFiles = [] }
         }
+    }
+
+    /// When the list was cut, ask git for the files matching `query` (a moment after the last keystroke: the caller's
+    /// task is cancelled by the next one).
+    func match(_ query: String) async {
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled else { return }
+        await loadAllFiles()   // whether the list was cut
+        guard allFilesTruncated, !Task.isCancelled, let client, let command = FileSearch.command(matching: query) else { return }
+        matches += 1
+        defer { matches -= 1 }
+        guard let r = try? await client.exec(location: ref.execLocation, command: command, timeout: "30s"), !Task.isCancelled else { return }
+        let (paths, cut) = FileSearch.parse(r.output)
+        matched = paths
+        matchedTruncated = cut
+    }
+
+    /// What "Abrir rápido" searches in: the list, and what git found for the query when the list was cut.
+    var searchable: [String] {
+        guard !matched.isEmpty else { return allFiles ?? [] }
+        var seen = Set(allFiles ?? [])
+        return (allFiles ?? []) + matched.filter { seen.insert($0).inserted }
     }
 
     /// The entry at `path`, if its folder is loaded.
@@ -243,12 +322,23 @@ final class EditorStore {
     var active: String?
     /// The caret's line and column in the active file (the status bar).
     var caret = (line: 1, column: 1)
+    /// A file of this worktree whose save the box refused (it changed there): its editor asks what to do.
+    var conflict: String?
     @ObservationIgnored private var client: (any PierBoxClient)?
 
     init(ref: WorkspaceRef) { self.ref = ref }
 
+    /// Takes the box's client every time: pairing the box again (a new address, a new certificate) makes a new one.
     func bind(_ model: AppModel) {
-        if client == nil { client = model.client(for: ref.box) }
+        client = model.client(for: ref.box)
+    }
+
+    /// Text views are kept per path while a file is open and a while after: every text replaced from outside takes a
+    /// revision no other has had, so a file closed and opened again never matches the view kept for it.
+    private static var revisions = 0
+    private static func nextRevision() -> Int {
+        revisions += 1
+        return revisions
     }
 
     /// The open files with unsaved edits, kept apart from `docs` so a view can watch it without following every keystroke.
@@ -289,16 +379,25 @@ final class EditorStore {
         active = path
     }
 
+    /// Everything open goes, edits too (the worktree was removed).
+    func discardAll() {
+        docs = []
+        active = nil
+        dirtyPaths = []
+        conflict = nil
+    }
+
     func setText(_ text: String, for path: String) {
         guard let i = index(path), docs[i].text != text else { return }
         docs[i].text = text
         noteDirty(path)
     }
 
-    func setSelection(_ range: NSRange, for path: String) {
+    /// The caret moved. `text` is the text view's: UIKit tells of the caret before the edit reaches the store.
+    func setSelection(_ range: NSRange, text: String, for path: String) {
         guard let i = index(path) else { return }
         docs[i].selection = range
-        let p = EditorText.lineColumn(in: docs[i].text, utf16Offset: range.location)
+        let p = EditorText.lineColumn(in: text, utf16Offset: range.location)
         caret = (p.line, p.column)
     }
 
@@ -307,6 +406,12 @@ final class EditorStore {
         do {
             let f = try await client.file(location: ref.location, worktree: ref.worktree, path: path, statOnly: false)
             guard let i = index(path) else { return }
+            if docs[i].dirty {
+                // Typed while the file was being read: what was typed stays, the box's change is flagged.
+                if f.sha != docs[i].sha { docs[i].changedOnBox = true }
+                docs[i].deleted = false
+                return
+            }
             var d = docs[i]
             d.state = .loaded
             d.sha = f.sha
@@ -320,12 +425,14 @@ final class EditorStore {
             } else if let t = f.text {
                 d.base = t
                 d.text = t
-                d.revision += 1
+                d.revision = Self.nextRevision()
             }
             docs[i] = d
             noteDirty(path)
         } catch {
             guard let i = index(path) else { return }
+            // Given up (the screen that asked went away): the next look reads it again.
+            if WorkspaceError.isCancellation(error) { return }
             if (error as? BoxError)?.kind == .notFound, docs[i].state == .loaded { docs[i].deleted = true; return }
             docs[i].state = .failed(WorkspaceError.message(error))
         }
@@ -349,7 +456,8 @@ final class EditorStore {
     /// Save the file; `force` overwrites what the box has (after a conflict the person chose to keep theirs).
     @discardableResult
     func save(_ path: String, force: Bool = false) async -> SaveOutcome {
-        guard let client, let i = index(path), docs[i].editable else { return .failed("") }
+        // One save at a time: a second would name the sha the first is replacing, and read as a conflict.
+        guard let client, let i = index(path), docs[i].editable, !docs[i].saving else { return .failed("") }
         let text = docs[i].text
         docs[i].saving = true
         defer { if let j = index(path) { docs[j].saving = false } }
@@ -378,18 +486,23 @@ final class EditorStore {
     func revert(_ path: String) async {
         guard let i = index(path) else { return }
         docs[i].text = docs[i].base
-        docs[i].revision += 1
+        docs[i].changedOnBox = false
+        docs[i].revision = Self.nextRevision()
         noteDirty(path)
         await load(path)
     }
 
     /// The editor's check for changes on the box (an agent writing the open file): a file without edits follows the
-    /// box; one with edits is flagged, never overwritten.
+    /// box; one with edits is flagged, never overwritten. Only a text file the editor holds is followed: a binary or a
+    /// file too large to open would make the box read it whole every time.
     func poll() async {
-        guard let client, let path = active, let d = doc(path), d.state == .loaded, !d.saving else { return }
+        guard let client, let path = active, let d = doc(path), d.editable, !d.saving else { return }
         do {
             let f = try await client.file(location: ref.location, worktree: ref.worktree, path: path, statOnly: true)
-            guard let i = index(path), f.sha != docs[i].sha, !docs[i].saving else { return }
+            guard let i = index(path), !docs[i].saving else { return }
+            // Back again (a stash popped, a branch checked out and back): not deleted any more.
+            if docs[i].deleted { docs[i].deleted = false }
+            guard f.sha != docs[i].sha else { return }
             if docs[i].dirty { docs[i].changedOnBox = true } else { await load(path) }
         } catch {
             if let i = index(path), (error as? BoxError)?.kind == .notFound { docs[i].deleted = true }
@@ -410,18 +523,24 @@ final class HistoryStore {
     private(set) var loadingMore = false
     var selected: String?
     private(set) var details: [String: GitLog.Detail] = [:]
-    private(set) var detailError: String?
+    /// Why a commit could not be read, per commit (the iPhone's commit screen asks for one that isn't selected).
+    private(set) var detailErrors: [String: String] = [:]
     var selectedFile: String?
     @ObservationIgnored private var client: (any PierBoxClient)?
+    /// Bumped by every first-page read: a "load more" that started before it appends nothing.
+    @ObservationIgnored private var generation = 0
 
     init(ref: WorkspaceRef) { self.ref = ref }
 
+    /// Takes the box's client every time: pairing the box again (a new address, a new certificate) makes a new one.
     func bind(_ model: AppModel) {
-        if client == nil { client = model.client(for: ref.box) }
+        client = model.client(for: ref.box)
     }
 
     var detail: GitLog.Detail? { selected.flatMap { details[$0] } }
+    var detailError: String? { selected.flatMap { detailErrors[$0] } }
 
+    /// The first page (again): the older pages already read stay, and so does the commit picked.
     func load() async {
         guard let client else { return }
         if entries.isEmpty { state = .loading }
@@ -432,13 +551,13 @@ final class HistoryStore {
                 state = .failed(r.output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init) ?? "git")
                 return
             }
-            entries = page.entries
-            hasMore = page.hasMore
+            generation += 1
+            (entries, hasMore) = GitLog.refreshed(entries, hasMore: hasMore, with: page)
             empty = page.empty
             state = .loaded
             if selected == nil || !entries.contains(where: { $0.sha == selected }) { select(entries.first?.sha) }
         } catch {
-            if !(error is CancellationError) { state = .failed(WorkspaceError.message(error)) }
+            if !WorkspaceError.isCancellation(error) { state = .failed(WorkspaceError.message(error)) }
         }
     }
 
@@ -446,7 +565,9 @@ final class HistoryStore {
         guard let client, hasMore, !loadingMore else { return }
         loadingMore = true
         defer { loadingMore = false }
-        guard let r = try? await client.exec(location: ref.execLocation, command: GitLog.command(skip: entries.count), timeout: "30s") else { return }
+        let started = generation
+        guard let r = try? await client.exec(location: ref.execLocation, command: GitLog.command(skip: entries.count), timeout: "30s"),
+              generation == started else { return }
         let page = GitLog.parse(r.output)
         let known = Set(entries.map(\.sha))
         entries += page.entries.filter { !known.contains($0.sha) }
@@ -456,7 +577,6 @@ final class HistoryStore {
     func select(_ sha: String?) {
         selected = sha
         selectedFile = nil
-        detailError = nil
         guard let sha, details[sha] == nil else {
             if let sha { selectedFile = details[sha]?.files.first?.path }
             return
@@ -466,17 +586,20 @@ final class HistoryStore {
 
     func loadDetail(_ sha: String) async {
         guard let client else { return }
+        detailErrors[sha] = nil
         do {
             let r = try await client.exec(location: ref.execLocation, command: GitLog.showCommand(sha: sha), timeout: "30s")
-            if let d = GitLog.parseShow(r.output) {
+            if var d = GitLog.parseShow(r.output) {
+                // `git show` doesn't know what is pushed: the log does.
+                d.entry.unpushed = entries.first { $0.sha == d.entry.sha }?.unpushed ?? false
                 details[sha] = d
                 if selected == sha, selectedFile == nil { selectedFile = d.files.first?.path }
-            } else if selected == sha {
-                detailError = r.output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
+            } else {
+                detailErrors[sha] = r.output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
                     ?? String(localized: "Não foi possível ler este commit.")
             }
         } catch {
-            if selected == sha { detailError = WorkspaceError.message(error) }
+            if !WorkspaceError.isCancellation(error) { detailErrors[sha] = WorkspaceError.message(error) }
         }
     }
 }

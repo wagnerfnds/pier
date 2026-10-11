@@ -129,7 +129,7 @@ struct CompactFileScreen: View {
                 case .loaded where doc.editable:
                     CodeEditor(doc: doc, open: Set(editor.docs.map(\.path)), container: state.editorView,
                                onChange: { editor.setText($0, for: doc.path) },
-                               onSelection: { editor.setSelection($0, for: doc.path) })
+                               onSelection: { editor.setSelection($0, text: $1, for: doc.path) })
                 case .failed(let m):
                     EmptyState(symbol: "exclamationmark.triangle", title: "Não foi possível abrir o arquivo", message: LocalizedStringKey(m))
                 case .loaded:
@@ -163,12 +163,18 @@ struct CompactFileScreen: View {
                 } label: {
                     if doc?.saving == true { ProgressView() } else { Text("Salvar").fontWeight(.semibold) }
                 }
-                .disabled(doc?.dirty != true)
+                .disabled(doc?.dirty != true || doc?.saving == true)
                 .accessibilityIdentifier("editor-save")
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if doc?.changedOnBox == true {
+            if doc?.deleted == true {
+                Label(doc?.dirty == true ? String(localized: "Este arquivo foi apagado na box. Salvar o cria de novo com o que você digitou.")
+                                         : String(localized: "Este arquivo foi apagado na box."), systemImage: "trash")
+                    .font(.footnote).foregroundStyle(Theme.text)
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.red.opacity(0.14))
+            } else if doc?.changedOnBox == true {
                 Label("Este arquivo mudou na box depois que você o abriu (um agente pode tê-lo editado).", systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote).foregroundStyle(Theme.text)
                     .padding(10).frame(maxWidth: .infinity, alignment: .leading)
@@ -291,13 +297,21 @@ struct CompactCommitScreen: View {
                         }
                     }
                 } header: { Text(d.files.count == 1 ? String(localized: "1 arquivo") : String(localized: "\(d.files.count) arquivos")) }
-            } else if let e = state.history.detailError {
+            } else if let e = state.history.detailErrors[route.sha] {
                 EmptyState(symbol: "exclamationmark.triangle", title: "Não foi possível ler este commit", message: LocalizedStringKey(e))
+                    .listRowBackground(Color.clear)
+                HStack {
+                    Spacer()
+                    Button("Tentar de novo") { Task { await state.history.loadDetail(route.sha) } }.buttonStyle(.bordered)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
             } else {
                 HStack { Spacer(); ProgressView().tint(Theme.accent); Spacer() }.listRowBackground(Color.clear)
             }
         }
         .listStyle(.insetGrouped)
+        .refreshable { await state.history.loadDetail(route.sha) }
         .pierBackground()
         .navigationTitle(String(route.sha.prefix(7)))
         .navigationBarTitleDisplayMode(.inline)

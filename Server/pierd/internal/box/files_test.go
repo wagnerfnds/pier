@@ -356,8 +356,12 @@ func TestSavingAFileTheEditStartedFrom(t *testing.T) {
 		t.Fatalf("mode = %v, want the file's own 0755", st.Mode().Perm())
 	}
 	e := waitFor(t, seen, "file.written")
-	if e.Origin != "ios" || e.Data["location"] != "cal" || e.Data["worktree"] != "cal" || e.Data["path"] != "README" || e.Data["size"] != 6 {
+	// "path" is the worktree's folder, as in every event; "file" the file in it.
+	if e.Origin != "ios" || e.Data["location"] != "cal" || e.Data["worktree"] != "cal" || e.Data["file"] != "README" || e.Data["size"] != 6 {
 		t.Fatalf("event = %+v", e)
+	}
+	if p, _ := e.Data["path"].(string); p == "" || !filepath.IsAbs(p) {
+		t.Fatalf("event path = %v, want the worktree's folder", e.Data["path"])
 	}
 	// Nothing but the file itself is left in its folder.
 	if left, _ := filepath.Glob(filepath.Join(repo, ".README.pier-*")); len(left) != 0 {
@@ -466,7 +470,7 @@ func TestCreatingFilesAndWhatASaveRefuses(t *testing.T) {
 
 func TestABeforeHookGatesSaves(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "hooks.json")
-	os.WriteFile(cfg, []byte(`{"hooks":[{"on":"before:file.write","run":"[ \"$PIER_PATH\" != secret.txt ] || { echo no secrets here; exit 1; }"}]}`), 0o600)
+	os.WriteFile(cfg, []byte(`{"hooks":[{"on":"before:file.write","run":"[ \"$PIER_FILE\" != secret.txt ] || { echo no secrets here; exit 1; }"}]}`), 0o600)
 	c, _, repo, _ := filesBox(t, func(b *Box) { b.Hooks = &hooks.Runner{Path: cfg} })
 	var e struct{ Error, Code string }
 	if st := call(t, c, "PUT", fileRoute("file", "cal", "secret.txt"), "", FileWrite{Content: "x", Create: true}, &e); st != 403 || e.Code != CodeRefused || !strings.Contains(e.Error, "no secrets here") {
@@ -477,6 +481,68 @@ func TestABeforeHookGatesSaves(t *testing.T) {
 	}
 	if st := call(t, c, "PUT", fileRoute("file", "cal", "public.txt"), "", FileWrite{Content: "x", Create: true}, nil); st != 200 {
 		t.Fatalf("an allowed save = %d", st)
+	}
+	// A link can't take a save around the gate: the gate sees where it lands.
+	if err := os.WriteFile(filepath.Join(repo, "secret.txt"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("secret.txt", filepath.Join(repo, "innocent.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if st := call(t, c, "PUT", fileRoute("file", "cal", "innocent.txt"), "", FileWrite{Content: "x", Force: true}, &e); st != 403 || e.Code != CodeRefused {
+		t.Fatalf("a save through a link to a refused file = %d %+v", st, e)
+	}
+	if b, _ := os.ReadFile(filepath.Join(repo, "secret.txt")); string(b) != "keep\n" {
+		t.Fatalf("the gate was gone around: secret.txt = %q", b)
+	}
+}
+
+// Two saves of the same version take turns: the second is told the file changed.
+func TestConcurrentSavesOfOneVersion(t *testing.T) {
+	c, _, _, _ := filesBox(t)
+	var before WorktreeFile
+	call(t, c, "GET", fileRoute("file", "cal", "README"), "", nil, &before)
+	codes := make(chan int, 2)
+	for _, text := range []string{"one\n", "two\n"} {
+		go func() {
+			codes <- call(t, c, "PUT", fileRoute("file", "cal", "README"), "", FileWrite{Content: text, SHA: before.SHA}, nil)
+		}()
+	}
+	a, b := <-codes, <-codes
+	if !(a == 200 && b == 409) && !(a == 409 && b == 200) {
+		t.Fatalf("two saves of one version = %d and %d, want one 200 and one 409", a, b)
+	}
+}
+
+// A file with other hard links is written in place, so they keep sharing it.
+func TestSavingAHardLinkedFileKeepsTheLink(t *testing.T) {
+	c, _, repo, _ := filesBox(t)
+	if err := os.Link(filepath.Join(repo, "README"), filepath.Join(repo, "README-too")); err != nil {
+		t.Fatal(err)
+	}
+	var before WorktreeFile
+	call(t, c, "GET", fileRoute("file", "cal", "README"), "", nil, &before)
+	if st := call(t, c, "PUT", fileRoute("file", "cal", "README"), "", FileWrite{Content: "shared\n", SHA: before.SHA}, nil); st != 200 {
+		t.Fatalf("save: %d", st)
+	}
+	if b, _ := os.ReadFile(filepath.Join(repo, "README-too")); string(b) != "shared\n" {
+		t.Fatalf("the other link = %q, want the saved text", b)
+	}
+}
+
+// Two worktrees with one name (one added outside pier) can't be told apart: the
+// file routes refuse the name rather than reach the wrong checkout.
+func TestAWorktreeNameTwoCheckoutsShareIsRefused(t *testing.T) {
+	c, _, repo, _ := filesBox(t)
+	twin := filepath.Join(t.TempDir(), filepath.Base(repo))
+	gitIn(t, repo, "worktree", "add", "-q", "-b", "twin", twin)
+	name := filepath.Base(repo)
+	var e struct{ Error, Code string }
+	if st := call(t, c, "GET", "/v1/locations/cal/worktrees/"+url.PathEscape(name)+"/files", "", nil, &e); st != 400 || !strings.Contains(e.Error, "are called") {
+		t.Fatalf("listing a shared name = %d %+v", st, e)
+	}
+	if st := call(t, c, "PUT", "/v1/locations/cal/worktrees/"+url.PathEscape(name)+"/file?path=README", "", FileWrite{Content: "x", Force: true}, &e); st != 400 {
+		t.Fatalf("saving through a shared name = %d %+v", st, e)
 	}
 }
 

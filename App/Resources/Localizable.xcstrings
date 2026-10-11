@@ -473,6 +473,16 @@
         }
       }
     },
+    "%lld arquivos abertos no editor têm alterações não salvas, que se perdem." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld files open in the editor have unsaved changes, which will be lost."
+          }
+        }
+      }
+    },
     "%lld arquivos com mudanças não commitadas" : {
       "localizations" : {
         "en" : {
@@ -885,6 +895,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 file"
+          }
+        }
+      }
+    },
+    "1 arquivo aberto no editor tem alterações não salvas, que se perdem." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 file open in the editor has unsaved changes, which will be lost."
           }
         }
       }
@@ -2135,16 +2155,6 @@
         }
       }
     },
-    "Arquivos novos são apagados e os modificados voltam ao último commit. Não dá para desfazer." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New files are deleted and modified ones go back to the last commit. This can't be undone."
-          }
-        }
-      }
-    },
     "Arquivos não salvos" : {
       "localizations" : {
         "en" : {
@@ -2545,6 +2555,16 @@
         }
       }
     },
+    "Buscando na box…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching on the box…"
+          }
+        }
+      }
+    },
     "Buscando…" : {
       "localizations" : {
         "en" : {
@@ -2681,6 +2701,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cancel"
+          }
+        }
+      }
+    },
+    "Cancelar (Esc)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel (Esc)"
           }
         }
       }
@@ -3391,16 +3421,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Discard changes?"
-          }
-        }
-      }
-    },
-    "Descartar todas as alterações não commitadas?" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Discard all uncommitted changes?"
           }
         }
       }
@@ -4377,6 +4397,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This file was deleted on the box."
+          }
+        }
+      }
+    },
+    "Este arquivo foi apagado na box. Salvar o cria de novo com o que você digitou." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This file was deleted on the box. Saving creates it again with what you typed."
           }
         }
       }
@@ -7029,6 +7059,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Couldn't read the files"
+          }
+        }
+      }
+    },
+    "Não foi possível listar os arquivos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't list the files"
           }
         }
       }
@@ -11109,6 +11149,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "error"
+          }
+        }
+      }
+    },
+    "erro do git" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git error"
           }
         }
       }

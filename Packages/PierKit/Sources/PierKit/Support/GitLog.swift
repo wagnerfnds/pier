@@ -4,8 +4,14 @@ import Foundation
 /// API beyond review data): the log a page at a time with what is not pushed yet, one commit's message and files, and
 /// one file's patch in a commit. Each command ends with a `# pier-log:` comment so a mock box (and the box's logs) can
 /// tell them apart. Fields travel separated by ASCII unit/record separators, which no name or subject contains.
+///
+/// Every command runs from the worktree's top folder, the root the file routes use: a location can be a folder inside
+/// a repository, where `exec` would otherwise run. And git runs without what the box's user may have configured that
+/// would change its output: signature checks printed before each commit, an external diff tool.
 public enum GitLog {
     static let marker = "# pier-log:"
+    static let top = "cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\""
+    static let git = "git -c log.showSignature=false"
     static let unpushedMark = "\n--pier-log--\n"
     static let filesMark = "\n--pier-files--\n"
     static let numstatMark = "\n--pier-numstat--\n"
@@ -22,7 +28,8 @@ public enum GitLog {
         public let author: String
         public let email: String
         public let date: Date?
-        /// Branch and tag names pointing here, as git decorates them: "HEAD -> main", "origin/main", "tag: v1.2".
+        /// Branch and tag names pointing here, as git decorates them in full: "HEAD -> refs/heads/main",
+        /// "refs/remotes/origin/main", "tag: refs/tags/v1.2" (`decorations` reads them).
         public let refs: [String]
         public let subject: String
         /// On this branch but not on its upstream yet.
@@ -30,6 +37,7 @@ public enum GitLog {
 
         public var id: String { sha }
         public var isMerge: Bool { parents.count > 1 }
+        public var decorations: [Ref] { refs.map(GitLog.ref) }
 
         public init(sha: String, short: String, parents: [String] = [], author: String = "", email: String = "", date: Date? = nil,
                     refs: [String] = [], subject: String = "", unpushed: Bool = false) {
@@ -51,12 +59,65 @@ public enum GitLog {
         public var hasMore: Bool
         /// The branch has no commit yet.
         public var empty: Bool
+        /// Every commit the upstream lacks, on this page or not.
+        public var unpushed: Set<String>
 
-        public init(entries: [Entry] = [], hasMore: Bool = false, empty: Bool = false) {
+        public init(entries: [Entry] = [], hasMore: Bool = false, empty: Bool = false, unpushed: Set<String> = []) {
             self.entries = entries
             self.hasMore = hasMore
             self.empty = empty
+            self.unpushed = unpushed
         }
+    }
+
+    /// The list on screen after reading the first page again (an agent committed, a push): the new first page, then the
+    /// older pages already read when the page ends inside them, so a refresh doesn't take away what was scrolled to;
+    /// what is pushed now loses its mark. History rewritten under the page (a rebase, a reset) starts over from it.
+    public static func refreshed(_ entries: [Entry], hasMore: Bool, with page: Page) -> (entries: [Entry], hasMore: Bool) {
+        guard page.hasMore, let last = page.entries.last, let k = entries.firstIndex(where: { $0.sha == last.sha }) else {
+            return (page.entries, page.hasMore)
+        }
+        let older = entries[(k + 1)...].map { e in
+            var e = e
+            e.unpushed = page.unpushed.contains(e.sha)
+            return e
+        }
+        return (page.entries + older, hasMore)
+    }
+
+    /// A name a commit is decorated with.
+    public struct Ref: Sendable, Hashable {
+        public enum Kind: Sendable, Hashable { case branch, remote, tag, head, other }
+        /// As people say it: "main", "origin/main", "v1.2".
+        public let name: String
+        public let kind: Kind
+        /// The branch checked out (HEAD points at it).
+        public let current: Bool
+
+        public init(name: String, kind: Kind, current: Bool = false) {
+            self.name = name
+            self.kind = kind
+            self.current = current
+        }
+    }
+
+    /// One of `%D`'s names. Full ones tell a local branch from a remote one ("refs/heads/fix/x", "refs/remotes/origin/x");
+    /// a short one (an older git) is guessed: a slash means a remote.
+    public static func ref(_ raw: String) -> Ref {
+        var r = raw.trimmingCharacters(in: .whitespaces)
+        var current = false
+        if r.hasPrefix("HEAD -> ") { r.removeFirst(8); current = true }
+        if r == "HEAD" { return Ref(name: r, kind: .head) }
+        if r.hasPrefix("tag: ") {
+            r.removeFirst(5)
+            return Ref(name: r.hasPrefix("refs/tags/") ? String(r.dropFirst(10)) : r, kind: .tag)
+        }
+        if r.hasPrefix("refs/heads/") { return Ref(name: String(r.dropFirst(11)), kind: .branch, current: current) }
+        if r.hasPrefix("refs/remotes/") { return Ref(name: String(r.dropFirst(13)), kind: .remote) }
+        if r.hasPrefix("refs/") { return Ref(name: String(r.dropFirst(5)), kind: .other) }
+        if current { return Ref(name: r, kind: .branch, current: true) }
+        if r == "grafted" { return Ref(name: r, kind: .other) }
+        return Ref(name: r, kind: r.contains("/") ? .remote : .branch)
     }
 
     // MARK: the log
@@ -66,15 +127,16 @@ public enum GitLog {
     /// a file).
     public static func command(limit: Int = pageSize, skip: Int = 0, path: String? = nil, follow: Bool = false) -> String {
         let format = "%x1e%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s"
-        var log = "git log --no-color --format='\(format)' -n \(max(1, limit) + 1) --skip \(max(0, skip))"
+        var log = "\(git) log --no-color --decorate=full --format='\(format)' -n \(max(1, limit) + 1) --skip \(max(0, skip))"
         if let path, !path.isEmpty { log += (follow ? " --follow" : "") + " -- \(GitActions.q(path))" }
-        return "{ git rev-list '@{u}..HEAD' 2>/dev/null; true; } && printf '\\n--pier-log--\\n' && \(log) 2>&1 \(marker)log"
+        return "\(top) && { git rev-list '@{u}..HEAD' 2>/dev/null; true; } && printf '\\n--pier-log--\\n' && \(log) 2>&1 \(marker)log"
     }
 
     /// Reads `command`'s output; `limit` is the page size it was asked for.
     public static func parse(_ output: String, limit: Int = pageSize) -> Page {
         let parts = output.components(separatedBy: unpushedMark)
-        let unpushed = Set((parts.count > 1 ? parts[0] : "").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) })
+        let unpushed = Set((parts.count > 1 ? parts[0] : "").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.count >= 7 && $0.allSatisfy(\.isHexDigit) })
         let log = parts.count > 1 ? parts[1] : output
         var entries: [Entry] = []
         for rec in log.split(separator: record, omittingEmptySubsequences: true) {
@@ -89,7 +151,7 @@ public enum GitLog {
         let more = entries.count > limit
         if more { entries.removeLast(entries.count - limit) }
         let empty = entries.isEmpty && (log.contains("does not have any commits yet") || log.contains("bad default revision 'HEAD'"))
-        return Page(entries: entries, hasMore: more, empty: empty)
+        return Page(entries: entries, hasMore: more, empty: empty, unpushed: unpushed)
     }
 
     // MARK: one commit
@@ -135,8 +197,10 @@ public enum GitLog {
         public var removed: Int { files.reduce(0) { $0 + ($1.removed ?? 0) } }
     }
 
-    /// Room for a commit's file lists in the 64 KB `exec` keeps (the message comes first and must survive).
-    static let fileListBytes = 26_000
+    /// What `exec` keeps of its output is the last 64 KB: the commit's header and message, then each of its two file
+    /// lists, are cut to fit in it together (a long squash-merge message, a commit of thousands of files).
+    static let headerBytes = 16_000
+    static let fileListBytes = 22_000
 
     /// The commit's message and authorship, then its files with their status and line counts (a merge against its
     /// first parent).
@@ -144,9 +208,9 @@ public enum GitLog {
         let s = GitActions.q(sha)
         let format = "%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cn%x1f%cI%x1f%D%x1f%B"
         func files(_ what: String) -> String {
-            "{ git show --no-color --format= \(what) -z --find-renames --diff-merges=first-parent \(s) 2>/dev/null || git show --no-color --format= \(what) -z --find-renames \(s); } | head -c \(fileListBytes)"
+            "{ \(git) show --no-color --no-ext-diff --format= \(what) -z --find-renames --diff-merges=first-parent \(s) 2>/dev/null || \(git) show --no-color --no-ext-diff --format= \(what) -z --find-renames \(s); } | head -c \(fileListBytes)"
         }
-        return "git show -s --no-color --format='\(format)' \(s) && printf '\\n--pier-files--\\n' && \(files("--name-status")) && printf '\\n--pier-numstat--\\n' && \(files("--numstat")) \(marker)show"
+        return "\(top) && \(git) show -s --no-color --decorate=full --format='\(format)' \(s) | head -c \(headerBytes) && printf '\\n--pier-files--\\n' && \(files("--name-status")) && printf '\\n--pier-numstat--\\n' && \(files("--numstat")) \(marker)show"
     }
 
     public static func parseShow(_ output: String) -> Detail? {
@@ -160,7 +224,8 @@ public enum GitLog {
         guard f.count == 10 else { return nil }
         let sha = f[0].trimmingCharacters(in: .whitespacesAndNewlines)
         guard sha.count >= 7, sha.allSatisfy(\.isHexDigit) else { return nil }
-        let message = f[9].trimmingCharacters(in: .whitespacesAndNewlines)
+        // "\r\n" is one Character to Swift: a message written with Windows line ends would never split into lines.
+        let message = f[9].replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let entry = Entry(sha: sha, short: f[1], parents: f[2].split(separator: " ").map(String.init), author: f[3], email: f[4],
                           date: RFC3339.parse(f[5]), refs: f[8].split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
                           subject: message.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "")
@@ -177,10 +242,18 @@ public enum GitLog {
         return Detail(entry: entry, message: message, committer: f[6], committed: RFC3339.parse(f[7]), files: files, truncated: cut)
     }
 
+    /// The NUL-ended fields of a `-z` list, and whether the byte cap cut it: anything after the last NUL is a field cut
+    /// in two, and is dropped.
+    static func fields(_ s: String) -> (parts: [String], cut: Bool) {
+        var parts = s.split(separator: "\0", omittingEmptySubsequences: false).map(String.init)
+        let cut = parts.last?.isEmpty == false
+        parts.removeLast()
+        return (parts, cut)
+    }
+
     /// `--name-status -z`: "M\0path\0", "R087\0from\0to\0". A record cut at the end (the byte cap) is dropped.
     static func parseNameStatus(_ s: String) -> (files: [FileChange], cut: Bool) {
-        var parts = s.split(separator: "\0", omittingEmptySubsequences: false).map(String.init)
-        if parts.last?.isEmpty == true { parts.removeLast() }
+        let (parts, cutField) = fields(s)
         var out: [FileChange] = []
         var i = 0
         while i < parts.count {
@@ -196,13 +269,12 @@ public enum GitLog {
                 i += 2
             }
         }
-        return (out, false)
+        return (out, cutField)
     }
 
     /// `--numstat -z`: "3\t1\tpath\0", a rename "3\t1\t\0from\0to\0", a binary "-\t-\tpath\0". Keyed by the new path.
     static func parseNumstat(_ s: String) -> [String: (added: Int?, removed: Int?, binary: Bool)] {
-        var parts = s.split(separator: "\0", omittingEmptySubsequences: false).map(String.init)
-        if parts.last?.isEmpty == true { parts.removeLast() }
+        let parts = fields(s).parts
         var out: [String: (added: Int?, removed: Int?, binary: Bool)] = [:]
         var i = 0
         while i < parts.count {
@@ -226,6 +298,7 @@ public enum GitLog {
     public static func fileDiffCommand(sha: String, path: String, from: String? = nil) -> String {
         let s = GitActions.q(sha)
         let paths = (from.map { GitActions.q($0) + " " } ?? "") + GitActions.q(path)
-        return "{ git show --no-color --format= --find-renames --diff-merges=first-parent \(s) -- \(paths) 2>/dev/null || git show --no-color --format= --find-renames \(s) -- \(paths); } \(marker)diff"
+        let show = "\(git) show --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ --format= --find-renames"
+        return "\(top) && { \(show) --diff-merges=first-parent \(s) -- \(paths) 2>/dev/null || \(show) \(s) -- \(paths); } \(marker)diff"
     }
 }

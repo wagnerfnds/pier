@@ -22,12 +22,16 @@ extension View {
 }
 
 /// A project: its workspace (files, changes, history) where there is room for it (iPad, Mac), the list on the iPhone.
+/// A folder that is not a git repository (the palette lists every location) has no worktree to show: its screen.
 private struct ProjectDestination: View {
     let route: ProjectRoute
     @Environment(\.horizontalSizeClass) private var size
+    @Environment(AppModel.self) private var model
+
+    private var repo: Bool { model.connection(for: route.box)?.location(named: route.location)?.repo != false }
 
     var body: some View {
-        if size == .regular {
+        if size == .regular && repo {
             ProjectWorkspace(box: route.box, location: route.location)
         } else {
             ProjectScreenPlaceholder(route: route)

@@ -296,7 +296,12 @@ final class MockBox: PierTransport, @unchecked Sendable {
     func send(_ method: BoxClient.Method, path: String, body: Data?) async throws -> (status: Int, data: Data) {
         if Self.isAITitle(path, body) { try? await Task.sleep(for: .seconds(3)) }   // the model takes a moment (see the AI title block)
         let (status, data) = lock.withLock { handle(method, path, body) }
-        if status >= 400 { throw PierError.api(status: status, message: String(decoding: data, as: UTF8.self), code: nil) }
+        if status >= 400 {
+            // As the real transport reads pierd's errors: the message and the code apart.
+            struct Payload: Decodable { let error: String?; let code: String? }
+            let p = try? JSONDecoder().decode(Payload.self, from: data)
+            throw PierError.api(status: status, message: p?.error ?? String(decoding: data, as: UTF8.self), code: p?.code)
+        }
         return (status, data)
     }
 

@@ -92,7 +92,7 @@ private struct CommitRow: View {
                     if entry.isMerge { Text("·"); Text("merge") }
                 }
                 .font(.system(size: Density.small)).foregroundStyle(Theme.textDim)
-                if !entry.refs.isEmpty { RefBadges(refs: entry.refs) }
+                if !entry.refs.isEmpty { RefBadges(refs: entry.decorations) }
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -106,15 +106,15 @@ private struct CommitRow: View {
     }
 }
 
-/// Branch and tag names on a commit: HEAD's branch, remote branches, tags.
+/// Branch and tag names on a commit: HEAD's branch, local and remote branches, tags.
 private struct RefBadges: View {
-    let refs: [String]
+    let refs: [GitLog.Ref]
 
     var body: some View {
         FlowLayout(spacing: 4, lineSpacing: 4) {
             ForEach(refs, id: \.self) { r in
-                let (text, color, symbol) = style(r)
-                Label(text, systemImage: symbol)
+                let (color, symbol) = style(r)
+                Label(r.name, systemImage: symbol)
                     .labelStyle(.titleAndIcon)
                     .font(.system(size: Density.small - 1, weight: .medium))
                     .foregroundStyle(color)
@@ -124,12 +124,14 @@ private struct RefBadges: View {
         }
     }
 
-    private func style(_ r: String) -> (String, Color, String) {
-        if r.hasPrefix("HEAD -> ") { return (String(r.dropFirst(8)), Theme.accent, "arrow.triangle.branch") }
-        if r == "HEAD" { return ("HEAD", Theme.accent, "smallcircle.filled.circle") }
-        if r.hasPrefix("tag: ") { return (String(r.dropFirst(5)), Theme.orange, "tag") }
-        if r.contains("/") { return (r, Theme.purple, "cloud") }
-        return (r, Theme.green, "arrow.triangle.branch")
+    private func style(_ r: GitLog.Ref) -> (Color, String) {
+        switch r.kind {
+        case .branch: r.current ? (Theme.accent, "arrow.triangle.branch") : (Theme.green, "arrow.triangle.branch")
+        case .head: (Theme.accent, "smallcircle.filled.circle")
+        case .tag: (Theme.orange, "tag")
+        case .remote: (Theme.purple, "cloud")
+        case .other: (Theme.textDim, "bookmark")
+        }
     }
 }
 
@@ -173,9 +175,12 @@ private struct CommitDetailPane: View {
                         .font(.subheadline).foregroundStyle(Theme.textFaint).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-        } else if let e = store.detailError {
-            EmptyState(symbol: "exclamationmark.triangle", title: "Não foi possível ler este commit", message: LocalizedStringKey(e))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let sha = store.selected, let e = store.detailError {
+            VStack(spacing: 12) {
+                EmptyState(symbol: "exclamationmark.triangle", title: "Não foi possível ler este commit", message: LocalizedStringKey(e))
+                Button("Tentar de novo") { Task { await store.loadDetail(sha) } }.buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ProgressView().tint(Theme.accent).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -199,7 +204,7 @@ private struct CommitDetailPane: View {
                 if d.entry.unpushed { Text("·"); Text("não enviado").foregroundStyle(Theme.green) }
             }
             .font(.system(size: Density.small)).foregroundStyle(Theme.textDim)
-            if !d.entry.refs.isEmpty { RefBadges(refs: d.entry.refs) }
+            if !d.entry.refs.isEmpty { RefBadges(refs: d.entry.decorations) }
         }
     }
 

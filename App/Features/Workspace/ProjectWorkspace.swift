@@ -94,10 +94,10 @@ private struct WorkspaceContent: View {
         .banner($banner)
         .toolbar { toolbar }
         .focusedSceneValue(\.workspace, WorkspaceCommands(
-            save: state.tab == .files && state.editor.activeDoc?.dirty == true ? { save() } : nil,
+            save: state.tab == .files && state.editor.activeDoc.map { $0.dirty && !$0.saving } == true ? { save() } : nil,
             refresh: { Task { await refresh() } },
-            quickOpen: { state.tab = .files; WorkspaceFocus.shared.quickOpen += 1 },
-            find: state.tab == .files && state.editor.activeDoc?.editable == true ? { WorkspaceFocus.shared.find += 1 } : nil,
+            quickOpen: { state.tab = .files; state.quickOpenRequested = true },
+            find: state.tab == .files && state.editor.activeDoc?.editable == true ? { state.findRequested = true } : nil,
             tab: { state.tab = $0 }))
         .task {
             bind()
@@ -225,6 +225,10 @@ private struct WorkspaceContent: View {
                 Image(systemName: "arrow.triangle.branch")
                 Text(status?.branch ?? worktree.branch ?? worktree.name).lineLimit(1)
             }
+            if let e = status?.error, !e.isEmpty {
+                // git can't read the worktree (its counts are zeros, not "clean").
+                Label(e, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.red).lineLimit(1).truncationMode(.tail).help(e)
+            }
             if let s = status {
                 if s.ahead > 0 { Label("\(s.ahead)", systemImage: "arrow.up").foregroundStyle(Theme.green).help("Commits a enviar") }
                 if s.behind > 0 { Label("\(s.behind)", systemImage: "arrow.down").foregroundStyle(Theme.orange).help("Commits a receber") }
@@ -274,7 +278,7 @@ private struct WorkspaceContent: View {
         Task {
             switch await state.editor.save(path) {
             case .saved: await state.tree.refresh()
-            case .conflict: WorkspaceFocus.shared.conflict = path
+            case .conflict: state.editor.conflict = path
             case .failed(let m): if !m.isEmpty { banner = BannerMessage(text: m, kind: .error) }
             }
         }
@@ -398,15 +402,4 @@ extension FocusedValues {
         get { self[WorkspaceCommandsKey.self] }
         set { self[WorkspaceCommandsKey.self] = newValue }
     }
-}
-
-/// Requests from the menu bar to the views on screen (focus the quick open field, find in the file, a save that hit a
-/// conflict): counters the views watch.
-@MainActor @Observable
-final class WorkspaceFocus {
-    static let shared = WorkspaceFocus()
-    var quickOpen = 0
-    var find = 0
-    /// A file whose save the box refused (it changed there): the editor asks what to do.
-    var conflict: String?
 }

@@ -259,10 +259,18 @@ the entries come without it. A file's path: 400.
 * Agents edit these same files. Unless `force`: `sha` must be the file's sha as it is now, else 409 `file_changed`
   (also when it was deleted since), and `create` is 409 `file_exists` when a file is there. A missing file is made,
   with the folders it needs, under `create` or `force`; with neither and no `sha`, 404.
-* The file is replaced in one step (a temp file beside it, renamed over it) and keeps its permissions; a new one is
-  0644. Through a link to a file inside the worktree, that file is written and the link stays. A folder: 400.
+* The file is replaced in one step (a temp file beside it, renamed over it) and keeps its permissions and, where the
+  box's user may give them, its owner and group; a new one is 0644. A file with other hard links is written in place,
+  so they keep sharing it. Through a link to a file inside the worktree, that file is written and the link stays. A
+  folder: 400. A full disk: 507.
+* Saves through pierd take turns per file: two that start from one `sha` get one 200 and one `file_changed`.
 * Answer: the file as `GET ...?stat=1` reads it, with the `sha` of what was written. Gate `before:file.write
-  {location, worktree, path}`; event `file.written {location, worktree, path, size}`.
+  {location, worktree, path, file}` (`$PIER_FILE` in a hook); event `file.written {location, worktree, path, file,
+  size}`. As in every event, `path` is the worktree's folder; `file` is the file in it the save lands on, links
+  followed, so a gate refusing a file can't be gone around through a link to it.
+
+These three routes refuse (400) a worktree name two of the location's worktrees share (one added outside pier can
+take another's name): `git worktree move` one of them.
 
 ---
 
@@ -696,8 +704,8 @@ exit_code}` (every client's exec, the app's own background commands included: ne
 **Worktrees and locations**: `worktree.created {location, name, path, branch}`, `worktree.removed`,
 `worktree.setup.{started,finished,failed}` and `worktree.archive.{started,finished,failed}` `{location, name,
 path, script, log}` (failures set the envelope `error`), `location.added`, `location.removed`, `config.changed`,
-`service.started|stopped|failed`, `file.written {location, worktree, path, size}` (a save through `PUT .../file`,
-2.7; `path` is relative to the worktree).
+`service.started|stopped|failed`, `file.written {location, worktree, path, file, size}` (a save through `PUT
+.../file`, 2.7; `path` is the worktree's folder, `file` the saved file relative to it).
 
 **Box**: `client.paired`, `client.revoked {name, fingerprint}`, `pairing.invited`, `agents.found`.
 

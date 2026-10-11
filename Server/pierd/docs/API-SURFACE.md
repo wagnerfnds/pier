@@ -42,7 +42,7 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `GET /v1/locations/{name}/worktrees/{worktree}/touched` | `touched.go` `worktreeTouched` | App `touched()`: LiveActivitySync |
 | `GET /v1/locations/{name}/worktrees/{worktree}/files?path=` (one folder, git status per entry) | `files.go` `listFiles` | App `files()`: `App/Features/Workspace` (FileTreeStore) |
 | `GET /v1/locations/{name}/worktrees/{worktree}/file?path=[&stat=1]` | `files.go` `readFile` | App `file()`: `App/Features/Workspace` (EditorStore; `stat=1` to notice an agent's changes) |
-| `PUT /v1/locations/{name}/worktrees/{worktree}/file?path=` (`sha`, `create`, `force`; 409 `file_changed` / `file_exists`; gate `before:file.write`) | `files.go` `writeFile` | App `writeFile()`: `App/Features/Workspace` (EditorStore) |
+| `PUT /v1/locations/{name}/worktrees/{worktree}/file?path=` (`sha`, `create`, `force`; 409 `file_changed` / `file_exists`; gate `before:file.write` with `file`) | `files.go` `writeFile` | App `writeFile()`: `App/Features/Workspace` (EditorStore) |
 | `GET /v1/locations/{name}/worktrees/{worktree}/services` | `wtservices.go` `listWorktreeServices` | App `worktreeServices()`: Housekeeper; `pierd service list` |
 | `POST /v1/locations/{name}/worktrees/{worktree}/services/{service}/{start\|stop\|restart}` | `wtservices.go` `serviceAction` | App `serviceAction()`: Housekeeper; `pierd service start…` |
 | `GET /v1/worktrees[?location=]` | `worktreeops.go` `listWorktreeStatuses` | App `worktreeStatuses()`: EndSessionSheet, Housekeeper, Project/Worktree screens |

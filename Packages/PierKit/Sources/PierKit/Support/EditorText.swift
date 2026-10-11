@@ -34,7 +34,8 @@ public enum EditorText {
         var tabs = 0, spaced = 0
         var steps: [Int: Int] = [:]
         var previous = 0
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false).prefix(2000) {
+        // By isNewline: "\r\n" is one Character, which a split on "\n" would never find.
+        for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).prefix(2000) {
             guard let first = line.first, first == " " || first == "\t" else {
                 if !line.trimmingCharacters(in: .whitespaces).isEmpty { previous = 0 }
                 continue

@@ -102,6 +102,11 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(element("commit-5337933").waitForExistence(timeout: 10), "the history did not load")
         XCTAssertTrue(app.staticTexts["subtract(a, b) returns a - b; test_calc.py covers it."].waitForExistence(timeout: 5), "the commit's message is not shown")
         shot("workspace-history")
+        // Another commit: its branches as badges by their names (git decorates them in full).
+        element("commit-ae6d879").tap()
+        XCTAssertTrue(app.staticTexts["Money shows as 12.50, never 12.5."].waitForExistence(timeout: 5), "the picked commit is not shown")
+        XCTAssertTrue(app.staticTexts["origin/main"].exists, "the remote branch has no badge")
+        XCTAssertFalse(app.staticTexts["refs/remotes/origin/main"].exists, "a badge shows the ref's full name")
 
         // Alterações: the changed files beside their patch.
         element("workspace-tab-changes").tap()
@@ -125,6 +130,15 @@ final class SidebarUITests: XCTestCase {
         field.typeText("Rascunho")
         app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
         XCTAssertFalse(element("sidebar-section-Rascunho").waitForExistence(timeout: 2), "Esc created the section")
+        // × drops it too: a screen without a keyboard has no Esc.
+        add.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("Lixo")
+        element("sidebar-edit-cancel").tap()
+        let deadline = Date().addingTimeInterval(3)
+        while field.exists && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
+        XCTAssertFalse(field.exists, "× did not close the field")
+        XCTAssertFalse(element("sidebar-section-Lixo").waitForExistence(timeout: 1), "× created the section")
     }
 
     func testOpeningSessionFromHomeShowsItInDetail() {

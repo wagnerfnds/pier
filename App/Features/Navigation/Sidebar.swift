@@ -116,8 +116,13 @@ struct Sidebar: View {
             expandActive(entries)
         }
         .onChange(of: editFocused) { was, focused in
-            // Clicking elsewhere keeps what was typed, like a rename in the Finder.
-            if was, !focused, edit != nil { commitEdit() }
+            // Clicking elsewhere keeps what was typed, like a rename in the Finder. A moment later, and only if it is still
+            // the same edit without the focus: × cancels it first, and a new edit's field takes the focus as it appears.
+            guard was, !focused, let e = edit else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                if edit == e, !editFocused { commitEdit() }
+            }
         }
         .sheet(item: $newWorktree) { e in
             NewWorktreeSheet(box: e.box, location: e.location) { wt in
@@ -351,9 +356,20 @@ struct Sidebar: View {
         }
     }
 
-    private func sectionHeader(_ g: ProjectGroup, open: Bool, groups: [ProjectGroup]) -> some View {
+    @ViewBuilder private func sectionHeader(_ g: ProjectGroup, open: Bool, groups: [ProjectGroup]) -> some View {
+        if let section = g.section, edit == .renameSection(section) {
+            // The field on its own (not inside the title's button, which folds the section, and not a drag source).
+            inlineField("Nome da seção")
+                .padding(.leading, 8).padding(.trailing, 6)
+                .frame(height: Density.row + 2)
+                .padding(.top, SidebarHeader<EmptyView, EmptyView>.gap)
+        } else {
+            sectionTitle(g, open: open, groups: groups)
+        }
+    }
+
+    private func sectionTitle(_ g: ProjectGroup, open: Bool, groups: [ProjectGroup]) -> some View {
         let section = g.section
-        let renaming = section.map { edit == .renameSection($0) } ?? false
         let headerSpot: (Bool) -> SidebarDropSpot? = { after in
             switch dragging.item {
             case .project?: return .into(group: g.id)
@@ -371,18 +387,14 @@ struct Sidebar: View {
         default: nil
         }
         return SidebarHeader(id: "sidebar-section-\(g.title)", open: open || searching, toggle: { toggle(g.id) }, highlighted: highlighted, line: line) {
-            if renaming {
-                inlineField("Nome da seção")
-            } else {
-                Text(g.title)
-                if !g.entries.isEmpty { CountCapsule(count: g.entries.count) }
-                if g.sort != .manual {
-                    Image(systemName: g.sort == .name ? "textformat" : "clock").font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint)
-                        .help(g.sort == .name ? Text("Ordem alfabética") : Text("Atividade recente"))
-                }
+            Text(g.title)
+            if !g.entries.isEmpty { CountCapsule(count: g.entries.count) }
+            if g.sort != .manual {
+                Image(systemName: g.sort == .name ? "textformat" : "clock").font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint)
+                    .help(g.sort == .name ? Text("Ordem alfabética") : Text("Atividade recente"))
             }
         } trailing: {
-            if !renaming { groupMenu(g, groups: groups) }
+            groupMenu(g, groups: groups)
         }
         .modifier(SectionDrag(section: section, title: g.title, dragging: dragging))
         .onDrop(of: [SidebarDragging.type], delegate: SidebarDropDelegate(split: SidebarHeader<EmptyView, EmptyView>.gap + (Density.row + 2) / 2, dragging: dragging, spot: $dropSpot,
@@ -402,7 +414,11 @@ struct Sidebar: View {
     }
 
     @ViewBuilder private func groupMenuItems(_ g: ProjectGroup, groups: [ProjectGroup]) -> some View {
-        Picker(selection: Binding(get: { g.sort }, set: { prefs.setSort($0, of: g.section, shown: g.entries.map(\.key)) })) {
+        // The order on screen without a search's filter: switching to manual keeps the whole section where it was.
+        Picker(selection: Binding(get: { g.sort }, set: { sort in
+            let shown = currentGroups().first { $0.id == g.id }?.entries.map(\.key) ?? g.entries.map(\.key)
+            prefs.setSort(sort, of: g.section, shown: shown)
+        })) {
             Label("Manualmente", systemImage: "hand.draw").tag(ProjectSort.manual)
             Label("Por nome", systemImage: "textformat").tag(ProjectSort.name)
             Label("Por atividade recente", systemImage: "clock").tag(ProjectSort.activity)
@@ -427,16 +443,21 @@ struct Sidebar: View {
         let worktrees = visibleWorktrees(e) ?? []
         let id = "sidebar-project-\(e.location.name)"
         let open = searching || expanded.contains(e.key)
-        let renaming = edit == .renameProject(e.key)
         let line: VerticalEdge? = if case .project(let k, let after, _)? = dropSpot, k == e.key { after ? .bottom : .top } else { nil }
-        SidebarRow(id: id, selected: router.sidebarSelection == .project(e.route), hovered: $hovered, line: line,
-                   disclosure: worktrees.isEmpty ? nil : open, toggle: { toggleExpanded(e.key) },
-                   action: { router.select(.project(e.route)) },
-                   accessory: { plus(id, help: "Nova tarefa em \(name)") { newTask(box: e.box, location: e.location.name) } }) {
-            ProjectGlyph(name: name, size: Density.glyph)
-            if renaming {
+        if edit == .renameProject(e.key) {
+            // The field on its own: not inside the row's button (which opens the project), not a drag source.
+            HStack(spacing: 7) {
+                ProjectGlyph(name: name, size: Density.glyph)
                 inlineField("Nome do projeto")
-            } else {
+            }
+            .padding(.leading, 2 + 14 + 4).padding(.trailing, 6)
+            .frame(height: Density.row)
+        } else {
+            SidebarRow(id: id, selected: router.sidebarSelection == .project(e.route), hovered: $hovered, line: line,
+                       disclosure: worktrees.isEmpty ? nil : open, toggle: { toggleExpanded(e.key) },
+                       action: { router.select(.project(e.route)) },
+                       accessory: { plus(id, help: "Nova tarefa em \(name)") { newTask(box: e.box, location: e.location.name) } }) {
+                ProjectGlyph(name: name, size: Density.glyph)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(name).font(.system(size: Density.text)).lineLimit(1)
                     if multiBox { Text(e.box).font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint) }
@@ -449,12 +470,16 @@ struct Sidebar: View {
                 Spacer(minLength: 4)
                 StateDots(counts: conn?.agentCounts(location: e.location.name) ?? [:])
             }
+            .onDrag { dragging.begin(.project(e.key)) } preview: { DragChip(glyph: name, title: name) }
+            .onDrop(of: [SidebarDragging.type], delegate: SidebarDropDelegate(split: Density.row / 2, dragging: dragging, spot: $dropSpot,
+                at: { after in
+                    // Over itself: nowhere to go.
+                    guard case .project(let k)? = dragging.item, k != e.key else { return nil }
+                    return .project(e.key, after: after, group: g.id)
+                },
+                perform: { drop($0) }))
+            .contextMenu { projectMenu(e, name: name) }
         }
-        .onDrag { dragging.begin(.project(e.key)) } preview: { DragChip(glyph: name, title: name) }
-        .onDrop(of: [SidebarDragging.type], delegate: SidebarDropDelegate(split: Density.row / 2, dragging: dragging, spot: $dropSpot,
-            at: { after in dragging.item?.isProject == true ? .project(e.key, after: after, group: g.id) : nil },
-            perform: { drop($0) }))
-        .contextMenu { projectMenu(e, name: name) }
         if open {
             ForEach(worktrees) { wt in worktree(wt, in: e, conn: conn) }
         }
@@ -547,25 +572,38 @@ struct Sidebar: View {
         .accessibilityIdentifier("sidebar-new-section-row")
     }
 
-    /// The field of an edit in place: Return keeps it, Esc drops it, a click elsewhere keeps it.
+    /// The field of an edit in place: Return keeps it, Esc or × drops it (× for a screen without a keyboard), a click
+    /// elsewhere keeps it.
     private func inlineField(_ placeholder: LocalizedStringKey) -> some View {
-        TextField(placeholder, text: $editText)
-            .textFieldStyle(.plain)
-            .font(.system(size: Density.text))
-            .foregroundStyle(Theme.text)
-            .autocorrectionDisabled()
-            .focused($editFocused)
-            .onSubmit { commitEdit() }
-            .onKeyPress(.escape) { cancelEdit(); return .handled }
-            .padding(.horizontal, 6).frame(height: Density.row - 4)
-            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.card))
-            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5))
-            .accessibilityIdentifier("sidebar-edit-field")
-            .task { editFocused = true }
+        HStack(spacing: 4) {
+            TextField(placeholder, text: $editText)
+                .textFieldStyle(.plain)
+                .font(.system(size: Density.text))
+                .foregroundStyle(Theme.text)
+                .autocorrectionDisabled()
+                .focused($editFocused)
+                .onSubmit { commitEdit() }
+                .onKeyPress(.escape) { cancelEdit(); return .handled }
+                .accessibilityIdentifier("sidebar-edit-field")
+            Button { cancelEdit() } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: Density.small + 1)).foregroundStyle(Theme.textFaint)
+                    .frame(width: 18, height: 18).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Cancelar (Esc)")
+            .accessibilityLabel("Cancelar")
+            .accessibilityIdentifier("sidebar-edit-cancel")
+        }
+        .padding(.leading, 6).padding(.trailing, 3).frame(height: Density.row - 4)
+        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.card))
+        .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5))
+        .task { editFocused = true }
     }
 
     /// The field takes the focus once it is on screen (`inlineField`).
     private func startEdit(_ e: SidebarEdit, text: String) {
+        // Another edit still open keeps what was typed in it, as a click elsewhere would.
+        if edit != nil { commitEdit() }
         editText = text
         withAnimation(.snappy(duration: 0.2)) { edit = e }
         if case .newSection = e { scrollTarget = "sidebar-new-section-row" }
@@ -757,6 +795,8 @@ struct Sidebar: View {
     }
 
     private func moveProject(_ key: String, to section: UUID?) {
+        // Already there (the checked item): nothing moves.
+        guard prefs.section(of: key) != section else { return }
         let groups = currentGroups()
         guard let g = groups.first(where: { $0.section == section && !isHiddenGroup($0) }) ?? (section == nil ? nil : groups.first { $0.section == section }) else {
             withAnimation(.snappy) { prefs.assign(project: key, to: section) }
