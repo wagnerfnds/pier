@@ -5,6 +5,10 @@ coding agents (Claude Code, Codex) running on your development boxes — and **p
 
 Agents ask; you answer in a tap or a keystroke, from anywhere. No agent sits waiting.
 
+**[wagnerfnds.github.io/pier](https://wagnerfnds.github.io/pier/)** · [Privacy](https://wagnerfnds.github.io/pier/privacy.html) ·
+[Support](https://wagnerfnds.github.io/pier/support.html). No box yet? The app's first screen has a demo with sample
+projects and agents.
+
 <p align="center">
   <img src="docs/images/iphone-home-dark.png" width="230" alt="Home: every agent across your boxes">
   <img src="docs/images/iphone-inbox.png" width="230" alt="Inbox: questions and finished work, answered with 1, 2, 3">

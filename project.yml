@@ -154,6 +154,9 @@ targets:
       - path: Extensions/PierWidgets
         excludes: ["Info.plist"]
       - path: App/Shared
+      # The views in App/Shared say their text through this catalog: without it the widgets and the Live Activity show
+      # the Portuguese source on a phone in English.
+      - path: App/Resources/Localizable.xcstrings
     dependencies:
       - package: PierKit
         product: PierKit

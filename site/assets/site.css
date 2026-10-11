@@ -140,7 +140,12 @@ h2 { font-size: clamp(30px, 3.6vw, 42px); line-height: 1.12; letter-spacing: -0.
 .gallery figure { margin: 0; }
 .gallery img { border-radius: 26px; border: 1px solid var(--stroke); box-shadow: var(--shadow); background: var(--surface); }
 .gallery figcaption { font-size: 14px; color: var(--text-dim); margin-top: 12px; text-align: center; }
-.wide { margin-top: 28px; }
+.wide { margin: 28px 0 0; }
+.gallery.two { grid-template-columns: repeat(2, 1fr); max-width: 680px; align-items: center; }
+.duo { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; align-items: start; }
+.duo figure { margin: 0; }
+.duo img { border-radius: 14px; border: 1px solid var(--stroke); box-shadow: var(--shadow); }
+.duo figcaption { font-size: 14px; color: var(--text-dim); margin-top: 12px; text-align: center; }
 .wide img { border-radius: 16px; border: 1px solid var(--stroke); box-shadow: var(--shadow); background: var(--surface); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: step; }
@@ -210,7 +215,8 @@ footer .fine { flex-basis: 100%; font-size: 13px; }
   .hero .wrap { grid-template-columns: 1fr; gap: 28px; }
   .hero-shots { height: 440px; }
   .grid, .steps { grid-template-columns: 1fr 1fr; }
-  .gallery { grid-template-columns: 1fr 1fr; }
+  .gallery, .gallery.two { grid-template-columns: 1fr 1fr; }
+  .duo { grid-template-columns: 1fr; }
   .plans { grid-template-columns: 1fr; }
   .nav nav { display: none; }
   .lang { margin-left: auto; }
