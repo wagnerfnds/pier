@@ -96,6 +96,8 @@ private struct FileTreePane: View {
             if searching {
                 Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textFaint) }
                     .buttonStyle(.plain)
+                    // Esc clears the search on the Mac too, where the field takes Esc to give up its focus.
+                    .keyboardShortcut(.cancelAction)
                     .accessibilityLabel("Limpar")
             } else if Platform.isMac {
                 Text(verbatim: "⇧⌘O").font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint)
@@ -165,6 +167,16 @@ private struct FileTreePane: View {
                     .onSubmit { createFile(in: folder) }
                     .onKeyPress(.escape) { creatingIn = nil; return .handled }
                     .accessibilityIdentifier("tree-new-file-field")
+                Button { creatingIn = nil } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: Density.small)).foregroundStyle(Theme.textFaint)
+                        .frame(width: 16, height: 16).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                // Esc as a key command too: without one, the text field on the Mac takes Esc to give up its focus
+                // and onKeyPress never sees it.
+                .keyboardShortcut(.cancelAction)
+                .help("Cancelar (Esc)")
+                .accessibilityLabel("Cancelar")
             }
             .padding(.horizontal, 6).frame(height: Density.row - 2)
             .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.card))

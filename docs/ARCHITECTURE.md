@@ -329,7 +329,9 @@ the iPad in landscape.
 `Packages/PierKit/Tests/PierKitTests/Fixtures` into `App/Debug/UITestMockFixtures.swift`): no network, keychain or push.
 It answers like pierd for the endpoints the app uses and is stateful for send, answer and create task; its worktrees
 have files and a history (`App/Debug/UITestMockWorkspace.swift`: the file routes with sha checks, `GitLog` and
-`FileSearch` commands), and saves stick for the run. `-uiTestExtras 1`,
+`FileSearch` commands), and saves stick for the run. On the Mac a mock run shares the installed app's container and App
+Group: its sidebar prefs go to `prefs-mock.json`, and it never writes the widgets' copy of names and hidden projects
+(the app rewrites that copy at launch). `-uiTestExtras 1`,
 `-uiTestChats 1`, `-uiTestPRs 1`, `-uiTestAsk 1` (an agent asking a question with three choices) and `-uiTestHealth 1`
 (a doctor report with three things to fix) add to its data.
 

@@ -33,7 +33,9 @@ struct Sidebar: View {
     /// A section being created, or a section or project being renamed, in place.
     @State private var edit: SidebarEdit?
     @State private var editText = ""
-    @FocusState private var editFocused: Bool
+    /// Which edit's field has the focus: tied to the edit, so a field going away (the one before it) can't take the
+    /// focus from the field that comes next.
+    @FocusState private var editFocus: SidebarEdit?
     /// A row to bring into view (the new section's field).
     @State private var scrollTarget: String?
     @State private var newWorktree: ProjectEntry?
@@ -115,13 +117,14 @@ struct Sidebar: View {
             #endif
             expandActive(entries)
         }
-        .onChange(of: editFocused) { was, focused in
+        .onChange(of: editFocus) { was, now in
             // Clicking elsewhere keeps what was typed, like a rename in the Finder. A moment later, and only if it is still
-            // the same edit without the focus: × cancels it first, and a new edit's field takes the focus as it appears.
-            guard was, !focused, let e = edit else { return }
+            // the same edit without the focus: × cancels it first, and a field can lose the focus for an instant as it
+            // appears.
+            guard let e = was, now != e, edit == e else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(150))
-                if edit == e, !editFocused { commitEdit() }
+                if edit == e, editFocus != e { commitEdit() }
             }
         }
         .sheet(item: $newWorktree) { e in
@@ -359,7 +362,7 @@ struct Sidebar: View {
     @ViewBuilder private func sectionHeader(_ g: ProjectGroup, open: Bool, groups: [ProjectGroup]) -> some View {
         if let section = g.section, edit == .renameSection(section) {
             // The field on its own (not inside the title's button, which folds the section, and not a drag source).
-            inlineField("Nome da seção")
+            inlineField("Nome da seção", for: .renameSection(section))
                 .padding(.leading, 8).padding(.trailing, 6)
                 .frame(height: Density.row + 2)
                 .padding(.top, SidebarHeader<EmptyView, EmptyView>.gap)
@@ -448,7 +451,7 @@ struct Sidebar: View {
             // The field on its own: not inside the row's button (which opens the project), not a drag source.
             HStack(spacing: 7) {
                 ProjectGlyph(name: name, size: Density.glyph)
-                inlineField("Nome do projeto")
+                inlineField("Nome do projeto", for: .renameProject(e.key))
             }
             .padding(.leading, 2 + 14 + 4).padding(.trailing, 6)
             .frame(height: Density.row)
@@ -563,7 +566,7 @@ struct Sidebar: View {
     private var newSectionRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "folder.badge.plus").font(.system(size: Density.icon)).foregroundStyle(Theme.accent).frame(width: Density.glyph)
-            inlineField("Nome da nova seção")
+            inlineField("Nome da nova seção", for: edit ?? .newSection(project: nil))
         }
         .padding(.horizontal, 8).frame(height: Density.row + 6)
         .padding(.top, 6)
@@ -574,14 +577,14 @@ struct Sidebar: View {
 
     /// The field of an edit in place: Return keeps it, Esc or × drops it (× for a screen without a keyboard), a click
     /// elsewhere keeps it.
-    private func inlineField(_ placeholder: LocalizedStringKey) -> some View {
+    private func inlineField(_ placeholder: LocalizedStringKey, for e: SidebarEdit) -> some View {
         HStack(spacing: 4) {
             TextField(placeholder, text: $editText)
                 .textFieldStyle(.plain)
                 .font(.system(size: Density.text))
                 .foregroundStyle(Theme.text)
                 .autocorrectionDisabled()
-                .focused($editFocused)
+                .focused($editFocus, equals: e)
                 .onSubmit { commitEdit() }
                 .onKeyPress(.escape) { cancelEdit(); return .handled }
                 .accessibilityIdentifier("sidebar-edit-field")
@@ -590,6 +593,9 @@ struct Sidebar: View {
                     .frame(width: 18, height: 18).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Esc as a key command too: without one, a text field on the Mac takes Esc to give up its focus, the
+            // field's onKeyPress never sees it, and losing the focus keeps the name.
+            .keyboardShortcut(.cancelAction)
             .help("Cancelar (Esc)")
             .accessibilityLabel("Cancelar")
             .accessibilityIdentifier("sidebar-edit-cancel")
@@ -597,7 +603,7 @@ struct Sidebar: View {
         .padding(.leading, 6).padding(.trailing, 3).frame(height: Density.row - 4)
         .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.card))
         .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5))
-        .task { editFocused = true }
+        .task { editFocus = e }
     }
 
     /// The field takes the focus once it is on screen (`inlineField`).
@@ -611,7 +617,7 @@ struct Sidebar: View {
 
     private func cancelEdit() {
         withAnimation(.snappy(duration: 0.2)) { edit = nil }
-        editFocused = false
+        editFocus = nil
     }
 
     private func commitEdit() {
@@ -634,7 +640,7 @@ struct Sidebar: View {
             }
             edit = nil
         }
-        editFocused = false
+        editFocus = nil
     }
 
     // MARK: Arquivadas, ocultos
@@ -883,7 +889,7 @@ struct Sidebar: View {
 // MARK: - editing and dragging
 
 /// What the sidebar is editing in place.
-private enum SidebarEdit: Equatable {
+private enum SidebarEdit: Hashable {
     /// A new section; `project` goes in it ("Mover para → Nova seção…").
     case newSection(project: String?)
     case renameSection(UUID)

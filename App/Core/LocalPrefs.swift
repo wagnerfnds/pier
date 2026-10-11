@@ -94,6 +94,8 @@ final class LocalPrefs {
     init(url: URL? = nil) {
         self.url = url ?? Self.defaultURL
         load()
+        // The widgets' copy follows these prefs from the start, whatever changed it meanwhile.
+        if url == nil { mirrorForWidgets() }
     }
 
     static var defaultURL: URL {
@@ -359,7 +361,18 @@ final class LocalPrefs {
         let fm = FileManager.default
         try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let d = try? JSONEncoder().encode(data) { try? d.write(to: url, options: .atomic) }
-        // The widget extension shows display names and honours hidden projects, so mirror them into the App Group.
-        SharedDisplayPrefs(renames: data.renames, hidden: data.hidden).save()
+        mirrorForWidgets()
+    }
+
+    /// The widget extension shows display names and honours hidden projects, so mirror them into the App Group. Not a
+    /// mock run's: on the Mac it shares the installed app's group, and its made-up projects would replace the person's.
+    private func mirrorForWidgets() {
+        #if DEBUG
+        if UITestMock.enabled { return }
+        #endif
+        let mirror = SharedDisplayPrefs(renames: data.renames, hidden: data.hidden)
+        let current = SharedDisplayPrefs.load()
+        guard current.renames != mirror.renames || current.hidden != mirror.hidden else { return }
+        mirror.save()
     }
 }
