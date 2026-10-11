@@ -78,6 +78,7 @@ img { max-width: 100%; display: block; }
 .nav nav a { color: var(--text-dim); }
 .nav nav a:hover { color: var(--text); text-decoration: none; }
 .lang { display: flex; border: 1px solid var(--stroke); border-radius: 999px; overflow: hidden; }
+.brand + .lang { margin-left: auto; }   /* the documents' bar: no links between the name and the toggle */
 .lang button {
   appearance: none; border: 0; background: transparent; color: var(--text-dim);
   font: 600 12px/1 inherit; letter-spacing: .04em; padding: 7px 10px; cursor: pointer;
