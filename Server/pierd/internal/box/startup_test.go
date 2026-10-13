@@ -2,11 +2,16 @@ package box
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"pier/pierd/internal/events"
+	"pier/pierd/internal/integrations/adapters"
 )
 
 // The questions agents ask at start, as their screens show them, and
@@ -59,25 +64,154 @@ func TestStartupQuestionsAreReadOffTheScreen(t *testing.T) {
 	}
 }
 
+// The menu of a startup question, in each agent's layout: the line its
+// cursor is on and the line that says yes. Anything that is not one such
+// menu is not read as one.
+func TestTheTrustMenuIsReadOffTheScreen(t *testing.T) {
+	foot := "\n\n Enter to confirm · Esc to cancel\n"
+	for _, c := range []struct {
+		name        string
+		screen      string
+		cursor, yes int
+		ok          bool
+	}{
+		{"claude, on No", " Quick safety check: Is this a project you trust?\n\n ❯ No, exit\n   Yes, I trust this folder" + foot, 2, 3, true},
+		{"claude, moved to Yes", " Quick safety check: Is this a project you trust?\n\n   No, exit\n ❯ Yes, I trust this folder" + foot, 3, 3, true},
+		{"yes above the cursor", " Quick safety check\n\n   Yes, I trust this folder\n ❯ No, exit" + foot, 3, 2, true},
+		{"older claude", " Do you trust the files in this folder?\n\n ❯ 1. Yes, proceed\n   2. No, exit" + foot, 2, 2, true},
+		{"codex", "  Do you trust the contents of this directory?\n\n› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue\n", 2, 2, true},
+		{"newer codex", "  Do you trust the contents of this directory?\n\n› 1. Trust and continue\n  2. Quit\n\n  Press enter to continue\n", 2, 2, true},
+		{"two cursors", " ❯ No, exit\n ❯ Yes, I trust this folder" + foot, 0, 0, false},
+		{"two yes rows", " ❯ No, exit\n   Yes, I trust this folder\n   Yes, always" + foot, 0, 0, false},
+		{"no yes row", " ❯ No, exit\n   Maybe later" + foot, 0, 0, false},
+		{"no cursor", "   No, exit\n   Yes, I trust this folder" + foot, 0, 0, false},
+		{"yes far from the cursor", " ❯ No, exit\n\n\n\n\n Yes, I trust this folder" + foot, 0, 0, false},
+		{"its prompt", "❯ fix the flaky test\n\n✻ Working… (3s · esc to interrupt)\n", 0, 0, false},
+	} {
+		cursor, yes, ok := trustMenu(c.screen)
+		if ok != c.ok || ok && (cursor != c.cursor || yes != c.yes) {
+			t.Errorf("%s: cursor %d yes %d ok %v, want %d %d %v", c.name, cursor, yes, ok, c.cursor, c.yes, c.ok)
+		}
+	}
+}
+
+// A chat's agent asks whether to trust the folder pierd made for the chat:
+// with nothing in it, pierd answers yes itself, moving the cursor and
+// reading the screen as a person would, so the chat goes on to its first
+// prompt with nobody told it waits (no push, no "needs you"). A chat folder
+// something was already put in is asked about, as a project's folder is.
+func TestAChatTrustsItsOwnFolder(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		litter bool
+	}{{"its own empty folder", false}, {"a folder with files in it", true}} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+			out := t.TempDir()
+			fake := trustingAgent(t, out)
+			// claude on PATH is the stand-in, after writing a file into its folder for the second case.
+			bin := t.TempDir()
+			script := "#!/bin/sh\nexec " + shellQuote(fake) + " \"$@\"\n"
+			if c.litter {
+				script = "#!/bin/sh\necho notes > notes.md\nexec " + shellQuote(fake) + " \"$@\"\n"
+			}
+			if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			read := func(f string) string {
+				b, _ := os.ReadFile(filepath.Join(out, f))
+				return string(b)
+			}
+
+			turns := &Turns{}
+			var bx *Box
+			cl, bus := servedBox(t, func(b *Box) { b.Turns = turns; bx = b })
+			turns.Attach(bus)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go turns.Run(ctx, bx)
+			var mu sync.Mutex
+			var waits []string
+			stop := bus.Observe(func(e events.Event) {
+				if e.Type == adapters.Waiting {
+					mu.Lock()
+					waits = append(waits, fmt.Sprint(e.Data["session"], " ", e.Data["reason"]))
+					mu.Unlock()
+				}
+			})
+			defer stop()
+			told := func() []string {
+				mu.Lock()
+				defer mu.Unlock()
+				return append([]string(nil), waits...)
+			}
+
+			var sess Session
+			if st := call(t, cl, "POST", "/v1/sessions", "", SessionRequest{Chat: true, Agent: "claude", Prompt: "plan a garden"}, &sess); st != 200 || sess.Turn == "" {
+				t.Fatalf("start a chat: %d %+v", st, sess)
+			}
+			defer call(t, cl, "DELETE", "/v1/sessions/"+sess.Name, "", nil, nil)
+
+			if c.litter {
+				waitUntil(t, "the person to be asked", 10*time.Second, func() bool { return len(told()) > 0 })
+				time.Sleep(time.Second)
+				if read("trusted") != "" || read("exited") != "" || read("swallowed") != "" {
+					t.Fatalf("pierd answered a folder with files in it: trusted %q exited %q typed %q", read("trusted"), read("exited"), read("swallowed"))
+				}
+				if got := told(); got[0] != sess.Name+" startup question" || bx.startingState(sess.Name) != startAsking {
+					t.Fatalf("told %v, start state %d", got, bx.startingState(sess.Name))
+				}
+				return
+			}
+			waitUntil(t, "the agent to be trusted", 10*time.Second, func() bool { return read("trusted") != "" })
+			waitUntil(t, "the start to end", 15*time.Second, func() bool { return bx.startingState(sess.Name) == startReady })
+			if got := read("got"); got != "ran: plan a garden\n" {
+				t.Fatalf("the agent got %q, want its first prompt", got)
+			}
+			if read("exited") != "" || read("swallowed") != "" {
+				t.Fatalf("exited %q, typed into the question %q", read("exited"), read("swallowed"))
+			}
+			if got := told(); len(got) > 0 {
+				t.Fatalf("told the person the chat waits: %v", got)
+			}
+			if tr, _ := turns.Get(sess.Turn); tr.State == "waiting" || len(tr.Waits) > 0 {
+				t.Fatalf("the first turn waited: %+v", tr)
+			}
+		})
+	}
+}
+
 // trustingAgent is a stand-in for Claude Code in a folder it hasn't seen:
 // it keeps the prompt it was started with, asks whether to trust the
 // folder, drops whatever is typed meanwhile (into out/swallowed), and
-// exits on Enter unless Down picked "Yes, I trust this folder" first, as
-// Claude Code's own question does. Trusted, it runs its first prompt
-// (out/got), says so (out/trusted), and reads prompts a line at a time.
+// exits on Enter unless Down moved its cursor to "Yes, I trust this
+// folder" first (Up moves it back), redrawing the menu as Claude Code's own
+// question does. Trusted, it runs its first prompt (out/got), says so
+// (out/trusted), and reads prompts a line at a time.
 func trustingAgent(t *testing.T, out string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "claude")
 	script := `#!/bin/sh
 out='` + out + `'
 stty raw -echo
-printf ' Accessing workspace:\r\n\r\n Quick safety check: Is this a project you created or one you trust?\r\n\r\n ❯ No, exit\r\n   Yes, I trust this folder\r\n\r\n Enter to confirm · Esc to cancel\r\n'
-esc=$(printf '\033'); cr=$(printf '\r'); yes=0
+yes=0
+menu() {
+	printf '\033[2J\033[H Accessing workspace:\r\n\r\n Quick safety check: Is this a project you created or one you trust?\r\n\r\n'
+	if [ $yes = 1 ]; then printf '   No, exit\r\n ❯ Yes, I trust this folder\r\n'; else printf ' ❯ No, exit\r\n   Yes, I trust this folder\r\n'; fi
+	printf '\r\n Enter to confirm · Esc to cancel\r\n'
+}
+menu
+esc=$(printf '\033'); cr=$(printf '\r')
 while :; do
 	c=$(dd bs=1 count=1 2>/dev/null)
 	if [ "$c" = "$esc" ]; then
 		s=$(dd bs=1 count=2 2>/dev/null)
-		if [ "$s" = "[B" ]; then yes=1; continue; fi
+		case "$s" in
+		"[B") yes=1; menu; continue ;;
+		"[A") yes=0; menu; continue ;;
+		esac
 		printf '%s%s' "$c" "$s" >> "$out/swallowed"
 		continue
 	fi

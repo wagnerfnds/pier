@@ -23,6 +23,10 @@ import (
 // until the agent has drawn. While a startup question shows, prompts are
 // held in the session's inbox, typed once the person has answered and the
 // agent is at its prompt, and the screen poller leaves its turn alone.
+//
+// In a chat's own folder pierd answers the question itself: it made that
+// folder for the chat, nothing is in it yet, and asking a person to trust
+// it would only stop every new chat before its first answer, with a push.
 
 // startupQuestions are the words of those questions. notify: the chat is
 // told the agent waits (agent.waiting). Codex's numbered menu isn't, so the
@@ -71,6 +75,91 @@ func startupQuestion(screen string) (asked, notify bool) {
 		}
 	}
 	return false, false
+}
+
+// trustRow is a row of a startup question's menu as the agents draw it,
+// "❯ No, exit", "  Yes, I trust this folder", "› 1. Trust and continue":
+// its cursor, when it has it, and its first word.
+var trustRow = regexp.MustCompile(`^\s*([❯›])?[\s\x{a0}]*(?:\d[.)][\s\x{a0}]+)?(\pL+)`)
+
+// trustMenu reads the menu of the startup question at the foot of screen:
+// the line its cursor is on and the line of the row that says yes. ok only
+// when each shows once, a few lines apart, as in one menu.
+func trustMenu(screen string) (cursor, yes int, ok bool) {
+	lines := strings.Split(strings.TrimRight(screen, "\n "), "\n")
+	if len(lines) > 24 {
+		lines = lines[len(lines)-24:]
+	}
+	cursor, yes = -1, -1
+	for i, l := range lines {
+		m := trustRow.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		if m[1] != "" {
+			if cursor >= 0 {
+				return 0, 0, false
+			}
+			cursor = i
+		}
+		if m[2] == "Yes" || m[2] == "Trust" {
+			if yes >= 0 {
+				return 0, 0, false
+			}
+			yes = i
+		}
+	}
+	if cursor < 0 || yes < 0 || max(cursor-yes, yes-cursor) > 3 {
+		return 0, 0, false
+	}
+	return cursor, yes, true
+}
+
+// trustOwnFolder answers the startup question an agent asks in a chat's
+// own folder. It moves the menu's cursor to the row that says yes a key at
+// a time, reading the screen after each, and presses Enter only once the
+// screen shows the cursor there, so a menu drawn in another order is never
+// answered no. It says whether it answered; a menu it can't read is left
+// to the person, as in a project's folder.
+func (b *Box) trustOwnFolder(ctx context.Context, name, screen string) bool {
+	for range 4 {
+		cursor, yes, ok := trustMenu(screen)
+		if !ok {
+			return false
+		}
+		if cursor == yes {
+			return b.pressKeys(ctx, name, "Enter") == nil
+		}
+		key := "Down"
+		if yes < cursor {
+			key = "Up"
+		}
+		if b.pressKeys(ctx, name, key) != nil {
+			return false
+		}
+		if screen = b.screenAfter(ctx, name, screen); screen == "" {
+			return false
+		}
+	}
+	return false
+}
+
+// screenAfter waits, at most answerStep, for a session's screen to change
+// from before and hold still, and answers it: "" when it never did.
+func (b *Box) screenAfter(ctx context.Context, name, before string) string {
+	last := before
+	for end := time.Now().Add(answerStep); time.Now().Before(end); {
+		time.Sleep(60 * time.Millisecond)
+		s, err := b.Sessions.Screen(ctx, name, 0)
+		if err != nil {
+			return ""
+		}
+		if s != before && s == last {
+			return s
+		}
+		last = s
+	}
+	return ""
 }
 
 // How the watch goes. A send waits at most startupSendWait for the agent to
@@ -213,8 +302,10 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 		}
 	}()
 	began := time.Now()
-	var answered time.Time
+	var answered, trusted time.Time
 	told := false
+	// A chat's own folder: pierd answers its question (trustOwnFolder).
+	own := sess.Location == "" && isChatDir(sess.Dir)
 	last, same := "", 0
 	for {
 		poll := startupPoll
@@ -233,7 +324,14 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 		}
 		if asked, notify := startupQuestion(screen); asked {
 			st.set(startAsking)
-			if notify && !told {
+			if own && trusted.IsZero() {
+				if own = chatDirBare(sess.Dir) && b.trustOwnFolder(ctx, sess.Name, screen); own {
+					trusted = time.Now()
+				}
+			}
+			// The person is told when pierd did not answer, or its answer
+			// did not take.
+			if notify && !told && (trusted.IsZero() || time.Since(trusted) > answerStep) {
 				told = true
 				// From the screen: its hooks don't run until it is trusted.
 				b.Events.Publish(events.Event{Type: adapters.Waiting, Box: b.Name, Origin: from, Data: map[string]any{

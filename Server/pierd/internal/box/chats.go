@@ -18,6 +18,8 @@ import (
 //
 // A session is a chat when it has no location and its folder is one of
 // these, so the list says so (Session.Chat) with nothing more kept in tmux.
+// The agent's question whether to trust that folder, pierd answers itself
+// (startup.go): pierd made it, and nothing is in it yet.
 // Ending one removes its folder when the agent left nothing there but the
 // app's attachments; what it wrote stays, for the user to find.
 
@@ -75,20 +77,29 @@ func makeChatDir(name string, given bool) (string, string, error) {
 	}
 }
 
-// removeChatDir removes an ended chat's folder when the agent left nothing
-// in it: an empty one, or one with only the app's attachments (.pier).
-func removeChatDir(dir string) {
+// chatDirBare says a chat's folder holds nothing the agent or anyone else
+// put there: it is empty, or has only the app's attachments (.pier).
+func chatDirBare(dir string) bool {
 	if !isChatDir(dir) {
-		return
+		return false
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return
+		return false
 	}
 	for _, e := range entries {
 		if e.Name() != ".pier" {
-			return
+			return false
 		}
+	}
+	return true
+}
+
+// removeChatDir removes an ended chat's folder when the agent left nothing
+// in it.
+func removeChatDir(dir string) {
+	if !chatDirBare(dir) {
+		return
 	}
 	os.RemoveAll(filepath.Join(dir, ".pier"))
 	os.Remove(dir)

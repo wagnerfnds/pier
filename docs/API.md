@@ -538,6 +538,11 @@ an idea through, plan what does not exist yet.
   agent there would take the whole home for its project, and the turn ledger places a hook that names no session by
   its folder, so two chats never share one. The default name is `chat-<program>-<base36 time>`; when an earlier chat left a
   folder of that name, the next free `-2`, `-3`... is taken. A `name` whose folder exists: 409.
+* The agent's start-up question about that folder (Claude Code's "Quick safety check", Codex's "Do you trust the
+  contents of this directory?") pierd answers itself: it made the folder and nothing is in it yet. It moves the menu's
+  cursor to the row that says yes, reading the screen after each key, and confirms only once the cursor is there; no
+  `agent.waiting`, no push, and the first prompt runs at once. A menu it cannot read, or a folder that by then holds
+  more than the app's attachments, is asked about as a project's folder is (5.3).
 * Answer: the `Session` (4.1), with `location` empty and `chat: true`. Event `session.started {..., chat: true}`.
   It is an agent like any other: `PIER_SESSION`, the turn ledger, transcripts, push and Live Activities (their place
   reads "Chat" / "Conversa") all work as for a task's session. There is no worktree: no review, diff, services or
@@ -713,7 +718,7 @@ same, `internal/push/menu`):
 Start-up dialogs are not permission menus. Claude Code's "Quick safety check: … do you trust this folder?" has
 unnumbered rows with the cursor on **No**: send `keys: ["down","enter"]`. Codex's `› 1. Trust and continue` ignores
 the digit: send `keys: ["enter"]`. pierd reports both as `agent.waiting {reason: "startup question"}` and holds
-prompts until they are answered.
+prompts until they are answered; in a chat's own folder it answers them itself (3.5).
 
 When no Allow/Deny can be derived, offer "Answer": the screen plus a key bar (`1 2 3 y n enter esc`) through `keys`.
 Always show `ask.tool` + `ask.input` (+ `why`), e.g. `Bash  rm -rf build`.
