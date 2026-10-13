@@ -1189,6 +1189,26 @@
         }
       }
     },
+    "A box apresentou outra chave. Nada é enviado até você parear de novo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box presented another key. Nothing is sent until you pair again."
+          }
+        }
+      }
+    },
+    "A box não está respondendo. Reconectando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box isn't answering. Reconnecting…"
+          }
+        }
+      }
+    },
     "A IA não respondeu." : {
       "localizations" : {
         "en" : {
@@ -2145,6 +2165,16 @@
         }
       }
     },
+    "Alto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "High"
+          }
+        }
+      }
+    },
     "Ambiente" : {
       "localizations" : {
         "en" : {
@@ -2801,6 +2831,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Download a repository from GitHub or clone one by its link with the + button."
+          }
+        }
+      }
+    },
+    "Baixo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Low"
           }
         }
       }
@@ -4175,6 +4215,16 @@
         }
       }
     },
+    "Descreva a tarefa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Describe the task"
+          }
+        }
+      }
+    },
     "Descrição" : {
       "localizations" : {
         "en" : {
@@ -4441,6 +4491,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Can be merged, but some checks are failing."
+          }
+        }
+      }
+    },
+    "Dê um nome válido à worktree" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Give the worktree a valid name"
           }
         }
       }
@@ -4911,6 +4971,16 @@
         }
       }
     },
+    "Escolha um agente" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick an agent"
+          }
+        }
+      }
+    },
     "Escolha um arquivo" : {
       "localizations" : {
         "en" : {
@@ -5007,6 +5077,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chosen"
+          }
+        }
+      }
+    },
+    "Escreva a primeira mensagem" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Write the first message"
           }
         }
       }
@@ -5127,6 +5207,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "That project is no longer on the box."
+          }
+        }
+      }
+    },
+    "Esta box ainda não tem conversas livres" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This box can't start chats yet"
           }
         }
       }
@@ -5257,6 +5347,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This device"
+          }
+        }
+      }
+    },
+    "Este aparelho não está mais pareado com a box." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This device is no longer paired with the box."
           }
         }
       }
@@ -7053,6 +7153,16 @@
         }
       }
     },
+    "Muito alto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extra high"
+          }
+        }
+      }
+    },
     "Muitos convites em pouco tempo. Aguarde alguns minutos." : {
       "localizations" : {
         "en" : {
@@ -7063,12 +7173,32 @@
         }
       }
     },
+    "Máximo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Max"
+          }
+        }
+      }
+    },
     "Médio" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Medium"
+          }
+        }
+      }
+    },
+    "Mínimo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimal"
           }
         }
       }
@@ -8173,6 +8303,16 @@
         }
       }
     },
+    "Não deu para confirmar o envio: a box não respondeu. Confira a conversa antes de enviar de novo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't confirm the message went out: the box didn't answer. Check the conversation before sending it again."
+          }
+        }
+      }
+    },
     "Não encontrado na box." : {
       "localizations" : {
         "en" : {
@@ -8925,6 +9065,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The router pointed to an agent that doesn't exist. Choose the agent."
+          }
+        }
+      }
+    },
+    "O texto passa de 128 KB" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The text is over 128 KB"
           }
         }
       }
@@ -11481,6 +11631,16 @@
         }
       }
     },
+    "Sem conexão com a box. Tentando de novo…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No connection to the box. Trying again…"
+          }
+        }
+      }
+    },
     "Sem conversa" : {
       "localizations" : {
         "en" : {
@@ -12719,6 +12879,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "You are on the PR's branch, `%@`. When done, commit and `git push`: that updates the PR."
+          }
+        }
+      }
+    },
+    "Você, enviando: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You, sending: %@"
           }
         }
       }
@@ -13983,6 +14153,16 @@
         }
       }
     },
+    "↩ envia · ⇧↩ nova linha" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ sends · ⇧↩ new line"
+          }
+        }
+      }
+    },
     "⇧⌘A, o botão da câmera na barra ou o menu Ir: a tela escurece, você marca um pedaço dela e diz o que fazer; a imagem vai junto para o agente." : {
       "localizations" : {
         "en" : {
@@ -14029,6 +14209,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⌃⌥P shows or hides the tab, from any app."
+          }
+        }
+      }
+    },
+    "⌘↩ para iniciar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌘↩ to start"
           }
         }
       }

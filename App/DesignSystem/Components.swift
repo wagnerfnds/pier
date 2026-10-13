@@ -133,12 +133,64 @@ struct EmptyState: View {
 
 struct PrimaryButtonStyle: ButtonStyle {
     var color: Color = Theme.accent
+    var foreground: Color = .white
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(foreground)
             .frame(maxWidth: .infinity).padding(.vertical, 14)
             .background(color.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// The primary action at its own size (a form's end on the Mac and the iPad): filled with the accent when it can run,
+/// a quiet outline with readable text when it can't yet.
+struct CompactPrimaryButtonStyle: ButtonStyle {
+    var enabled: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Platform.isMac ? .callout.weight(.semibold) : .body.weight(.semibold))
+            .foregroundStyle(enabled ? Color.white : Theme.textDim)
+            .padding(.horizontal, Platform.isMac ? 16 : 20).padding(.vertical, Platform.isMac ? 8 : 12)
+            .background(enabled ? Theme.accent.opacity(configuration.isPressed ? 0.8 : 1) : Theme.cardRaised,
+                        in: RoundedRectangle(cornerRadius: Platform.isMac ? 9 : 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Platform.isMac ? 9 : 12, style: .continuous).strokeBorder(enabled ? .clear : Theme.stroke))
+            .contentShape(RoundedRectangle(cornerRadius: Platform.isMac ? 9 : 12, style: .continuous))
+    }
+}
+
+/// One option of a set, as a capsule: the chosen one in the accent's tint, the rest quiet. `quiet` draws a softer
+/// action chip ("Outro…").
+struct ChoiceChip: View {
+    let title: String
+    let selected: Bool
+    var quiet = false
+    let action: () -> Void
+
+    /// Vertical padding of the text inside the capsule (labels beside a row of chips line up with it).
+    static var vPad: CGFloat { Platform.isMac ? 4 : 6 }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Theme.accent : quiet ? Theme.textDim : Theme.text)
+                .lineLimit(1)
+                .padding(.horizontal, Platform.isMac ? 10 : 12).padding(.vertical, Self.vPad)
+                .background(selected ? Theme.accent.opacity(0.13) : quiet ? Color.clear : Theme.cardRaised, in: Capsule())
+                .overlay(Capsule().strokeBorder(selected ? Theme.accent.opacity(0.55) : Theme.stroke, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+extension View {
+    /// A menu drawn as its own label: on the Mac a SwiftUI `Menu` otherwise becomes a grey pop-up button as wide as
+    /// its row, without the label's value.
+    func plainMenu() -> some View {
+        menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
     }
 }
 

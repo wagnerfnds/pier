@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -60,9 +61,39 @@ func (b *Box) draft(w http.ResponseWriter, r *http.Request) error {
 		}
 		out = ParseClaudeDraft(string(raw))
 		out.Agent = agent
+		// A block stays on screen once done, under the status line while
+		// the agent thinks on: once the chat has read it from the record,
+		// it shows it from there, and as a draft too it would show twice.
+		if out.Text != "" && b.recorded(sess.Name, out.Text) {
+			out.Text, out.Clipped = "", false
+		}
 	}
 	writeJSON(w, out)
 	return nil
+}
+
+// recorded says the agent's latest reply, as the chats have read it from
+// its record, ends with the words of text, a draft: the same words,
+// whatever marks the screen and the record draw them with. Never ahead of
+// the chat (the record isn't read for it), so a block never goes from the
+// draft before the chat has it.
+func (b *Box) recorded(session, text string) bool {
+	path := b.transcriptWatch().pathOf(session)
+	if path == "" {
+		return false
+	}
+	said := letters(text)
+	return said != "" && strings.HasSuffix(letters(reader().LastText(path)), said)
+}
+
+// letters is s's letters and digits alone, lowercased.
+func letters(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, s)
 }
 
 // maxDraft bounds the text sent: a screen holds far less.
@@ -113,7 +144,7 @@ func ParseClaudeDraft(raw string) Draft {
 				return d
 			}
 			body = append(body, l.withoutMarker())
-			d.Text = draftMarkdown(reverse(body))
+			d.Text, d.Clipped = tail(draftMarkdown(reverse(body)))
 			return d
 		case l.indent() == 0:
 			// A rule at the margin tops a dialog drawn over the reply
@@ -139,7 +170,7 @@ func ParseClaudeDraft(raw string) Draft {
 		}
 	}
 	if strings.TrimSpace(plainOf(body)) != "" && !elbowFirst(body) {
-		d.Text = draftMarkdown(reverse(body))
+		d.Text, _ = tail(draftMarkdown(reverse(body)))
 		d.Clipped = d.Text != ""
 	}
 	return d
@@ -187,9 +218,10 @@ var (
 	notWords = regexp.MustCompile(`^(Background command|Interrupted|API Error|No response requested)`)
 	// Its status line while it works: "✻ Seasoning… (9m 11s · ↓ 7.1k
 	// tokens · esc to interrupt)", "✻ Proofing…"; and once a turn ends,
-	// "✻ Worked for 10s".
-	statusLine = regexp.MustCompile(`^[✻✽✶✳✢·*✦]\s+([A-Z][\w' -]{0,40}?…)\s*(?:\(([^)]*)\))?`)
-	doneLine   = regexp.MustCompile(`^[✻✽✶✳✢·*✦]\s+[A-Z][\w' -]{0,40} for \d`)
+	// "✻ Worked for 10s". The word is any word (spinnerVerbs can make it
+	// "Pensando", "Ação" or "思考中"), so letters of any script and case.
+	statusLine = regexp.MustCompile(`^[✻✽✶✳✢·*✦]\s+(\pL[\pL\pM\pN' -]{0,40}?…)\s*(?:\(([^)]*)\))?`)
+	doneLine   = regexp.MustCompile(`^[✻✽✶✳✢·*✦]\s+\pL[\pL\pM\pN' -]{0,40} for \d`)
 	elapsedRe  = regexp.MustCompile(`(?:\d+h\s*)?(?:\d+m\s*)?\d+s`)
 	tokensRe   = regexp.MustCompile(`[\d.]+k?\s*tokens`)
 )
@@ -609,10 +641,23 @@ func draftMarkdown(lines []styledLine) string {
 	} else if listOnly.MatchString(text) {
 		text = ""
 	}
-	if len(text) > maxDraft {
-		text = text[len(text)-maxDraft:]
-	}
 	return text
+}
+
+// tail is the end of a draft longer than maxDraft, from the start of a
+// line (never inside a character), and whether it was cut.
+func tail(text string) (string, bool) {
+	if len(text) <= maxDraft {
+		return text, false
+	}
+	text = text[len(text)-maxDraft:]
+	if i := strings.IndexByte(text, '\n'); i >= 0 {
+		return text[i+1:], true
+	}
+	for text != "" && !utf8.RuneStart(text[0]) {
+		text = text[1:]
+	}
+	return text, true
 }
 
 var (
@@ -646,7 +691,7 @@ func classify(l styledLine) row {
 	r := row{indent: l.indent(), line: l}
 	t := strings.TrimSpace(l.plain)
 	switch {
-	case l.blank():
+	case l.blank() || t == "": // spaces of any width ("　") alone too
 		r.kind = kBlank
 	case strings.HasPrefix(t, "▎"):
 		r.kind = kQuote
@@ -794,8 +839,14 @@ func groupMarkdown(group []row) []string {
 				open, openIndent, openList = len(out)-1, r.indent, false
 			}
 		case kList:
-			m := listItemRe.FindStringIndex(strings.TrimLeft(r.line.plain, " "))
-			rest := dropCols(r.line, r.indent+m[1])
+			// Its indent and marker, in characters: the indent can hold
+			// wider spaces ("　") and the marker be "•".
+			t := strings.TrimLeftFunc(r.line.plain, unicode.IsSpace)
+			m := listItemRe.FindStringIndex(t)
+			if m == nil {
+				m = []int{0, 0}
+			}
+			rest := dropCols(r.line, utf8.RuneCountInString(r.line.plain[:len(r.line.plain)-len(t)+m[1]]))
 			marker := r.marker
 			if !numbered.MatchString(marker) {
 				marker = "-"

@@ -337,7 +337,7 @@ box → relay      PIER-RELAY/1 ACCEPT <id>          a new connection, joined to
   day per box, and no address in its log. A box on it is named `<short fingerprint>.t.docktopier.com`, which the
   wildcard DNS answers like the tunnel itself; links and `/v1/info` carry that name. Its deployment is
   `Server/pierd/deploy/tunnel`. The app dials the box's address first and,
-  1.2 s later (or at once when that fails), the relay; the first TLS handshake to succeed wins and the other attempt is
+  0.6 s later (or at once when that fails), the relay; the first TLS handshake to succeed wins and the other attempt is
   closed. A box last reached through its relay is dialed relay first the next time.
 
 ### 10.1 Public links

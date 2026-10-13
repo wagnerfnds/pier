@@ -630,7 +630,10 @@ final class EdgeTabView: NSView {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.spinAngle = (self.spinAngle + 8).truncatingRemainder(dividingBy: 360)
-                    self.setNeedsDisplay(self.shapePath.bounds)
+                    // Only the turning rings: the whole tab, its buttons with it, redrawn 30 times a second took about
+                    // 4% of the app's main thread whenever an agent worked, window open or not.
+                    let rings = zip(self.indicatorRects, self.dots).filter { $0.1.state == "working" }.map { $0.0.insetBy(dx: -1, dy: -1) }
+                    if rings.isEmpty { self.setNeedsDisplay(self.shapePath.bounds) } else { rings.forEach { self.setNeedsDisplay($0) } }
                 }
             }
         } else {

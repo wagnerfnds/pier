@@ -33,7 +33,7 @@ func peerOf(c *wire.Client) trust.Peer {
 
 // servedBox runs pierd's server with the box routes mounted and returns a
 // client for a laptop paired with it.
-func servedBox(t *testing.T, opts ...func(*Box)) (*wire.Client, *events.Bus) {
+func servedBox(t testing.TB, opts ...func(*Box)) (*wire.Client, *events.Bus) {
 	t.Helper()
 	dir := t.TempDir()
 	id, err := identity.LoadOrCreate(filepath.Join(dir, "identity.pem"))
@@ -79,7 +79,7 @@ func servedBox(t *testing.T, opts ...func(*Box)) (*wire.Client, *events.Bus) {
 	return c, bus
 }
 
-func call(t *testing.T, c *wire.Client, method, path, origin string, in, out any) int {
+func call(t testing.TB, c *wire.Client, method, path, origin string, in, out any) int {
 	t.Helper()
 	var body io.Reader
 	if in != nil {

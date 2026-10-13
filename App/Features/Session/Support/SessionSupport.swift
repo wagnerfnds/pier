@@ -165,34 +165,86 @@ extension Signals {
     }
 }
 
-/// A label whose text a soft light passes over: "Trabalhando" while the agent works.
+/// A label whose text a soft light passes over: "Trabalhando" while the agent works. The light is a gradient layer that
+/// Core Animation moves (`ShimmerSweep`), masked by the text: nothing runs on the main thread per frame. (A SwiftUI
+/// `repeatForever` animation updated the view graph 60 times a second, about a fifth of the main thread while an agent
+/// worked, and every streamed update on top of it missed frames.)
 struct ShimmerText: View {
     let text: String
     var font: Font = .footnote.weight(.medium)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var phase: CGFloat = 0
 
     var body: some View {
-        if reduceMotion {
-            Text(text).font(font).foregroundStyle(Theme.textDim)
-        } else {
-            // One repeating animation, run by Core Animation (a 30 fps TimelineView re-evaluated this view on the main thread).
-            Text(text).font(font)
-                .foregroundStyle(Theme.textDim)
-                .overlay {
-                    GeometryReader { g in
-                        let w = g.size.width
-                        LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: Theme.text, location: 0.5), .init(color: .clear, location: 1)],
-                                       startPoint: .leading, endPoint: .trailing)
-                            .frame(width: max(40, w * 0.6), height: g.size.height)
-                            .offset(x: -w * 0.6 + phase * (w * 1.6))
-                    }
-                    .mask(Text(text).font(font))
-                }
-                .onAppear {
-                    phase = 0
-                    withAnimation(.linear(duration: 2.2).repeatForever(autoreverses: false)) { phase = 1 }
-                }
+        Text(text).font(font)
+            .foregroundStyle(Theme.textDim)
+            .overlay {
+                if !reduceMotion, Motion.endless { ShimmerSweep().mask(Text(text).font(font)).accessibilityHidden(true) }
+            }
+    }
+}
+
+/// Whether endless animations run. Core Animation's (`ShimmerSweep`, `PulsingDot`) read to XCUITest as an app that
+/// never goes idle, so every tap while one showed waited 60 s: under the mock box's UI tests they stand still, as with
+/// Reduce Motion (the performance probe keeps them, to measure what people get).
+enum Motion {
+    static let endless = !UITestMock.enabled || UserDefaults.standard.bool(forKey: "chatPerfProbe")
+}
+
+/// The light of `ShimmerText`: a soft band of the text color crossing the view every 2.2 s.
+private struct ShimmerSweep: UIViewRepresentable {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func makeUIView(context: Context) -> SweepView { SweepView() }
+
+    func updateUIView(_ view: SweepView, context: Context) {
+        let style: UIUserInterfaceStyle = colorScheme == .dark ? .dark : .light
+        view.color = UIColor(Theme.text).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+    }
+
+    final class SweepView: UIView {
+        private let band = CAGradientLayer()
+        private var animatedWidth: CGFloat = -1
+        var color: UIColor = .label {
+            didSet { band.colors = [color.withAlphaComponent(0).cgColor, color.cgColor, color.withAlphaComponent(0).cgColor] }
+        }
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            band.startPoint = CGPoint(x: 0, y: 0.5)
+            band.endPoint = CGPoint(x: 1, y: 0.5)
+            layer.addSublayer(band)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if bounds.width != animatedWidth { sweep() }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            // Core Animation drops animations from a layer that leaves the window (another tab, the app in the background).
+            if window != nil { sweep() }
+        }
+
+        private func sweep() {
+            let w = bounds.width
+            guard w > 0, window != nil else { return }
+            animatedWidth = w
+            let bandWidth = max(40, w * 0.6)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            band.bounds = CGRect(x: 0, y: 0, width: bandWidth, height: bounds.height)
+            band.position = CGPoint(x: -bandWidth / 2, y: bounds.midY)
+            CATransaction.commit()
+            let move = CABasicAnimation(keyPath: "position.x")
+            move.fromValue = -w * 0.6 + bandWidth / 2
+            move.toValue = w + bandWidth / 2
+            move.duration = 2.2
+            move.repeatCount = .infinity
+            band.add(move, forKey: "sweep")
         }
     }
 }

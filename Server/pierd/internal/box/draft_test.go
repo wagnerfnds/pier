@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+	"unicode/utf8"
 )
 
 // The fixtures in testdata/draft are Claude Code 2.1's screens, captured
@@ -240,5 +241,69 @@ func TestStyledLines(t *testing.T) {
 	}
 	if got := inline([]span{{"a_b *c* [d]", style{fg: -1}}}, false); got != `a\_b \*c\* \[d\]` {
 		t.Errorf("escaped: %q", got)
+	}
+}
+
+// The status word is whatever Claude Code's spinnerVerbs say, in any
+// language or case: a word it can't read must not lose the reply under it.
+func TestDraftStatusInAnyWord(t *testing.T) {
+	base := screen(t, "text-after-tools.ansi")
+	want := ParseClaudeDraft(base).Text
+	for _, w := range []string{"Pensando", "Ação", "Élaborant", "pondering", "Думаю", "思考中"} {
+		d := ParseClaudeDraft(strings.Replace(base, "Whirring", w, 1))
+		if d.Text != want || d.Status == nil || d.Status.Word != w+"…" || d.Status.Elapsed != "8s" {
+			t.Errorf("%s: status %+v, text %q", w, d.Status, d.Text)
+		}
+	}
+	// "✻ Cooked for 7s" once the turn ends, in any word too.
+	finished := ParseClaudeDraft(screen(t, "finished.ansi")).Text
+	done := strings.Replace(screen(t, "finished.ansi"), "Cooked for", "Ação for", 1)
+	if d := ParseClaudeDraft(done); d.Status != nil || d.Text != finished || finished == "" {
+		t.Errorf("a turn ended in other words: status %+v, text %q", d.Status, d.Text)
+	}
+}
+
+// claudeScreen draws a reply block in Claude Code's way, under its prompt box.
+func claudeScreen(first string, rest ...string) string {
+	const rule = "────────────────────────────────────────"
+	lines := append([]string{"\x1b[38;5;231m⏺\x1b[39m " + first}, rest...)
+	return strings.Join(append(lines, "", rule, "❯ ", rule), "\n")
+}
+
+// A reply in CJK can hold lines of wide spaces ("　") alone or before a
+// list item, and lists can be drawn with "•": none of it may crash the
+// parser (it did, index out of range) or lose a character.
+func TestDraftWideSpacesAndBullets(t *testing.T) {
+	for _, tc := range []struct{ line, want string }{
+		{"  　　", "日本語の説明です。\n\n続きの文章です。"},
+		{"  　- 項目一", "日本語の説明です。\n- 項目一\n続きの文章です。"},
+		{"   - item two", "日本語の説明です。\n - item two\n続きの文章です。"},
+		{"  • First item", "日本語の説明です。\n- First item\n続きの文章です。"},
+	} {
+		var d Draft
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%q: panic %v", tc.line, r)
+				}
+			}()
+			d = ParseClaudeDraft(claudeScreen("日本語の説明です。", tc.line, "  続きの文章です。"))
+		}()
+		if d.Text != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.line, d.Text, tc.want)
+		}
+	}
+}
+
+// A draft past its limit keeps its end from a line's start: never half a
+// character (sent as "�"), and it says it is clipped.
+func TestDraftLongerThanItsLimit(t *testing.T) {
+	var rest []string
+	for i := 0; i < 1200; i++ {
+		rest = append(rest, "  "+strings.Repeat("語", 11)+"x")
+	}
+	d := ParseClaudeDraft(claudeScreen(strings.Repeat("語", 10), rest...))
+	if len(d.Text) > maxDraft || !utf8.ValidString(d.Text) || !strings.HasPrefix(d.Text, "語") || !d.Clipped {
+		t.Fatalf("%d bytes, valid %v, clipped %v, starts %q", len(d.Text), utf8.ValidString(d.Text), d.Clipped, d.Text[:min(len(d.Text), 9)])
 	}
 }

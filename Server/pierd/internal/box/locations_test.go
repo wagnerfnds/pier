@@ -38,7 +38,7 @@ func TestParseWorktrees(t *testing.T) {
 	}
 }
 
-func gitRepo(t *testing.T) string {
+func gitRepo(t testing.TB) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")

@@ -40,7 +40,7 @@ func TestParseSessionsPrefersTheEncodedCommand(t *testing.T) {
 
 // testSessions isolates tmux under a private TMUX_TMPDIR so tests never touch
 // the developer's own tmux servers.
-func testSessions(t *testing.T) *Sessions {
+func testSessions(t testing.TB) *Sessions {
 	t.Helper()
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux not installed")
@@ -184,5 +184,42 @@ func TestScreenShowsTheSessionsOutput(t *testing.T) {
 			t.Fatalf("screen = %q", text)
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// A session's environment is read once per variable, set or not: a chat
+// polls the transcript every few seconds, and each read is a tmux command.
+func TestEnvVarAsksTmuxOnce(t *testing.T) {
+	s := testSessions(t)
+	ctx := context.Background()
+	sess, err := s.Create(ctx, "env-once", "cal", t.TempDir(), "sleep 30", []string{"CODEX_HOME=/w/codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	asked := 0
+	s.trace = func(args []string) {
+		for _, a := range args {
+			if a == "show-environment" {
+				asked++
+			}
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if v := s.EnvVar(ctx, sess, "CLAUDE_CONFIG_DIR"); v != "" {
+			t.Fatalf("unset: %q", v)
+		}
+		if v := s.EnvVar(ctx, sess, "CODEX_HOME"); v != "/w/codex" {
+			t.Fatalf("set: %q", v)
+		}
+	}
+	if asked != 2 {
+		t.Fatalf("asked tmux %d times for 2 variables", asked)
+	}
+	// A session that is gone is not remembered as having none.
+	gone := Session{Name: "gone", Created: sess.Created}
+	s.EnvVar(ctx, gone, "CLAUDE_CONFIG_DIR")
+	s.EnvVar(ctx, gone, "CLAUDE_CONFIG_DIR")
+	if asked != 4 {
+		t.Fatalf("asked tmux %d times", asked)
 	}
 }

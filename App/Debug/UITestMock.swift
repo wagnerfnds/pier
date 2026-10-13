@@ -75,6 +75,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
     """
     // --- end answer from the notification ---
     private var mcpAnswered = false
+    /// `-uiTestChatLab 1`: the conversation built to strain the chat screen (UITestMockChatLab.swift).
+    private var chatLab = MockChatLab()
     private var removedWorktrees: Set<String> = []
     /// `-uiTestPRs 1`: pull requests (see the block at the end of the file).
     fileprivate var prs = MockPRs()
@@ -126,6 +128,13 @@ final class MockBox: PierTransport, @unchecked Sendable {
                 item("text", text: "The suite is running in the background; it takes about 11 minutes. I'll open the PR when it ends."),
             ]
             transcripts[Self.exitedSession] = [item("user", text: "Old finished experiment")]
+        }
+        if MockChatLab.enabled {
+            sessions.append(Self.chat(MockChatLab.name, state: "finished", title: MockChatLab.title))
+            let lab = MockChatLab.transcript(firstOffset: 5_000_000)
+            transcripts[MockChatLab.name] = lab
+            // What is said later lands after the record, as offsets in a real record grow.
+            off = max(off, lab.compactMap { $0["off"] as? Int }.max() ?? 0)
         }
         // `-uiTestEmpty 1`: a box with nothing running (the Mac's edge tab with no agent, empty Home and Inbox).
         if UserDefaults.standard.bool(forKey: "uiTestEmpty") { sessions = []; transcripts = [:] }
@@ -461,6 +470,30 @@ final class MockBox: PierTransport, @unchecked Sendable {
         }
     }
 
+    /// The chat lab's reply, as Claude Code writes one: running, the words growing on screen (the draft) for about 5 s,
+    /// then the record has the block while the screen still shows it for 2 s (the overlap), then the turn ends.
+    private func streamLabReply(_ name: String, reply: String) {
+        setState(name, "running")
+        let words = reply.split(separator: " ", omittingEmptySubsequences: false)
+        Task.detached { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))   // the agent reads before it writes
+            var shown = 0
+            while shown < words.count {
+                shown = min(words.count, shown + 3)
+                let partial = words.prefix(shown).joined(separator: " ")
+                self?.lock.withLock { self?.chatLab.draft = partial }
+                try? await Task.sleep(for: .milliseconds(120))
+            }
+            guard let self else { return }
+            self.lock.withLock { self.transcripts[name, default: []].append(self.item("text", text: reply)) }
+            try? await Task.sleep(for: .seconds(2))
+            self.lock.withLock {
+                self.chatLab.draft = nil
+                self.setState(name, "finished")
+            }
+        }
+    }
+
     private func sessionRoute(_ method: BoxClient.Method, _ p: [String], _ query: [String: String], _ body: Data?) -> (Int, Data) {
         let name = p[2]
         guard let si = index(name) else { return notFound }
@@ -512,6 +545,17 @@ final class MockBox: PierTransport, @unchecked Sendable {
             let screen = (sessions[si]["agent_state"] as? String) == "waiting"
                 ? Self.fixtureObject(MockFixtures.screenPermission)["screen"] : Self.fixtureObject(MockFixtures.screenFinished)["screen"]
             return (200, Self.json(["screen": screen ?? ""]))
+        case (.get, "draft") where name == MockChatLab.name:
+            var d: JSON = ["agent": "claude"]
+            if let t = chatLab.draft { d["text"] = t; d["status"] = ["word": "Brewing…"] }
+            return (200, Self.json(d))
+        case (.post, "send") where name == MockChatLab.name:
+            let text = (req["text"] as? String) ?? ""
+            transcripts[name, default: []].append(item("user", text: text))
+            seq += 1
+            chatLab.sent += 1
+            streamLabReply(name, reply: MockChatLab.streamedReply(chatLab.sent))
+            return (200, Self.json(["sent": true, "at": Self.iso(), "seq": seq, "turn": "\(name)#\(seq)"]))
         case (.get, "draft"): return (200, Self.json(["agent": "claude"]))
         case (.get, "controls"): return (200, Self.fixture(MockFixtures.controls))
         case (.get, "queue"): return (200, Data("[]".utf8))

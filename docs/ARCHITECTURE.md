@@ -11,7 +11,9 @@ code calls which route.
 1. Pair with a box (scan the QR / paste or open a `pier://` pair or join link).
 2. Home and Inbox: every agent across boxes grouped **Needs you / Working / Your turn / Done**, live; a keyboard-first Inbox.
 3. Create a task: prompt + project + agent up front; worktree, base branch, name, model, effort and title fold under
-   "Opções" with smart defaults and a one-line summary (+ photo).
+   "Opções" with smart defaults and a one-line summary (+ photo). Model and effort are chips (every choice in sight,
+   "Outro…" for a name typed by hand); the form is a 720 pt column, and on the Mac and a wide iPad Start sits at its
+   end with ⌘↩ beside it (the iPhone keeps a bar above the keyboard).
 4. Session = a chat first (transcript folded into turns, Markdown replies, needs-you card above the composer, Send that
    becomes Stop while the agent works); the raw terminal is a secondary view remembered per session.
 5. Needs you: permission Allow once / Always / Deny (screen menu parsing) and question answering.
@@ -57,7 +59,7 @@ docs/
 - **Transport**: swift-nio-ssl (BoringSSL) because pierd uses TLS 1.3 + Ed25519 mutual TLS; Apple's TLS stack can't.
 - **Reach**: a box's address, or, for a box behind NAT, its relay (`BoxRecord.relay`, from the pairing link or
   `GET /v1/info`; `pierd relay` on a server the person runs). `H2Connection.dial` races the two (`Race.first`: the
-  address first, the relay 1.2 s later or at once when the address fails; the last winner goes first next time); the
+  address first, the relay 0.6 s later or at once when the address fails; the last winner goes first next time); the
   relay only carries the same pinned TLS (docs/PROTOCOL.md §10). `AppModel.relayChanged` keeps the record in step with
   what the box says and reconnects it; Ajustes shows the relay under the address.
 - **Concurrency**: Swift 6 strict; PierKit types Sendable; UI state via `@Observable` on the main actor.
@@ -109,12 +111,39 @@ them:
 
 ## Session screen (chat) — how it is built
 
+Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
+
 - `ConversationFold` (PierKit, tested) turns the transcript into rows: a prompt starts a
   turn; the agent's tool calls, helpers and intermediate notes fold into one "Trabalhou · 3 comandos, 2 arquivos lidos"
   line; edits, questions, notices, artifacts and the answer stay visible. The last turn's fold reads "Trabalhando"
   while the agent runs.
-- `SessionViewModel.tick()` polls transcript / draft / screen / held prompts every ~1.5 s with per-request deadlines;
-  the screen also feeds the "doing" line (`StepText`) every third tick while the agent runs.
+- `SessionViewModel.tick()` polls transcript / screen / held prompts every ~1.5 s (at once on an event) with
+  per-request deadlines (the first transcript read 12 s, then 6 s); the screen also feeds the "doing" line (`StepText`)
+  every third tick while the agent runs. The review list ("Revisar") is read off that loop, so a slow `git` never
+  holds the conversation back.
+- The reply being written (`GET .../draft`, Claude Code only) has a clock of its own (`followDraft`): every 0.6 s while
+  its words grow, 1.5 s once they stop, at once on an event or a send; only new words redraw it. `DraftEcho` (PierKit)
+  hides it once the record has the same block (pierd blanks it too), so a finished block never shows twice.
+- Markdown: `MarkdownBlocks` (PierKit, tested) reads the block structure as CommonMark and GFM do (setext and ATX
+  headings, lists whose items hold code and paragraphs, numbered as CommonMark numbers them, quotes holding blocks,
+  tables with alignment and escaped pipes, indented code, tabs as 4 columns); `MarkdownView` draws it, inline styling
+  through `AttributedString(markdown:)` (bare links included). A table's column grows to its longest cell up to a cap
+  (260 pt, 340 on the Mac) and wraps past it, the table scrolling sideways when wider than the reply. A paragraph keeps
+  its line breaks (chat convention).
+- A message shows the moment it is sent (`outgoing`, "Enviando…"), through the undo window, until the box's pending
+  copy and then the record's replace it in the same turn. A send has 15 s; when it fails on the connection the view
+  model drops the connection and sends again with the same `idem_key` (pierd types it once).
+- `LinkWatch` (PierKit): polls that fail on the connection itself (not on the box's answer) mark the screen troubled
+  ("A box não está respondendo. Reconectando…" at the top, as are "offline", revoked and another key), and two in a
+  row drop the connection, so the next request dials again, address and relay, instead of waiting for the PING
+  watchdog (~45 s).
+- On regular width the conversation and the composer are a 780 pt column. The Mac's window shows the session's title
+  and, beside it, its state line; Return sends there (Shift- or Option-Return writes a line). "Ir para o fim" and
+  loading older messages follow the scroll view's own geometry (iOS 18), so a trackpad or wheel counts like a finger.
+- The working indicators (`ShimmerText`, `PulsingDot`) are Core Animation layers: a SwiftUI `repeatForever` updated
+  the view graph every frame (about a fifth of the main thread while an agent worked). XCUITest takes an endless Core
+  Animation for an app that never idles (60 s per tap), so with `-uiTestMock` they stand still (`Motion.endless`),
+  except under `-chatPerfProbe`.
 - The compact title (name + "Claude Code · Trabalhando · 12s") opens a Details sheet (project, box, model, mode,
   context, to-dos, helpers, published pages). The ⋯ menu holds rename, review, terminal toggle, Live Activity, stop.
 - Agents the box keeps no record for (`source: none`) and plain terminals show `ConversationFallback`: the last message
@@ -349,7 +378,9 @@ follows it); only an exit (`ended`) ends the activity. Debug `-openLink pier://�
 `-pairLink <pier://…>`, `-openSession <name>`, `-openFirstSession 1`, `-openCompose 1 -composeProject <loc>
 -composePrompt <text> -composeNoFocus 1 -composeOptions 1 -composeSheet project|worktree|base -composeSubmit 1`,
 `-startTab inbox|board|projects|settings`, `-seedSections 1`, `-snapshotTo <file.png> [-snapshotAfter <s>]`, `-homeCustomize 1`, `-homeScrollTo <widget>`, `-sessionExpandAll 1`,
-`-sessionDetails 1`, `-sessionTerminal 1`, `-openInstallHelp 1` (the onboarding's "Outros jeitos de instalar" sheet),
+`-sessionDetails 1`, `-sessionTerminal 1`, `-uiTestChatLab 1` (with the mock: a long chat of hard Markdown that streams a
+reply like Claude Code's when sent to; `ChatQualityUITests`), `-chatPerfProbe 1 [-sessionSend <text>]` (frame pacing of
+the open conversation, scrolled and while a reply streams: `CHAT-PERF {...}` on stderr and Documents/chat-perf.json), `-openInstallHelp 1` (the onboarding's "Outros jeitos de instalar" sheet),
 `-runIntent postNotif|notifAction|notifDelivered …` (App/Intents/DebugIntentRunner.swift), `-openLink <pier://…>`,
 `-debugStartActivity 1`, `-widgetGallery home|lock|activity|island|all`, `-openTalk 1 [-talkText "…" -talkRoute 1]`,
 `-openPalette 1`, `-openFaxina 1`, `-openGitHubRepos 1` (with `-startTab projects`: the GitHub list), `-openProject <loc>[/<worktree>] [-workspaceTab files|changes|history|overview|details]

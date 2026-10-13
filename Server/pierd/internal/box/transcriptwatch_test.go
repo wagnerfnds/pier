@@ -159,13 +159,13 @@ func TestChattyEventsSkipWildcardHooks(t *testing.T) {
 
 // claudeBox is a box with a worktree whose sessions run a stand-in for
 // claude (script), and its event bus.
-func claudeBox(t *testing.T, script string) (*wire.Client, *events.Bus, Session) {
+func claudeBox(t testing.TB, script string, opts ...func(*Box)) (*wire.Client, *events.Bus, Session) {
 	t.Helper()
 	bin := t.TempDir()
 	os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\n"+script+"\n"), 0o755)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	c, bus := servedBox(t)
+	c, bus := servedBox(t, opts...)
 	if status := call(t, c, "POST", "/v1/locations", "", map[string]string{"name": "shop", "path": gitRepo(t)}, nil); status != 200 {
 		t.Fatalf("add location: %d", status)
 	}
@@ -278,5 +278,61 @@ func TestATranscriptOnAnotherAccountIsRead(t *testing.T) {
 	}
 	if status := call(t, c, "GET", "/v1/sessions/"+url.PathEscape(sess.Name)+"/transcript?since=0", "", nil, &res); status != 200 || len(res.Items) != 1 {
 		t.Fatalf("transcript: %d %v %s", status, res.Items, res.Reason)
+	}
+}
+
+// A block done and in the record isn't a draft any more, though it stays on
+// screen while the agent thinks on: the chat shows it from the record, and
+// would show it twice.
+func TestADraftTheRecordHasIsNotSentAgain(t *testing.T) {
+	const rule = "────────────────────────────────────────"
+	screenFile := filepath.Join(t.TempDir(), "screen.ansi")
+	os.WriteFile(screenFile, []byte(strings.Join([]string{
+		"❯ Look around",
+		"",
+		"\x1b[38;5;231m⏺\x1b[39m Let me look around at what's in this \x1b[1mproject\x1b[0m.",
+		"",
+		"\x1b[38;5;174m✻\x1b[39m \x1b[38;5;174mPondering…\x1b[39m \x1b[38;5;246m(3s · thinking)\x1b[39m",
+		rule, "❯ ", rule,
+	}, "\n")+"\n"), 0o600)
+	c, _, sess := claudeBox(t, `cat "`+screenFile+`"; exec sleep 600`)
+	line := func(v map[string]any) string { b, _ := json.Marshal(v); return string(b) + "\n" }
+	at := time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano)
+	proj := transcript.ClaudeDirIn("", sess.Dir)
+	os.MkdirAll(proj, 0o755)
+	rec := filepath.Join(proj, "conv.jsonl")
+	appendTo(t, rec, line(map[string]any{"type": "user", "timestamp": at, "message": map[string]any{"role": "user", "content": "Look around"}}))
+	if status := call(t, c, "GET", "/v1/sessions/"+url.PathEscape(sess.Name)+"/transcript?since=0", "", nil, nil); status != 200 {
+		t.Fatalf("transcript: %d", status)
+	}
+	draft := func() Draft {
+		var d Draft
+		for i := 0; i < 40; i++ {
+			d = Draft{}
+			call(t, c, "GET", "/v1/sessions/"+url.PathEscape(sess.Name)+"/draft", "", nil, &d)
+			if d.Status != nil {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		return d
+	}
+	const words = "Let me look around at what's in this **project**."
+	// Not in the record yet: the draft.
+	if d := draft(); d.Text != words || d.Status == nil {
+		t.Fatalf("before the record has it: %+v %+v", d, d.Status)
+	}
+	// Written, but not yet read by the chat: still the draft, so the words
+	// never leave the chat for a moment.
+	appendTo(t, rec, line(map[string]any{"type": "assistant", "timestamp": at, "message": map[string]any{"role": "assistant", "content": []map[string]any{{"type": "text", "text": "Let me look around at what's in this project."}}}}))
+	if d := draft(); d.Text != words {
+		t.Fatalf("before the chat read it: %+v", d)
+	}
+	// Read: the record's, the status line still the draft's.
+	if status := call(t, c, "GET", "/v1/sessions/"+url.PathEscape(sess.Name)+"/transcript?since=0", "", nil, nil); status != 200 {
+		t.Fatalf("transcript: %d", status)
+	}
+	if d := draft(); d.Text != "" || d.Clipped || d.Status == nil || d.Status.Word != "Pondering…" {
+		t.Fatalf("once the chat has it: %+v %+v", d, d.Status)
 	}
 }

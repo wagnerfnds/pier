@@ -188,9 +188,15 @@ type conv struct {
 	// gen names this reading (see Result.Gen); rev counts its rewinds.
 	gen int64
 	rev int
-	// queued are messages shown from a mid-turn queued_command, so their
-	// user line (if Claude Code writes one later) isn't shown twice.
-	queued map[string]bool
+	// start is where the window begins in the file (Result.Start): its
+	// first item's line, which a rewind taking every item back doesn't
+	// move, so a reader drops what it took back.
+	start int64
+	begun bool
+	// queued are messages shown as typed mid-turn, and how each came (a
+	// queued_command, a meta note), so the other ways Claude Code writes
+	// the same message (and an older one's user line) aren't shown again.
+	queued map[string]int
 	// sig is what the conversation says about the agent (signals.go).
 	sig signals
 	// lineAt is when the last line the agent wrote was written (Unix ms).
@@ -250,6 +256,9 @@ func (c *conv) add(it Item) int {
 	}
 	it.Off = c.lineOff
 	c.items = append(c.items, it)
+	if !c.begun {
+		c.start, c.begun = it.Off, true
+	}
 	n := keep
 	if c.limit > 0 {
 		n = c.limit
@@ -257,6 +266,7 @@ func (c *conv) add(it Item) int {
 	if over := len(c.items) - n; over > 0 {
 		c.items = append(c.items[:0:0], c.items[over:]...)
 		c.base += over
+		c.start = c.items[0].Off
 	}
 	return c.base + len(c.items) - 1
 }
@@ -365,6 +375,9 @@ func (c *conv) read(path string) error {
 	if st.Size() < c.offset { // replaced or truncated: start again
 		*c = conv{source: c.source, dir: c.dir, p: c.p, side: c.side, byTool: map[string]int{}, crewByID: map[string]int{}, gen: gens.Add(1)}
 	}
+	if st.Size() == c.offset && c.offset > 0 { // nothing new: most polls
+		return nil
+	}
 	if c.offset == 0 && st.Size() > maxStart {
 		c.offset = st.Size() - maxStart
 		c.truncated = true
@@ -468,8 +481,8 @@ func (r *Reader) Follow(source, path, dir string, since int, gen string) (Result
 	from = min(from, c.base+len(c.items))
 	out := Result{Source: source, Next: c.base + len(c.items), Truncated: c.truncated || c.base > 0, Last: c.lineAt,
 		Gen: c.generation(), Reset: reset, Start: c.offset, File: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
-	if len(c.items) > 0 {
-		out.Start = c.items[0].Off
+	if c.begun {
+		out.Start = c.start
 	}
 	// A publish or a question settles after its item was sent: it comes
 	// again, as a tool group does.
@@ -478,6 +491,28 @@ func (r *Reader) Follow(source, path, dir string, since int, gen string) (Result
 	out.Crew = append([]CrewMember{}, c.crew...)
 	out.Signals = c.sig.snapshot()
 	return out, nil
+}
+
+// LastText is what the agent last said since the person's last prompt in
+// the conversation in path, as far as the chats have read it (the file is
+// not read for it): "" when it has said nothing since, or the box doesn't
+// follow that conversation.
+func (r *Reader) LastText(path string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.convs[path]
+	if c == nil {
+		return ""
+	}
+	for i := len(c.items) - 1; i >= 0; i-- {
+		switch c.items[i].Kind {
+		case "text":
+			return c.items[i].Text
+		case "user":
+			return ""
+		}
+	}
+	return ""
 }
 
 func (r *Reader) evictOldest() {

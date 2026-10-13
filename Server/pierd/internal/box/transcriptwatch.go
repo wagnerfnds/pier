@@ -100,6 +100,16 @@ func (w *transcriptWatch) seen(session, dir, path string) {
 	}
 }
 
+// pathOf is the record a chat read for session in the last watchFor, or "".
+func (w *transcriptWatch) pathOf(session string) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if f := w.files[session]; f != nil {
+		return f.path
+	}
+	return ""
+}
+
 func (w *transcriptWatch) run() {
 	t := time.NewTicker(watchBusy)
 	defer t.Stop()

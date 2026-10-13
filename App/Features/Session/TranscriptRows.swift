@@ -42,13 +42,14 @@ struct UserBubble: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .contextMenu { CopyButton(text: item.text ?? "") }
                 if item.pending == true {
-                    Text("Enviado · \(agent) lê no próximo passo").font(.caption2).foregroundStyle(Theme.textFaint)
+                    Text("Enviado · \(agent) lê no próximo passo").font(.caption2).foregroundStyle(Theme.textDim)
                 }
             }
             .opacity(item.pending == true ? 0.7 : 1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Você: \(item.text ?? "")")
+        .accessibilityIdentifier("user-message")
     }
 }
 

@@ -21,7 +21,14 @@ struct ComposeScreenPlaceholder: View {
     /// The prompt as it was when dictation started: what is heard is added after it.
     @State private var dictationBase = ""
     @FocusState private var promptFocused: Bool
+    @Environment(\.horizontalSizeClass) private var sizeClass
     private var dictation: Dictation { TalkCenter.shared.dictation }
+
+    /// The Mac and a wide iPad start from a button at the end of the form, as a dialog does; the iPhone keeps a bar
+    /// above the keyboard.
+    private var inlineSubmit: Bool { Platform.isMac || sizeClass == .regular }
+    /// The prompt's type: the body size (Dynamic Type) on iPhone and iPad, a size that reads well on the Mac.
+    private var promptFont: Font { Platform.isMac ? .system(size: 15) : .body }
 
     enum Sheet: String, Identifiable { case project, worktree, base; var id: String { rawValue } }
     enum CustomChoice: String, Identifiable { case model, effort; var id: String { rawValue } }
@@ -41,14 +48,18 @@ struct ComposeScreenPlaceholder: View {
                 optionsCard
                 if !vm.photos.isEmpty && !vm.chat { photosRow }
                 if let e = vm.error { errorCard(e) }
+                if inlineSubmit { inlineSubmitRow }
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
+            // A form reads best in a column, not stretched across a wide window.
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
         .pierBackground()
         .navigationTitle(vm.chat ? "Nova conversa" : "Nova tarefa")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) { submitBar }
+        .safeAreaInset(edge: .bottom) { if !inlineSubmit { submitBar } }
         .onChange(of: dictation.transcript) { _, t in
             guard dictation.isListening, !t.isEmpty else { return }
             vm.prompt = Self.joined(dictationBase, t)
@@ -143,16 +154,16 @@ struct ComposeScreenPlaceholder: View {
                 TextEditor(text: $vm.prompt)
                     .focused($promptFocused)
                     .accessibilityIdentifier("compose-prompt")
-                    .font(.system(size: 17))
+                    .font(promptFont)
                     .foregroundStyle(Theme.text)
                     .scrollContentBackground(.hidden)
                     // Capped: a longer prompt scrolls inside the editor, so the caret stays above the keyboard and the
                     // fields below stay reachable with the outer scroll.
-                    .frame(minHeight: 150, maxHeight: max(150, UIScreen.main.bounds.height * 0.26))
+                    .frame(minHeight: Platform.isMac ? 130 : 150, maxHeight: max(150, UIScreen.main.bounds.height * 0.26))
                     .padding(.horizontal, 10).padding(.top, 8)
                 if vm.prompt.isEmpty {
                     Text(vm.chat ? "Sobre o que vamos conversar?\nUma pergunta, uma ideia, um plano…" : "O que o agente deve fazer?\nDescreva a tarefa, o bug ou a ideia…")
-                        .font(.system(size: 17)).foregroundStyle(Theme.textFaint)
+                        .font(promptFont).foregroundStyle(Theme.textFaint)
                         .padding(.horizontal, 15).padding(.top, 16).allowsHitTesting(false)
                 }
             }
@@ -163,6 +174,7 @@ struct ComposeScreenPlaceholder: View {
                     PhotosPicker(selection: $photoItems, maxSelectionCount: 6, matching: .images) {
                         Label("Foto", systemImage: "photo.on.rectangle.angled").font(.subheadline.weight(.medium))
                     }
+                    .buttonStyle(.plain)
                 }
                 templatesMenu
                 Spacer()
@@ -170,14 +182,15 @@ struct ComposeScreenPlaceholder: View {
                     Text("\(vm.promptBytes / 1024) / 128 KB")
                         .font(.caption.monospacedDigit()).foregroundStyle(vm.promptTooLong ? Theme.red : Theme.textDim)
                 }
-                if promptFocused {
+                // The Mac has no on-screen keyboard to put away.
+                if promptFocused, !Platform.isMac {
                     Button { promptFocused = false } label: { Image(systemName: "keyboard.chevron.compact.down") }
                         .accessibilityLabel("Fechar teclado")
                 }
                 micButton
             }
             .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 14).padding(.vertical, 10)
+            .padding(.horizontal, 14).padding(.vertical, Platform.isMac ? 8 : 10)
         }
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -269,6 +282,7 @@ struct ComposeScreenPlaceholder: View {
                 } label: { Label("Remover salvo", systemImage: "trash") }
             }
         } label: { Label("Prompts", systemImage: "text.badge.plus").font(.subheadline.weight(.medium)) }
+        .plainMenu()
     }
 
     // MARK: task or chat
@@ -280,6 +294,7 @@ struct ComposeScreenPlaceholder: View {
             Text("Conversa").tag(true)
         }
         .pickerStyle(.segmented)
+        .frame(maxWidth: 360)
         .accessibilityIdentifier("compose-kind")
     }
 
@@ -351,6 +366,7 @@ struct ComposeScreenPlaceholder: View {
             .padding(.horizontal, 8).padding(.vertical, 5)
             .background(Theme.cardRaised, in: Capsule())
         }
+        .plainMenu()
     }
 
     @ViewBuilder private var agentRow: some View {
@@ -397,6 +413,7 @@ struct ComposeScreenPlaceholder: View {
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.stroke))
             }
+            .plainMenu()
         }
     }
 
@@ -435,8 +452,14 @@ struct ComposeScreenPlaceholder: View {
                         }
                     }
                     if let a = vm.agent {
-                        if a.canPickModel { choiceRow(symbol: "cpu", label: "Modelo", value: vm.model, options: a.models ?? [], kind: .model) { vm.model = $0 } }
-                        if a.canPickEffort { choiceRow(symbol: "gauge.with.dots.needle.67percent", label: "Esforço", value: vm.effort, options: a.efforts ?? [], kind: .effort) { vm.effort = $0 } }
+                        if a.canPickModel {
+                            choiceRow(symbol: "cpu", label: "Modelo", value: vm.model, options: a.models ?? [], kind: .model,
+                                      name: ChoiceNames.model) { vm.model = $0 }
+                        }
+                        if a.canPickEffort {
+                            choiceRow(symbol: "gauge.with.dots.needle.67percent", label: "Esforço", value: vm.effort, options: a.efforts ?? [],
+                                      kind: .effort, name: ChoiceNames.effort) { vm.effort = $0 }
+                        }
                     }
                     HStack(spacing: 10) {
                         Image(systemName: "textformat").foregroundStyle(Theme.textDim).frame(width: 20)
@@ -470,26 +493,32 @@ struct ComposeScreenPlaceholder: View {
         }
     }
 
-    private func choiceRow(symbol: String, label: LocalizedStringKey, value: String?, options: [String], kind: CustomChoice, set: @escaping (String?) -> Void) -> some View {
+    /// Model or effort as a row of chips, every choice in sight: "Padrão" (the agent's own default), the agent's names,
+    /// a value typed by hand, and "Outro…" to type one.
+    private func choiceRow(symbol: String, label: LocalizedStringKey, value: String?, options: [String], kind: CustomChoice,
+                           name: @escaping (String) -> String, set: @escaping (String?) -> Void) -> some View {
         VStack(spacing: 0) {
-            Menu {
-                Button { set(nil) } label: { if value == nil { Label("Padrão", systemImage: "checkmark") } else { Text("Padrão") } }
-                ForEach(options, id: \.self) { o in
-                    Button { set(o) } label: { if value == o { Label(o, systemImage: "checkmark") } else { Text(o) } }
+            HStack(alignment: .top, spacing: 10) {
+                // Level with the first line of chips (a chip is its text plus ChoiceChip's padding).
+                Image(systemName: symbol).foregroundStyle(Theme.textDim).frame(width: 20).padding(.top, ChoiceChip.vPad)
+                Text(label).font(.subheadline).foregroundStyle(Theme.textDim)
+                    .frame(minWidth: Platform.isMac ? 64 : 58, alignment: .leading)
+                    .padding(.top, ChoiceChip.vPad)
+                FlowLayout(spacing: 6, lineSpacing: 6) {
+                    ChoiceChip(title: String(localized: "Padrão"), selected: value == nil) { set(nil); Haptic.selection() }
+                    ForEach(options, id: \.self) { o in
+                        ChoiceChip(title: name(o), selected: value == o) { set(o); Haptic.selection() }
+                    }
+                    if let v = value, !options.contains(v) {
+                        ChoiceChip(title: v, selected: true) { customText = v; customChoice = kind }
+                    }
+                    ChoiceChip(title: String(localized: "Outro…"), selected: false, quiet: true) { customText = value ?? ""; customChoice = kind }
                 }
-                Divider()
-                Button { customText = value ?? ""; customChoice = kind } label: { Label("Outro…", systemImage: "pencil") }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: symbol).foregroundStyle(Theme.textDim).frame(width: 20)
-                    Text(label).font(.subheadline).foregroundStyle(Theme.textDim)
-                    Spacer()
-                    Text(value ?? String(localized: "padrão")).font(.subheadline.weight(.medium)).foregroundStyle(value == nil ? Theme.textDim : Theme.text)
-                    Image(systemName: "chevron.up.chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(Theme.textFaint)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 11)
-                .contentShape(Rectangle())
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(kind == .model ? "compose-model" : "compose-effort")
             Divider().overlay(Theme.stroke).padding(.leading, 42)
         }
     }
@@ -502,10 +531,11 @@ struct ComposeScreenPlaceholder: View {
                 TextField("nome-da-worktree", text: Binding(get: { vm.worktreeName }, set: { vm.worktreeName = $0; vm.nameEdited = true }))
                     .font(.mono(14)).textInputAutocapitalization(.never).autocorrectionDisabled().multilineTextAlignment(.trailing)
                     .foregroundStyle(vm.worktreeName.isEmpty || WorktreeNaming.isValid(vm.worktreeName) ? Theme.text : Theme.red)
+                // Plain: the Mac would draw a grey bezel around each.
                 if vm.nameEdited {
-                    Button { vm.resetName() } label: { Image(systemName: "wand.and.stars") }.accessibilityLabel("Gerar do prompt")
+                    Button { vm.resetName() } label: { Image(systemName: "wand.and.stars") }.buttonStyle(.plain).accessibilityLabel("Gerar do prompt")
                 }
-                Button { vm.randomizeName() } label: { Image(systemName: "dice") }.accessibilityLabel("Nome aleatório")
+                Button { vm.randomizeName() } label: { Image(systemName: "dice") }.buttonStyle(.plain).accessibilityLabel("Nome aleatório")
             }
             .foregroundStyle(Theme.accent)
             .padding(.horizontal, 12).padding(.vertical, 11)
@@ -542,27 +572,67 @@ struct ComposeScreenPlaceholder: View {
 
     // MARK: submit
 
-    private var submitBar: some View {
-        Button {
-            Task {
-                promptFocused = false
-                finishDictation()
-                if let s = await vm.submit() {
-                    router.replaceTop(with: SessionRoute(box: vm.box, session: s))
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                if vm.stage.isBusy { ProgressView().tint(.white) } else { Image(systemName: "sparkles") }
-                Text(buttonTitle)
+    private func start() {
+        Task {
+            promptFocused = false
+            finishDictation()
+            if let s = await vm.submit() {
+                router.replaceTop(with: SessionRoute(box: vm.box, session: s))
             }
         }
-        .buttonStyle(PrimaryButtonStyle(color: vm.canSubmit || vm.stage.isBusy ? Theme.accent : Theme.cardRaised))
-        .keyboardShortcut(.return, modifiers: .command)   // ⌘↩ starts the task from the keyboard
-        .accessibilityIdentifier("compose-start")
-        .disabled(!vm.canSubmit)
-        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 6)
-        .background(.bar)
+    }
+
+    private var startLabel: some View {
+        HStack(spacing: 8) {
+            if vm.stage.isBusy { ProgressView().controlSize(.small).tint(.white) } else { Image(systemName: "sparkles") }
+            Text(buttonTitle)
+        }
+    }
+
+    /// iPhone: the start button in a bar above the keyboard, on the screen's own background (a hairline over it), and,
+    /// while it can't start yet, in quiet colors that still read.
+    private var submitBar: some View {
+        Button(action: start) { startLabel }
+            .buttonStyle(PrimaryButtonStyle(color: vm.canSubmit || vm.stage.isBusy ? Theme.accent : Theme.cardRaised,
+                                            foreground: vm.canSubmit || vm.stage.isBusy ? .white : Theme.textDim))
+            .keyboardShortcut(.return, modifiers: .command)   // ⌘↩ starts the task from the keyboard
+            .accessibilityIdentifier("compose-start")
+            .disabled(!vm.canSubmit)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 6)
+            .background(alignment: .top) {
+                Theme.bg.ignoresSafeArea(edges: .bottom)
+                    .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
+            }
+    }
+
+    /// Mac and wide iPad: the start button where the form ends, its own size, with the shortcut beside it; what is still
+    /// missing is said there too, instead of a dead full-width bar.
+    private var inlineSubmitRow: some View {
+        HStack(spacing: 12) {
+            Text(missingHint ?? (Platform.isMac ? String(localized: "⌘↩ para iniciar") : ""))
+                .font(.caption).foregroundStyle(missingHint == nil ? Theme.textFaint : Theme.textDim)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            Button(action: start) { startLabel }
+                .buttonStyle(CompactPrimaryButtonStyle(enabled: vm.canSubmit || vm.stage.isBusy))
+                .keyboardShortcut(.return, modifiers: .command)
+                .accessibilityIdentifier("compose-start")
+                .disabled(!vm.canSubmit)
+        }
+        .padding(.top, 2)
+    }
+
+    /// Why Start is still off, in a few words (nil when it can start, or while it starts).
+    private var missingHint: String? {
+        guard !vm.canSubmit, !vm.stage.isBusy else { return nil }
+        if vm.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return vm.chat ? String(localized: "Escreva a primeira mensagem") : String(localized: "Descreva a tarefa")
+        }
+        if vm.promptTooLong { return String(localized: "O texto passa de 128 KB") }
+        if vm.agent == nil { return String(localized: "Escolha um agente") }
+        if vm.chat { return vm.canChat ? nil : String(localized: "Esta box ainda não tem conversas livres") }
+        if vm.locationObject == nil { return String(localized: "Escolha um projeto") }
+        if vm.isNew, !WorktreeNaming.isValid(vm.worktreeName) { return String(localized: "Dê um nome válido à worktree") }
+        return nil
     }
 
     private var buttonTitle: String {

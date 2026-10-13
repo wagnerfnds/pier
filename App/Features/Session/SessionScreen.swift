@@ -29,6 +29,10 @@ struct SessionScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let notice = linkNotice {
+                LinkNoticeBar(text: notice.text, symbol: notice.symbol, busy: notice.busy)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             Group {
                 switch vm.mode {
                 case .terminal: TerminalPane(vm: vm)
@@ -41,11 +45,13 @@ struct SessionScreen: View {
             if !background.isEmpty && !vm.showsCard {
                 BackgroundStrip(items: background)
                     .padding(.horizontal, 10).padding(.top, 6)
+                    .frame(maxWidth: readableColumn + 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if vm.showsCard {
                 NeedsYouCard(vm: vm)
                     .padding(.horizontal, 10).padding(.top, 6)
+                    .frame(maxWidth: readableColumn + 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if vm.mode == .terminal, !vm.isClosed { KeysBar(vm: vm) }
@@ -54,8 +60,10 @@ struct SessionScreen: View {
         .animation(.snappy(duration: 0.3), value: vm.showsCard)
         .animation(.snappy(duration: 0.3), value: vm.background.isEmpty)
         .animation(.snappy(duration: 0.25), value: vm.mode)
+        .animation(.snappy(duration: 0.25), value: linkNotice?.text)
         .pierBackground()
         .navigationBarTitleDisplayMode(.inline)
+        .modifier(MacSessionTitle(title: title))
         .toolbar { toolbar }
         .overlay(alignment: .top) { toastView }
         .onAppear { router.visibleSession = boxSession.id }
@@ -86,6 +94,10 @@ struct SessionScreen: View {
             if d.bool(forKey: "sessionTerminal") { vm.setMode(.terminal) }
             if d.bool(forKey: "sessionConversation") { vm.setMode(.conversation) }
         }
+        // `-chatPerfProbe 1 -sessionSend <text>`: the probe sends a message when its streaming phase starts.
+        .onReceive(NotificationCenter.default.publisher(for: .pierPerfProbeSend)) { _ in
+            if let text = UserDefaults.standard.string(forKey: "sessionSend") { _ = vm.scheduleSend(text) }
+        }
         #endif
         .onChange(of: vm.actionError) { _, new in
             guard let new else { return }
@@ -115,7 +127,22 @@ struct SessionScreen: View {
 
     // MARK: toolbar
 
+    /// What stands between this screen and the box, said at the top while it lasts (the conversation would otherwise just
+    /// stop changing): offline and retrying, a connection being dialed again, or a pairing that no longer holds.
+    private var linkNotice: (text: String, symbol: String, busy: Bool)? {
+        guard let conn = vm.conn else { return nil }
+        switch conn.state {
+        case .revoked: return (S("Este aparelho não está mais pareado com a box."), "lock.slash", false)
+        case .pinMismatch: return (S("A box apresentou outra chave. Nada é enviado até você parear de novo."), "exclamationmark.shield", false)
+        case .offline: return (S("Sem conexão com a box. Tentando de novo…"), "wifi.slash", true)
+        case .connecting, .online:
+            return vm.linkTrouble ? (S("A box não está respondendo. Reconectando…"), "arrow.triangle.2.circlepath", true) : nil
+        }
+    }
+
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        // The Mac's window shows the title and the state line as its own title and subtitle (`MacSessionTitle`).
+        if !Platform.isMac {
         ToolbarItem(placement: .principal) {
             Button { showDetails = true } label: {
                 VStack(spacing: 1) {
@@ -136,6 +163,21 @@ struct SessionScreen: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(title), \(stateLine)")
             .accessibilityHint("Mostra os detalhes da sessão")
+        }
+        }
+        if Platform.isMac {
+            // The state line beside the window's title (which is the session's): the agent, the state, the time.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showDetails = true } label: {
+                    // Words only: the Mac's toolbar draws an item's symbol alone when it has one, and its own colors.
+                    Text(stateLine).font(.callout).lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(stateLine)
+                .accessibilityHint("Mostra os detalhes da sessão")
+            }
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
@@ -208,6 +250,37 @@ struct SessionScreen: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .accessibilityAddTraits(.isStaticText)
         }
+    }
+}
+
+/// The Mac's title bar draws no principal item (the iPhone's two-line title button showed as "Pier"): the session's
+/// title becomes the window's title, and the state line sits beside it in the toolbar.
+private struct MacSessionTitle: ViewModifier {
+    let title: String
+
+    func body(content: Content) -> some View {
+        if Platform.isMac { content.navigationTitle(title) } else { content }
+    }
+}
+
+/// A slim line at the top of the conversation while the box cannot be reached.
+private struct LinkNoticeBar: View {
+    let text: String
+    let symbol: String
+    let busy: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if busy { ProgressView().controlSize(.mini).tint(Theme.orange) } else { Image(systemName: symbol).font(.caption) }
+            Text(text).font(.footnote.weight(.medium)).lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Theme.orange)
+        .padding(.horizontal, 14).padding(.vertical, 7)
+        .frame(maxWidth: .infinity)
+        .background(Theme.orange.opacity(0.12))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("session-link-notice")
     }
 }
 

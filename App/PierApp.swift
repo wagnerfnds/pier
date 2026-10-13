@@ -40,6 +40,7 @@ struct PierApp: App {
                         Task { try? await Task.sleep(for: .seconds(2)); model.router.handle(url: u, trusted: true) }
                     }
                     WindowSnapshot.runIfRequested()
+                    ChatPerfProbe.runIfRequested()
                     await DebugIntentRunner.runIfRequested(model: model)
                     #endif
                     Task { try? await Task.sleep(for: .seconds(4)); await SpotlightIndexer.reindex() }

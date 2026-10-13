@@ -255,6 +255,20 @@ func TestTheLedgerStaysBounded(t *testing.T) {
 	}
 }
 
+// A prompt held for a busy agent may be as long as one sent at once (a log
+// pasted while it works); past a send's own limit it is refused.
+func TestALongPromptIsHeld(t *testing.T) {
+	tr, bus := ledger(t, Session{Name: "s", Dir: "/w", Agent: "claude"})
+	bus.Publish(events.Event{Type: "session.sent", Data: map[string]any{"name": "s"}}) // busy
+	long := strings.Repeat("a log line with details\n", 100<<10/24)
+	if _, err := tr.Queue("s", long, true, "client:devl", ""); err != nil {
+		t.Fatalf("a %d KB prompt was not held: %v", len(long)>>10, err)
+	}
+	if _, err := tr.Queue("s", strings.Repeat("x", maxPromptBody+1), true, "client:devl", ""); err == nil {
+		t.Fatal("a prompt over the send limit was held")
+	}
+}
+
 // A person answering a question (forced, or from the phone) does not start
 // a turn: the turn that asked goes on.
 func TestAnAnswerIsPartOfTheTurnThatAsked(t *testing.T) {
@@ -450,5 +464,38 @@ func TestALiveSessionWhoseAgentExitedIsIdle(t *testing.T) {
 	got := b.enrich(context.Background(), []Session{{Name: "ex-claude", Dir: dir, Command: "claude"}})[0]
 	if got.AgentState != "idle" || got.StateSince.IsZero() {
 		t.Fatalf("state = %q since %v", got.AgentState, got.StateSince)
+	}
+}
+
+// A send that makes no turn (an answer to the turn that asked, the agent's
+// own command) keeps its idem key too, across a restart: a retry of it is
+// the same send, not the text typed again.
+func TestSendsWithoutATurnKeepTheirKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "turns.json")
+	tr := &Turns{Path: path}
+	bus := &events.Bus{Sequence: true}
+	tr.Attach(bus)
+	bus.Publish(events.Event{Type: "session.started", Data: map[string]any{"name": "s", "path": "/w", "agent": "claude"}})
+	hook(bus, "agent.ready", "s", "/w", "claude")
+	hook(bus, "agent.started", "s", "/w", "claude", "signal", "prompt")
+	hook(bus, "agent.waiting", "s", "/w", "claude")
+	answer := bus.Publish(events.Event{Type: "session.sent", Data: map[string]any{"name": "s", "answer": true, "turn": "s#1", "idem_key": "ios-answer"}})
+	command := bus.Publish(events.Event{Type: "session.sent", Data: map[string]any{"name": "s", "command": "/model", "idem_key": "ios-model"}})
+	tr.save()
+	again := &Turns{Path: path}
+	again.Attach(&events.Bus{Sequence: true})
+	for _, ledger := range []*Turns{tr, again} {
+		if got, ok := ledger.ByIdem("s", "ios-answer"); !ok || got.ID != "s#1" || got.SentSeq != answer.Seq || got.State == "queued" {
+			t.Fatalf("answer: %+v %v", got, ok)
+		}
+		if got, ok := ledger.ByIdem("s", "ios-model"); !ok || got.ID != "" || got.SentSeq != command.Seq {
+			t.Fatalf("command: %+v %v", got, ok)
+		}
+		if _, ok := ledger.ByIdem("s", "ios-other"); ok {
+			t.Fatal("a key never sent was found")
+		}
+	}
+	if all := tr.List("s", 10); len(all) != 1 {
+		t.Fatalf("a send without a turn made one: %+v", all)
 	}
 }

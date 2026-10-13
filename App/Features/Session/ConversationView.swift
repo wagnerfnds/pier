@@ -1,6 +1,10 @@
 import SwiftUI
 import PierKit
 
+/// The widest a conversation's column grows (iPad, Mac): about 90 characters of body text a line, like a book or any
+/// chat on a desktop, instead of lines that run across the whole window.
+let readableColumn: CGFloat = 780
+
 struct ConversationView: View {
     let vm: SessionViewModel
     @Environment(Router.self) private var router
@@ -23,6 +27,7 @@ struct ConversationView: View {
                             WorkFoldRow(vm: vm, id: id, steps: steps, live: live).id(id)
                         }
                     }
+                    ForEach(vm.outgoing) { o in OutgoingBubble(message: o).id(o.id) }
                     if vm.isRunning { LiveDraftRow(vm: vm).id("draft") }
                     if let card = vm.reviewCard, let (loc, wt) = vm.reviewTarget {
                         ReviewCard(changes: card.changes, uncommittedOnly: card.uncommittedOnly) {
@@ -33,17 +38,22 @@ struct ConversationView: View {
                     }
                     // Suggested replies for a finished turn (Inbox feature): only sent when the person taps one.
                     SessionNextSteps(vm: vm).id("next-steps")
-                    if vm.store.displayItems.isEmpty, vm.loaded, !vm.isRunning { emptyNote }
+                    if vm.store.displayItems.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning { emptyNote }
                     Color.clear.frame(height: 1).id("bottom")
                         .onAppear { bottomVisible = true; detached = false }
                         .onDisappear { bottomVisible = false }
                 }
                 .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+                .frame(maxWidth: readableColumn)
+                .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)
             .modifier(PinBottomOnGrowth())
+            .modifier(FollowScrollPosition(detached: $detached, nearTop: $scrolledUp))
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(DragGesture(minimumDistance: 8).onEnded { _ in
+                // iOS 17 (no scroll geometry): a drag that left the bottom out of view detaches.
+                if #available(iOS 18, *) { return }
                 scrolledUp = true
                 Task { try? await Task.sleep(for: .milliseconds(450)); if !bottomVisible { detached = true } }
             })
@@ -64,8 +74,10 @@ struct ConversationView: View {
             }
             // iOS 18+: the scroll view itself keeps the bottom pinned as content grows, only while it is at the bottom, so
             // these manual follows (which raced that and yanked a reader back down) are for iOS 17 only, without animation.
+            // The draft's own follow lives in a view of its own: this body must not depend on the draft, or every
+            // streamed update (each 0.6 s) would fold and diff the whole conversation again.
+            .background { LegacyDraftFollow(vm: vm) { followLegacy(proxy) } }
             .onChange(of: vm.store.displayItems.last?.id) { _, _ in followLegacy(proxy) }
-            .onChange(of: vm.draft?.text) { _, _ in followLegacy(proxy) }
             .onChange(of: vm.session.agentState) { _, _ in followLegacy(proxy) }
             .onChange(of: vm.reviewCard?.changes) { _, _ in followLegacy(proxy) }
             .onChange(of: vm.sendTick) { _, _ in detached = false; follow(proxy) }
@@ -97,6 +109,7 @@ struct ConversationView: View {
             }
             .foregroundStyle(Theme.textDim)
             .onAppear { if scrolledUp { Task { await loadOlder(proxy) } } }
+            .onChange(of: scrolledUp) { _, up in if up { Task { await loadOlder(proxy) } } }
         } else if vm.loaded, vm.store.displayItems.count > 6 {
             HStack(spacing: 10) {
                 Rectangle().fill(Theme.stroke).frame(height: 1)
@@ -117,7 +130,7 @@ struct ConversationView: View {
         VStack(spacing: 8) {
             Image(systemName: "bubble.left.and.text.bubble.right").font(.title2).foregroundStyle(Theme.textFaint)
             Text("Nada por aqui ainda").font(.subheadline).foregroundStyle(Theme.textDim)
-            Text("As mensagens aparecem assim que o agente começar a trabalhar.").font(.caption).foregroundStyle(Theme.textFaint).multilineTextAlignment(.center)
+            Text("As mensagens aparecem assim que o agente começar a trabalhar.").font(.caption).foregroundStyle(Theme.textDim).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 40)
     }
@@ -143,7 +156,7 @@ struct LiveDraftRow: View {
     let vm: SessionViewModel
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let t = vm.draft?.text, !t.isEmpty { MarkdownView(text: t, draft: true) }
+            if let t = vm.visibleDraft { MarkdownView(text: t, draft: true) }
             HStack(spacing: 8) {
                 PulsingDot()
                 ShimmerText(text: word)
@@ -166,12 +179,47 @@ struct LiveDraftRow: View {
     }
 }
 
+/// The working dot: fades and shrinks a little, back and forth. Core Animation runs it (a `phaseAnimator` updated the
+/// view graph every frame on the main thread).
 struct PulsingDot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        Circle().fill(Theme.accent).frame(width: 8, height: 8)
-            .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.35]) { v, phase in v.opacity(phase).scaleEffect(phase == 1 ? 1 : 0.8) }
-                animation: { _ in .easeInOut(duration: 0.9) }
+        if reduceMotion || !Motion.endless {
+            Circle().fill(Theme.accent).frame(width: 8, height: 8)
+        } else {
+            PulseLayer(color: UIColor(Theme.accent)).frame(width: 8, height: 8)
+        }
+    }
+}
+
+private struct PulseLayer: UIViewRepresentable {
+    let color: UIColor
+    func makeUIView(context: Context) -> PulseView { PulseView() }
+    func updateUIView(_ view: PulseView, context: Context) { view.backgroundColor = color }
+
+    final class PulseView: UIView {
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            layer.cornerRadius = min(bounds.width, bounds.height) / 2
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil, layer.animation(forKey: "pulse") == nil else { return }
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0.35
+            let shrink = CABasicAnimation(keyPath: "transform.scale")
+            shrink.fromValue = 1
+            shrink.toValue = 0.8
+            let pulse = CAAnimationGroup()
+            pulse.animations = [fade, shrink]
+            pulse.duration = 0.9
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            layer.add(pulse, forKey: "pulse")
+        }
     }
 }
 
@@ -203,7 +251,7 @@ struct ConversationFallback: View {
                 if !lastMessage.isEmpty {
                     MarkdownView(text: lastMessage).contextMenu { CopyButton(text: lastMessage) }
                 } else if vm.screenLoaded {
-                    Text("A tela do agente está vazia por enquanto.").font(.footnote).foregroundStyle(Theme.textFaint)
+                    Text("A tela do agente está vazia por enquanto.").font(.footnote).foregroundStyle(Theme.textDim)
                 } else {
                     ProgressView().frame(maxWidth: .infinity)
                 }
@@ -266,5 +314,83 @@ private struct PinBottomOnGrowth: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Where the reader is, from the scroll view itself (iOS 18+), so a trackpad, a mouse wheel or the keyboard count as
+/// much as a finger: away from the bottom shows "Ir para o fim"; near the top after scrolling up loads older messages.
+private struct FollowScrollPosition: ViewModifier {
+    @Binding var detached: Bool
+    @Binding var nearTop: Bool
+
+    struct Spot: Equatable {
+        var fromBottom: CGFloat
+        var fromTop: CGFloat
+        var scrollable: Bool
+    }
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, *) {
+            content.onScrollGeometryChange(for: Spot.self) { g in
+                // In steps of 20 pt: the action runs when the reader really moved, not on every frame.
+                Spot(fromBottom: ((g.contentSize.height - g.visibleRect.maxY) / 20).rounded() * 20,
+                     fromTop: (g.visibleRect.minY / 20).rounded() * 20,
+                     scrollable: g.contentSize.height > g.containerSize.height + 1)
+            } action: { _, s in
+                // Some give either way, so text growing at the bottom never flickers the button.
+                if s.fromBottom > 160, !detached { detached = true } else if s.fromBottom < 40, detached { detached = false }
+                let top = s.scrollable && s.fromTop < 240 && s.fromBottom > 240
+                if top != nearTop { nearTop = top }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// iOS 17: follows the reply being written (iOS 18 pins the bottom by itself, and reads nothing here).
+private struct LegacyDraftFollow: View {
+    let vm: SessionViewModel
+    let follow: () -> Void
+
+    var body: some View {
+        if #available(iOS 18, *) {
+            Color.clear
+        } else {
+            Color.clear.onChange(of: vm.draft?.text) { _, _ in follow() }
+        }
+    }
+}
+
+/// A message the person just sent: drawn at once, in their bubble, until the box's copy takes its place.
+struct OutgoingBubble: View {
+    let message: SessionViewModel.Outgoing
+
+    var body: some View {
+        HStack(alignment: .bottom) {
+            Spacer(minLength: 56)
+            VStack(alignment: .trailing, spacing: 4) {
+                if !message.text.isEmpty {
+                    Text(message.text)
+                        .font(.body).lineSpacing(2).foregroundStyle(Theme.text)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Theme.cardRaised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 4) {
+                    if message.photos > 0 {
+                        Image(systemName: "photo").font(.caption2)
+                        Text(message.photos == 1 ? S("1 foto") : S("\(message.photos) fotos"))
+                        Text("·")
+                    }
+                    Text("Enviando…")
+                }
+                .font(.caption2).foregroundStyle(Theme.textDim)
+            }
+            .opacity(0.8)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Você, enviando: \(message.text)")
+        .accessibilityIdentifier("outgoing-message")
     }
 }

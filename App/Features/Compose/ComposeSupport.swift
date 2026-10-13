@@ -37,6 +37,26 @@ enum WorktreeNaming {
     }
 }
 
+/// The agents' model and effort names as people read them: Claude Code's aliases capitalized, the effort levels in
+/// words. Anything else (a name typed by hand, another agent's) is shown as the agent spells it.
+enum ChoiceNames {
+    static func model(_ m: String) -> String {
+        ["opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku"][m.lowercased()] ?? m
+    }
+
+    static func effort(_ e: String) -> String {
+        switch e.lowercased() {
+        case "minimal": String(localized: "Mínimo")
+        case "low": String(localized: "Baixo")
+        case "medium": String(localized: "Médio")
+        case "high": String(localized: "Alto")
+        case "xhigh": String(localized: "Muito alto")
+        case "max": String(localized: "Máximo")
+        default: e
+        }
+    }
+}
+
 /// Human messages (pt-BR) for the failures of creating tasks / worktrees / sessions.
 enum ComposeErrorText {
     static func message(_ error: Error) -> String {

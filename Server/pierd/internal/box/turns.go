@@ -107,7 +107,9 @@ const (
 	maxDirStates   = 256 // agents pierd did not start, by directory
 	maxGoneTurns   = 64  // last turns of sessions that ended
 	maxArchiveSize = 4 << 20
-	inboxTextLimit = 64 << 10
+	// A held prompt can be as long as a send's (a log pasted while the agent
+	// works): 64 KB here turned those into a 400 only while it was busy.
+	inboxTextLimit = maxPromptBody
 )
 
 // Turns is the ledger. It follows the bus synchronously (Attach), so it
@@ -159,11 +161,42 @@ type sessTrack struct {
 	// Reconcile marks a turn left open across a restart, for the screen to
 	// settle if no hook does.
 	Reconcile bool `json:"reconcile,omitempty"`
+	// Keys are the idem keys of sends that made no turn of their own (an
+	// answer, part of the turn that asked; the agent's own command), newest
+	// last: a retry of one types nothing either.
+	Keys []sentKey `json:"keys,omitempty"`
 
 	inbox []inboxItem
 	// screen polling, owned by the poller
 	lastScreen string
 	sameFor    int
+}
+
+// sentKey is a send that made no turn: its key, the turn it answered, and
+// its journal Seq.
+type sentKey struct {
+	Key  string `json:"key"`
+	Turn string `json:"turn,omitempty"`
+	Seq  int64  `json:"seq"`
+}
+
+// maxSentKeys is how many of those a session remembers.
+const maxSentKeys = 32
+
+// keep remembers the key of a send that made no turn.
+func (s *sessTrack) keep(e events.Event) {
+	key := str(e.Data, "idem_key")
+	if key == "" {
+		return
+	}
+	turn := ""
+	if e.Data["answer"] == true {
+		turn = str(e.Data, "turn")
+	}
+	s.Keys = append(s.Keys, sentKey{key, turn, e.Seq})
+	if len(s.Keys) > maxSentKeys {
+		s.Keys = s.Keys[len(s.Keys)-maxSentKeys:]
+	}
 }
 
 type inboxItem struct {
@@ -512,6 +545,7 @@ func (t *Turns) sent(e events.Event) {
 	}
 	if e.Data["answer"] == true {
 		// An answer to the question the agent waits on: its turn goes on.
+		s.keep(e)
 		t.bump()
 		return
 	}
@@ -522,6 +556,8 @@ func (t *Turns) sent(e events.Event) {
 		if tr := s.find(str(e.Data, "turn")); tr != nil && tr.State == "queued" {
 			tr.SentSeq, tr.Sent, tr.Started = e.Seq, e.Time, e.Time
 			s.end(tr, "finished", e)
+		} else {
+			s.keep(e)
 		}
 		t.bump()
 		return
@@ -943,7 +979,9 @@ func (t *Turns) ForSent(name string, seq int64) (Turn, bool) {
 }
 
 // ByIdem finds a turn a caller already asked for with the same key, so a
-// resumed caller never sends the same prompt twice.
+// resumed caller never sends the same prompt twice. A send that made no
+// turn (an answer, an agent's own command) is a Turn with no State: the ID
+// of the turn it answered, or none.
 func (t *Turns) ByIdem(name, key string) (Turn, bool) {
 	if key == "" {
 		return Turn{}, false
@@ -955,6 +993,11 @@ func (t *Turns) ByIdem(name, key string) (Turn, bool) {
 		for _, tr := range s.Turns {
 			if tr.IdemKey == key {
 				return *tr, true
+			}
+		}
+		for _, k := range s.Keys {
+			if k.Key == key {
+				return Turn{ID: k.Turn, Session: name, SentSeq: k.Seq}, true
 			}
 		}
 	}

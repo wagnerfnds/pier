@@ -26,8 +26,10 @@ final class H2Connection: Sendable {
 
     /// Boxes last reached through their relay (by key): dialed relay first next time, the address a moment later.
     private static let relayFirst = NIOLockedValueBox<Set<Fingerprint>>([])
-    /// How long the first way gets before the other starts too.
-    static let stagger: Duration = .milliseconds(1200)
+    /// How long the first way gets before the other starts too. A dial that answers at all does in well under this
+    /// (one TLS 1.3 round trip); the address of a box at home, dialed from elsewhere, often never answers, and every
+    /// cold connection away from home waited this long for the relay (RFC 8305 uses 250 ms; 100 ms to 2 s is fair).
+    static let stagger: Duration = .milliseconds(600)
 
     /// A connection to the box: at its address or, when it has a relay, whichever of the two answers first (the
     /// address at home, the relay away from it). Both run the same TLS, pinned to the box's key.

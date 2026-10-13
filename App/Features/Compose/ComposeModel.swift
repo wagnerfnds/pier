@@ -123,8 +123,8 @@ final class ComposeModel {
         }
         if let a = agent {
             parts.append(a.name.isEmpty ? DisplayNames.agentLabel(a.id) : a.name)
-            if let m = model, !m.isEmpty { parts.append(String(localized: "modelo \(m)")) }
-            if let e = effort, !e.isEmpty { parts.append(String(localized: "esforço \(e)")) }
+            if let m = model, !m.isEmpty { parts.append(String(localized: "modelo \(ChoiceNames.model(m))")) }
+            if let e = effort, !e.isEmpty { parts.append(String(localized: "esforço \(ChoiceNames.effort(e))")) }
         }
         return parts.joined(separator: " · ")
     }

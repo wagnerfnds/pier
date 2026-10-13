@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func write(t *testing.T, path string, lines ...any) {
@@ -493,5 +494,29 @@ func TestAssignClaudeLooksInEachSessionsAccount(t *testing.T) {
 	})
 	if filepath.Base(got["default"]) != "aaaaaaaa-1.jsonl" || got["personal"] != filepath.Join(ClaudeDirIn(personal, dir), "bbbbbbbb-2.jsonl") {
 		t.Fatalf("%v", got)
+	}
+}
+
+// A long output is cut between lines, never inside a character (which the
+// app would draw as "�"), and says how many lines it left out.
+func TestCapOutputCutsWholeLines(t *testing.T) {
+	var lines []string
+	for i := 0; i < 4000; i++ {
+		lines = append(lines, "行"+itoa(i)+" ✓ 😀 ok")
+	}
+	out, cut := capOutput(strings.Join(lines, "\n"))
+	head, rest, _ := strings.Cut(out, "\n… ")
+	n, tail, _ := strings.Cut(rest, " more lines …\n")
+	if !cut || !utf8.ValidString(out) || len(out) > outputCap+64 {
+		t.Fatalf("cut %v, valid %v, %d bytes", cut, utf8.ValidString(out), len(out))
+	}
+	kept := strings.Count(head, "\n") + 1 + strings.Count(tail, "\n") + 1
+	if !strings.HasPrefix(head, lines[0]) || !strings.HasSuffix(tail, lines[len(lines)-1]) || atoi(n)+kept != len(lines) {
+		t.Fatalf("head %q… tail …%q, %s left out of %d, %d kept", head[:20], tail[len(tail)-20:], n, len(lines), kept)
+	}
+	for _, l := range strings.Split(head+"\n"+tail, "\n") {
+		if !strings.HasSuffix(l, " ok") {
+			t.Fatalf("a line cut short: %q", l)
+		}
 	}
 }

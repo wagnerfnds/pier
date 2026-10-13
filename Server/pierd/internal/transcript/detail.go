@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ToolDetail is one tool call opened up, the way the agent's terminal shows
@@ -342,13 +343,26 @@ func plain(s string) string {
 	return ansi.ReplaceAllString(s, "")
 }
 
-// capOutput keeps a long output's head and tail, as the terminal does.
+// capOutput keeps a long output's head and tail, as the terminal does: whole
+// lines, or at least whole characters (a cut byte would show as "�").
 func capOutput(s string) (string, bool) {
 	s = plain(s)
 	if len(s) <= outputCap {
 		return s, false
 	}
-	head, tail := s[:outputCap/2], s[len(s)-outputCap/2:]
-	cut := strings.Count(s[outputCap/2:len(s)-outputCap/2], "\n")
-	return head + "\n… " + strconv.Itoa(cut) + " more lines …\n" + tail, true
+	h, t := outputCap/2, len(s)-outputCap/2
+	if i := strings.LastIndexByte(s[:h], '\n'); i > 0 {
+		h = i
+	}
+	for h > 0 && !utf8.RuneStart(s[h]) {
+		h--
+	}
+	if i := strings.IndexByte(s[t:], '\n'); i >= 0 && t+i+1 < len(s) {
+		t += i + 1
+	}
+	for t < len(s) && !utf8.RuneStart(s[t]) {
+		t++
+	}
+	cut := strings.Count(strings.TrimPrefix(s[h:t], "\n"), "\n")
+	return s[:h] + "\n… " + strconv.Itoa(cut) + " more lines …\n" + s[t:], true
 }

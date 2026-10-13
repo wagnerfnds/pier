@@ -129,10 +129,36 @@ public struct TranscriptStore: Sendable, Equatable {
 
     private mutating func settlePending(by incoming: [TranscriptItem]) {
         guard !pending.isEmpty else { return }
-        for it in incoming where it.kind == "user" {
-            let t = (it.text ?? "").jsTrimmed
-            if let i = pending.firstIndex(where: { ($0.text ?? "").jsTrimmed == t }) { pending.remove(at: i) }
+        for it in incoming {
+            let echo: String
+            switch it.kind {
+            case "user": echo = it.text ?? ""
+            // A slash command ("/model opus") or a shell line ("!ls") is recorded as a command, not a prompt.
+            case "command": echo = (it.command == "!" ? "!" : (it.command ?? "") + " ") + (it.args ?? "")
+            default: continue
+            }
+            if let i = pending.firstIndex(where: { Self.echoes(echo, sent: $0.text ?? "") }) { pending.remove(at: i) }
         }
+    }
+
+    /// Whether a line of the record is the prompt that was sent. The box keeps a prompt's first 4000 bytes and marks the
+    /// cut with "…", whitespace may come back changed, and the agent may record the photos' paths under the words in its
+    /// own way, so: the same words once runs of whitespace are one space; for a long prompt, the record's copy is where
+    /// the sent text begins; or both start with the same first line, when that line says enough to tell them apart.
+    static func echoes(_ echo: String, sent: String) -> Bool {
+        let e = squeezed(echo), s = squeezed(sent)
+        if e == s { return true }
+        if e.hasSuffix("…") {
+            let head = e.dropLast().trimmingCharacters(in: .whitespaces)
+            if head.count >= 32 && s.hasPrefix(head) { return true }
+        }
+        let firstLine = { (t: String) in squeezed(t.split(whereSeparator: \.isNewline).first.map(String.init) ?? "") }
+        let ef = firstLine(echo)
+        return ef.count >= 12 && ef == firstLine(sent)
+    }
+
+    private static func squeezed(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 
     /// Upsert by `id` (replace in place), else insert by `off` (append when it has none or is the newest).

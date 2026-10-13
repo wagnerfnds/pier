@@ -42,19 +42,31 @@ struct ComposerBar: View {
                             .onSubmit { if canSend { Task { await send() } } }
                             // Esc right after sending takes the message back (the focused field gets the key first).
                             .onKeyPress(.escape) { PendingActions.shared.undoLatest() ? .handled : .ignored }
+                            // The Mac sends on Return, as Messages does; Shift- or Option-Return writes a new line.
+                            .onKeyPress(keys: [.return], phases: .down) { press in
+                                guard Platform.isMac, press.modifiers.isDisjoint(with: [.shift, .option]) else { return .ignored }
+                                if canSend { Task { await send() } }
+                                return .handled
+                            }
                         actionButton.padding(4)
                     }
                     .background(Theme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).strokeBorder(focused ? Theme.accent.opacity(0.4) : Theme.stroke))
                 }
                 if busy, hasText {
-                    Text("Será enviada quando o agente terminar a vez atual.").font(.caption2).foregroundStyle(Theme.textFaint)
+                    Text("Será enviada quando o agente terminar a vez atual.").font(.caption2).foregroundStyle(Theme.textDim)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 48)
+                        .transition(.opacity)
+                } else if Platform.isMac, focused, hasText {
+                    Text("↩ envia · ⇧↩ nova linha").font(.caption2).foregroundStyle(Theme.textFaint)
+                        .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 8)
                         .transition(.opacity)
                 }
             }
         }
         .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 6)
+        .frame(maxWidth: readableColumn + 8)
+        .frame(maxWidth: .infinity)
         .background(Theme.bg)
         .animation(.snappy(duration: 0.2), value: showsStop)
         .animation(.snappy(duration: 0.2), value: hasText && busy)

@@ -91,9 +91,9 @@ type classified struct {
 	msg     *Message
 }
 
-// classify reads a user turn's text and origin. It never fails: what it
-// doesn't know is the person's, as before.
-func classify(c *conv, s string, o *Origin) []classified {
+// classify reads a user turn's text and origin, and how it arrived. It
+// never fails: what it doesn't know is the person's, as before.
+func classify(c *conv, s string, o *Origin, how int) []classified {
 	s = strings.TrimSpace(reminderRe.ReplaceAllString(s, "\n"))
 	if s == "" {
 		return []classified{{kind: "drop"}}
@@ -102,7 +102,9 @@ func classify(c *conv, s string, o *Origin) []classified {
 		return []classified{{kind: "user", text: strings.TrimSpace(m[1]), midTurn: true}}
 	}
 	if o != nil && o.Kind == "human" {
-		return []classified{{kind: "user", text: s, midTurn: true}}
+		// Claude Code 2.1 marks every prompt line the person's: only a meta
+		// line or a queued command so marked was typed mid-turn.
+		return []classified{{kind: "user", text: s, midTurn: how != turnPrompt}}
 	}
 	if o != nil && o.Kind == "coordinator" {
 		body := leadNoteRe.ReplaceAllString(s, "")
@@ -353,7 +355,7 @@ const (
 // its line) shows once.
 func (c *conv) userTurn(s string, o *Origin, how int, at int64) {
 	helperDone(c, s, at)
-	for _, k := range classify(c, s, o) {
+	for _, k := range classify(c, s, o, how) {
 		switch k.kind {
 		case "user":
 			// A meta line not known as anything is Claude Code's own, as
@@ -361,26 +363,34 @@ func (c *conv) userTurn(s string, o *Origin, how int, at int64) {
 			if how == turnMeta && !k.midTurn {
 				continue
 			}
-			if how == turnQueued && !strings.HasPrefix(k.text, "<") {
+			if how == turnQueued && !ownLine(k.text) {
 				k.midTurn = true
 			}
 			if !k.midTurn {
+				if how == turnPrompt && o != nil && o.Kind == "human" {
+					// A line Claude Code 2.1 says the person typed is a new
+					// prompt, never a mid-turn message written again (2.1
+					// writes those once): the same words sent again show.
+					delete(c.queued, strings.TrimSpace(unwrapPasted(k.text)))
+				}
 				userText(c, k.text)
 				continue
 			}
 			// Claude Code writes a mid-turn message more than once (its
-			// queued_command, the note around it, sometimes its line).
-			if c.queued[k.text] {
+			// queued_command, the note around it, sometimes its line), once
+			// each way: the same words the same way again were sent again.
+			if via, ok := c.queued[k.text]; ok && via != how {
 				continue
 			}
+			delete(c.queued, k.text)
 			n := c.base + len(c.items)
 			userText(c, k.text)
 			if c.base+len(c.items) > n {
 				c.items[len(c.items)-1].MidTurn = true
 				if c.queued == nil {
-					c.queued = map[string]bool{}
+					c.queued = map[string]int{}
 				}
-				c.queued[k.text] = true
+				c.queued[k.text] = how
 			}
 		case "agent-message", "ping":
 			if c.seenVia(s, how) {

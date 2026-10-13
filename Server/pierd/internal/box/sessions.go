@@ -119,7 +119,12 @@ func (s *Sessions) EnvVar(ctx context.Context, sess Session, key string) string 
 	}
 	out, err := s.tmux(ctx, "show-environment", "-t", "="+sess.Name, key)
 	if err != nil {
-		// Unset, or the session is gone: nothing to remember.
+		// Unset, as it is for most sessions: unset for good, so a chat's
+		// every poll doesn't ask tmux again. The session gone: nothing to
+		// remember.
+		if strings.Contains(string(out), "unknown variable") {
+			s.envs.Store(cacheKey, "")
+		}
 		return ""
 	}
 	v, ok := strings.CutPrefix(strings.TrimSpace(string(out)), key+"=")

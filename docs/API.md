@@ -583,7 +583,9 @@ There is no `GET /v1/sessions/{name}`: list and filter.
   wider than the pane. An exited session still returns its last output.
 * `GET /v1/sessions/{name}/draft` (capability `draft`) → `{agent, text?, clipped?, status?: {word, elapsed?,
   tokens?}}`: for Claude Code, the reply it is writing right now as Markdown, read from the styled screen, and the
-  status line ("Brewing… (12s, 7.1k tokens)"). Poll it to show the reply as it streams.
+  status line ("Brewing… (12s, 7.1k tokens)"). Poll it to show the reply as it streams. A block stays on screen once
+  it is complete, while the record has it too: `text` is empty once the reply as the chats have read it from the record
+  ends with the same words, so a client drawing both never shows them twice (the app checks the same on its side).
 
 ### 4.3 Send a prompt: `POST /v1/sessions/{name}/send`
 
@@ -599,7 +601,7 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
 | `enter` | default `true`; `false` only pastes |
 | `when` | omitted: type at once **without checking whether the agent waits** (legacy). `"now"`: type at once, but 409 `agent_waiting` when the agent waits for someone, unless `force`. `"idle"`: if the agent is not ready, pierd **holds** the prompt (`queued: true`, event `session.queued`) and types it when the agent is idle or finished with nothing queued before it; held prompts survive the phone going away |
 | `force` | type even though the agent waits (only when the person is answering it) |
-| `idem_key` | always send one: a retry with the same key returns the original turn with `duplicate: true` and types nothing |
+| `idem_key` | always send one: a retry with the same key returns the original turn with `duplicate: true` and types nothing. Sends that make no turn (an answer, a slash or shell command) are remembered too, the last 32 per session; the keys survive a pierd restart and go with the session |
 
 * 409 `session_exited` when the program has ended.
 * At the agent's start-up question, text is held (`idle`, `now`) or refused (`force`).
@@ -623,7 +625,8 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
 
 ### 4.5 Held prompts (capability `queue`)
 
-* `GET /v1/sessions/{name}/queue` → `[{turn, preview (≤ 280 characters), length, origin?, at}]`, oldest first.
+* `GET /v1/sessions/{name}/queue` → `[{turn, preview (≤ 280 characters), length, origin?, at}]`, oldest first. A held
+  prompt can be as long as a send (2 MB); 16 are held per session.
 * `DELETE /v1/sessions/{name}/queue/{turn}` → `{"cancelled": turn}` (404 once sent). Event `session.unqueued`.
 * `POST /v1/sessions/{name}/queue/{turn}/send {force?}` → the send answer: type it now (409 while the agent waits,
   unless `force`).
@@ -780,7 +783,7 @@ of its source line, used to page older items).
 
 | `kind` | Fields | UI |
 | --- | --- | --- |
-| `user` | `text` (≤ 4000), `uuid?`, `parent?`, `midTurn?` | the person's prompt (also prompts typed in the terminal) |
+| `user` | `text` (its first 4000 bytes, cut at a whole character with "…" after), `uuid?`, `parent?`, `midTurn?` | the person's prompt (also prompts typed in the terminal); lines the agent writes for itself as the user's turn (its tags: commands and their output, reminders, Codex's context) are not items, a prompt that only starts with markup ("<Button> …") is |
 | `text` | `text` (≤ 32 KB Markdown) | assistant message; also plan text |
 | `tools` | `verb`, `items: [{verb, target, file?, id?, at? (ms)}]`, `done` | a group of calls with the same verb; an open group (`done` false) is sent again until done |
 | `edit` | `file`, `added`, `removed`, `tool?` | a file edit with line counts; its patch via 6.6 |

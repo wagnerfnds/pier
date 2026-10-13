@@ -48,6 +48,18 @@ final class SessionViewModel {
     var attachments: [ComposerAttachment] = []
     var actionError: String?
     var interrupting = false
+    /// Messages in their undo window or on their way to the box: drawn at once, under the conversation.
+    var outgoing: [Outgoing] = []
+
+    struct Outgoing: Identifiable, Equatable {
+        let id = UUID()
+        let text: String
+        let photos: Int
+    }
+
+    /// Requests keep failing on the connection itself (not on the box's answers): the screen says so while it redials.
+    var linkTrouble = false
+    @ObservationIgnored private var link = LinkWatch()
 
     // View mode
     var mode: SessionViewMode = .conversation
@@ -190,7 +202,9 @@ final class SessionViewModel {
                 if h.box == self.box, Self.isRelevant(h.event, session: self.name) { self.kick() }
             }
         }
-        defer { listener.cancel() }
+        // The reply being written has a clock of its own, so it never waits on a slow transcript or screen read.
+        let drafts = Task { [weak self] in await self?.followDraft() }
+        defer { listener.cancel(); drafts.cancel() }
         while !Task.isCancelled {
             await tick()
             var waited = 0
@@ -204,8 +218,65 @@ final class SessionViewModel {
 
     /// The current tick was started by an event or an action (not the 1.5 s timer).
     @ObservationIgnored private var woken = true
+    @ObservationIgnored private var draftKick = false
 
-    func kick() { kickFlag = true }
+    func kick() { kickFlag = true; draftKick = true }
+
+    /// Claude Code's reply as it is written (`GET .../draft`, read from its screen): every 0.6 s while the words keep
+    /// changing, every 1.5 s once they stop (a tool runs, the agent thinks), at once on an event or a send.
+    private func followDraft() async {
+        var unchanged = 0
+        while !Task.isCancelled {
+            let s = session
+            if s.agentState == .running, !s.exited, store.source == "claude" {
+                let name = name, client = client
+                switch await Self.attempt(.seconds(4), { try await client.draft(session: name) }) {
+                case .success(let d):
+                    linkAnswered()
+                    // The status line's clock ("12s", "7.1k tokens") moves on every read: only new words or a new status
+                    // word redraw the row and keep the fast pace.
+                    let grew = d.text != draft?.text || d.clipped != draft?.clipped
+                    if grew || d.status?.word != draft?.status?.word || d.agent != draft?.agent { draft = d }
+                    unchanged = grew ? 0 : unchanged + 1
+                case .failure(let e):
+                    if LinkWatch.isLinkFailure(e) { await noteLinkFailure() }
+                    unchanged += 1
+                }
+            } else if draft != nil {
+                draft = nil
+            }
+            let steps = unchanged < 3 ? 6 : 15
+            var waited = 0
+            while waited < steps, !draftKick, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100)); waited += 1
+            }
+            if draftKick { draftKick = false; unchanged = 0 }
+        }
+    }
+
+    /// The draft to draw under the conversation: not when the record already has its words (Claude Code writes a block
+    /// once it is complete while the screen still shows it, so for a moment both would read the same).
+    var visibleDraft: String? {
+        guard let t = draft?.text, !t.isEmpty else { return nil }
+        if let c = draftCheck, c.text == t, c.items == store.items.count { return c.recorded ? nil : t }
+        let recorded = DraftEcho.isRecorded(t, in: store.items)
+        draftCheck = (t, store.items.count, recorded)
+        return recorded ? nil : t
+    }
+    @ObservationIgnored private var draftCheck: (text: String, items: Int, recorded: Bool)?
+
+    private func linkAnswered() {
+        link.succeeded()
+        if linkTrouble { linkTrouble = false }
+    }
+
+    /// A request failed on the connection: say so, and after a second one drop the connection so the next request dials
+    /// again (address and relay, whichever answers) instead of waiting for the PING watchdog.
+    private func noteLinkFailure() async {
+        let reset = link.failed()
+        if !linkTrouble { linkTrouble = true }
+        if reset { await client.reset() }
+    }
 
     private static func isRelevant(_ e: PierEvent, session: String) -> Bool {
         let t = e.type
@@ -220,10 +291,9 @@ final class SessionViewModel {
         // A new wait (another permission, another question) must not be answered against the previous one's screen.
         if s.needsYou, s.stateSince != waitSince { waitSince = s.stateSince; screen = ""; screenLoaded = false }
         // The transcript follows the box's events (`transcript.changed`, `agent.*`); the timer only backs them up: every 3 s
-        // while the agent works, every ~7.5 s otherwise. The live draft below still polls every tick while running.
+        // while the agent works, every ~7.5 s otherwise. The reply being written follows its own clock (`followDraft`).
         let backup = s.agentState == .running ? tickCount % 2 == 0 : tickCount % 5 == 0
         let wantTranscript = !loaded || (store.source != "none" && (woken || backup)) || tickCount % 10 == 0
-        let wantDraft = s.agentState == .running && hasTranscript
         // The screen feeds the terminal, the needs-you card, the fallback conversation and (every few seconds) the "doing" line.
         // Not running: also look for a menu no hook announces (startup dialogs), right after a state change, then every ~9 s.
         let idleLook = s.agentState != .running && !s.exited && (tickCount % 6 == 0 || s.stateSince != screenLookedAt)
@@ -233,16 +303,28 @@ final class SessionViewModel {
         let since = store.since, gen = store.gen
         let name = name, client = client
         let history = mode == .terminal ? 300 : 0
+        // The first read of a long record can take the box a few seconds (docs/API.md 6.3); later polls are small.
+        let transcriptLimit: Duration = loaded ? .seconds(6) : .seconds(12)
 
         // Each request has its own deadline, so one slow answer never stalls the whole loop.
-        async let page: TranscriptPage? = wantTranscript ? (try? await Self.bounded(.seconds(12)) { try await client.transcript(session: name, since: since, gen: gen) }) : nil
-        async let dr: Draft? = wantDraft ? (try? await Self.bounded(.seconds(6)) { try await client.draft(session: name) }) : nil
-        async let scr: String? = wantScreen ? (try? await Self.bounded(.seconds(6)) { try await client.screen(session: name, history: history) }) : nil
-        async let hd: [HeldPrompt]? = wantHeld ? (try? await Self.bounded(.seconds(6)) { try await client.heldPrompts(session: name) }) : nil
-        let (p, d, sc, h) = await (page, dr, scr, hd)
+        async let page: Result<TranscriptPage, Error>? = wantTranscript
+            ? await Self.attempt(transcriptLimit) { try await client.transcript(session: name, since: since, gen: gen) } : nil
+        async let scr: Result<String, Error>? = wantScreen
+            ? await Self.attempt(.seconds(6)) { try await client.screen(session: name, history: history) } : nil
+        async let hd: Result<[HeldPrompt], Error>? = wantHeld
+            ? await Self.attempt(.seconds(6)) { try await client.heldPrompts(session: name) } : nil
+        let (p, sc, h) = await (page, scr, hd)
+
+        // A poll whose every request failed on the connection counts toward dropping it; any answer clears that.
+        let outcomes: [Error?] = [p.map(Self.failure), sc.map(Self.failure), h.map(Self.failure)].compactMap { $0 }
+        if outcomes.contains(where: { $0 == nil }) {
+            linkAnswered()
+        } else if !outcomes.isEmpty, outcomes.allSatisfy({ $0.map(LinkWatch.isLinkFailure) ?? false }) {
+            await noteLinkFailure()
+        }
 
         // Observable state is written only when it changed: every write re-renders the screen, and this runs every 1.5 s.
-        if let p {
+        if case .success(let p)? = p {
             var next = store
             next.apply(p)
             if next != store { store = next }
@@ -253,15 +335,20 @@ final class SessionViewModel {
             loadError = S("Não foi possível carregar a conversa.")
         }
         if loaded, store.gapBefore != nil { await fillGap() }
-        if wantDraft { if let d, d != draft { draft = d } } else if s.agentState != .running, draft != nil { draft = nil }
-        if let sc {
+        if case .success(let sc)? = sc {
             if sc != screen { screen = sc }
             if !screenLoaded { screenLoaded = true }
             if s.agentState == .running, let st = StepText.from(screen: sc), st != step { step = st }
         }
         if s.agentState != .running, step != nil { step = nil }
-        await refreshUncommitted()
-        if let h { if h != held { held = h } } else if (s.queued ?? 0) == 0, !held.isEmpty, !wantHeld { held = [] }
+        // Gone with its turn at once: the next turn must never open on the last one's words.
+        if s.agentState != .running, draft != nil { draft = nil }
+        // The review list can take the box seconds (git over every worktree): never on this loop's clock.
+        if !checkingReview {
+            checkingReview = true
+            Task { await refreshUncommitted(); checkingReview = false }
+        }
+        if case .success(let h)? = h { if h != held { held = h } } else if (s.queued ?? 0) == 0, !held.isEmpty, !wantHeld { held = [] }
         if conn?.state.isOnline == true, conn?.hasLoadedSessions == true,
            conn?.sessions.contains(where: { $0.name == name }) == false { gone = true } else if gone, conn?.sessions.contains(where: { $0.name == name }) == true { gone = false }
     }
@@ -274,6 +361,18 @@ final class SessionViewModel {
             return try await g.next()!
         }
     }
+
+    /// `bounded`, with the failure kept (a dead connection and an answer of the box are told apart).
+    private static func attempt<T: Sendable>(_ d: Duration, _ op: @escaping @Sendable () async throws -> T) async -> Result<T, Error> {
+        do { return .success(try await bounded(d, op)) } catch { return .failure(error) }
+    }
+
+    private static func failure<T>(_ r: Result<T, Error>) -> Error? {
+        if case .failure(let e) = r { return e }
+        return nil
+    }
+
+    @ObservationIgnored private var checkingReview = false
 
     /// A prompt the record never echoed (sent with attachments, a slash command, a lost turn) must not linger forever.
     private func expirePending() {
@@ -339,9 +438,25 @@ final class SessionViewModel {
         let busy = s.agentState == .running || s.agentState == .waiting
         sending = true
         defer { sending = false }
+        // One key for every try: the box types a prompt once per key (docs/API.md 4.3), so a retry after a lost answer
+        // gets the first one back (`duplicate`) instead of sending the words twice.
+        let request = SendRequest(text: full, enter: true, when: forced ?? (busy ? .idle : .now), force: nil, idemKey: "ios-\(UUID().uuidString)")
+        let name = name, client = client
         do {
-            let r = try await client.send(session: name, SendRequest(text: full, enter: true, when: forced ?? (busy ? .idle : .now), force: nil,
-                                                                      idemKey: "ios-\(UUID().uuidString)"))
+            let r: SendResult
+            do {
+                r = try await Self.bounded(.seconds(15)) { try await client.send(session: name, request) }
+            } catch where LinkWatch.isLinkFailure(error) {
+                // The connection died under the send: dial again (address or relay) and repeat it with the same key.
+                await client.reset()
+                do {
+                    r = try await Self.bounded(.seconds(15)) { try await client.send(session: name, request) }
+                } catch where LinkWatch.isLinkFailure(error) {
+                    actionError = S("Não deu para confirmar o envio: a box não respondeu. Confira a conversa antes de enviar de novo.")
+                    Haptic.warning()
+                    return false
+                }
+            }
             Haptic.impact(.light)
             sendTick += 1
             if paths == nil { attachments = [] }
@@ -531,6 +646,9 @@ final class SessionViewModel {
         let photos = attachments.filter { $0.path != nil }
         guard canSend, !trimmed.isEmpty || !photos.isEmpty else { return false }
         attachments.removeAll { $0.path != nil }
+        // The message shows in the conversation at once (as it would in any chat), marked as on its way.
+        let out = Outgoing(text: trimmed, photos: photos.count)
+        outgoing.append(out)
         let restore: @MainActor () -> Void = { [self] in
             if !text.isEmpty { composerRestore = ComposerRestore(text: text) }
             attachments = photos + attachments
@@ -539,8 +657,14 @@ final class SessionViewModel {
         let label = !firstLine.isEmpty ? String(firstLine.prefix(80))
             : photos.count == 1 ? S("1 foto") : S("\(photos.count) fotos")
         PendingActions.shared.schedule(label: label, symbol: "paperplane.fill", perform: { [self] in
-            if await !send(text, attachments: photos.compactMap(\.path)) { restore() }
-        }, onUndo: restore)
+            let sent = await send(text, attachments: photos.compactMap(\.path))
+            // Sent, `send` put the box's own pending copy in place in the same turn: no gap, no double.
+            outgoing.removeAll { $0.id == out.id }
+            if !sent { restore() }
+        }, onUndo: { [self] in
+            outgoing.removeAll { $0.id == out.id }
+            restore()
+        })
         return true
     }
 

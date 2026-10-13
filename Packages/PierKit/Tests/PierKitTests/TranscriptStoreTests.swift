@@ -122,6 +122,38 @@ private func page(
         _ = p
     }
 
+    @Test func longPromptIsSettledByTheBoxsClippedCopy() {
+        // pierd keeps a prompt's first 4000 bytes and adds "…": the pending bubble must not stay beside the echo.
+        var s = TranscriptStore()
+        let long = String(repeating: "log line with details\n", count: 300)
+        s.addPendingUser(long)
+        let clipped = String(long.utf8.prefix(4000))! + "…"
+        s.apply(page([TranscriptItem(kind: "user", id: "cl@9.1", off: 9, text: clipped)], next: 1))
+        #expect(s.pending.isEmpty && s.displayItems.count == 1)
+    }
+
+    @Test func promptWithPhotosAndCommandsAreSettled() {
+        var s = TranscriptStore()
+        s.addPendingUser("Fix the header spacing on mobile\n/home/u/code/app/.pier/attachments/foto-1.jpg")
+        s.addPendingUser("/model opus")
+        s.addPendingUser("!ls -la")
+        s.apply(page([
+            TranscriptItem(kind: "user", id: "cl@1.1", off: 1, text: "Fix the header spacing on mobile\n[Image #1]"),
+            TranscriptItem(kind: "command", id: "cl@2.1", off: 2, command: "/model", args: "opus"),
+            TranscriptItem(kind: "command", id: "cl@3.1", off: 3, command: "!", args: "ls -la"),
+        ], next: 3))
+        #expect(s.pending.isEmpty)
+    }
+
+    @Test func shortPromptsNeedTheSameWords() {
+        var s = TranscriptStore()
+        s.addPendingUser("ok")
+        s.apply(page([TranscriptItem(kind: "user", id: "cl@1.1", off: 1, text: "ok, go")], next: 1))
+        #expect(s.pending.count == 1)
+        #expect(TranscriptStore.echoes("run  the\ntests", sent: " run the tests "))
+        #expect(!TranscriptStore.echoes("short…", sent: "short but different text"))
+    }
+
     @Test func sourceNoneKeepsReason() {
         var s = TranscriptStore()
         s.apply(TranscriptPage(source: "none", items: [], next: 0, reason: "No codex conversation"))

@@ -22,12 +22,13 @@ mutual TLS.
 | `Packages/PierKit` | SwiftPM package shared by everything Swift: transport (swift-nio-ssl), identity, pairing, typed API, Codable models of pierd's JSON, pure tested helpers (`Support/`) | Swift |
 | `Server/pierd` | The box server, its own Go module (`go.mod`, standard library only), own README and `docs/` | Go |
 | `Tools/pierctl` | macOS CLI client for end-to-end checks against a real box | Swift |
+| `Tools/markdown-conformance` | The chat's Markdown reader against CommonMark/GFM (markdown-it) on real replies and edge cases | Swift, JS, Python |
 | `Vendor/swift-nio-ssl` | Vendored with a TLS-exporter patch needed for pairing (see `Vendor/README.md`) | Swift |
 | `UITests/PierUITests` | XCUITest against the in-memory mock box | Swift |
 | `Config/` | `Base.xcconfig` (identifiers), `Signing.example.xcconfig`, build-number script | |
 | `Design/` | The app icon's mascot (`render-mascot.swift`, SceneKit), the site's 3D hero (`hero/`, the same mascot in three.js: `npm ci && npm run build` there writes `site/assets/hero.js`) and the launch film (`motion/`, rendered frame by frame in the browser, its sound synthesized from the same clock; see its README) | Swift, JS |
 | `site/` | docktopier.com (GitHub Pages, `.github/workflows/pages.yml`): the landing page, privacy, support and `install.sh`; fonts and scripts are self-hosted | HTML, CSS |
-| `docs/` | `ARCHITECTURE.md` (read this first), `PROTOCOL.md` (transport, pairing), `API.md` (endpoints), `PUSH.md` | |
+| `docs/` | `ARCHITECTURE.md` (read this first), `PROTOCOL.md` (transport, pairing), `API.md` (endpoints), `PUSH.md`, `CHAT-QUALITY.md` (the chat's targets and how to measure them) | |
 
 `project.yml` is the XcodeGen spec; `Pier.xcodeproj` is generated and gitignored. Targets: `Pier`, `PierWidgets`,
 `PierNotificationService`, `PierMenuBar`, `PierUITests`.

@@ -279,3 +279,51 @@ func TestAssignClaudeNamedAgentWaitsForItsOwnFile(t *testing.T) {
 		t.Fatalf("once it writes: %v", got)
 	}
 }
+
+// merged is what a reader holds after a reset, as docs/API.md §6.3 has it:
+// the items it held before start, then the window.
+func merged(held []Item, r Result) []Item {
+	var out []Item
+	for _, it := range held {
+		if it.Off < r.Start {
+			out = append(out, it)
+		}
+	}
+	return append(out, r.Items...)
+}
+
+// A rewind takes back a turn wherever it is in the window, the first one
+// too: the window still begins where it did, so a reader drops what it took
+// back rather than keeping it before the new prompt.
+func TestARewoundTurnLeavesTheReader(t *testing.T) {
+	for _, tc := range []struct {
+		name, parent, want string
+	}{
+		{"the first prompt", "root", "first, again"},
+		{"a later prompt", "a1", "first,second, again"},
+	} {
+		p := filepath.Join(t.TempDir(), "conv.jsonl")
+		ask := func(text, uuid, parent string) m {
+			u := user(text)
+			u["uuid"], u["parentUuid"] = uuid, parent
+			return u
+		}
+		reply := func(text, uuid string) m {
+			a := assistant(m{"type": "text", "text": text})
+			a["uuid"] = uuid
+			return a
+		}
+		write(t, p, ask("first", "u1", "root"), reply("one", "a1"), ask("second", "u2", "a1"), reply("two", "a2"))
+		r := NewReader()
+		a, _ := r.Follow("claude", p, "", 0, "")
+		again := "first, again"
+		if tc.parent != "root" {
+			again = "second, again"
+		}
+		write(t, p, ask(again, "u3", tc.parent))
+		b, _ := r.Follow("claude", p, "", a.Next, a.Gen)
+		if got := strings.Join(prompts(merged(a.Items, b)), ","); !b.Reset || got != tc.want {
+			t.Errorf("%s: reset %v, the reader holds %q, want %q", tc.name, b.Reset, got, tc.want)
+		}
+	}
+}

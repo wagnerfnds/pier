@@ -9,7 +9,9 @@ enum Theme {
     static let stroke = Color.adaptive(light: .black.opacity(0.09), dark: .white.opacity(0.07))
     static let text = Color(light: 0x1C2024, dark: 0xE6E8EB)
     static let textDim = Color(light: 0x59616B, dark: 0x8B9199)
-    static let textFaint = Color(light: 0x80878F, dark: 0x5C626B)
+    /// Tertiary text (times, hints): at least 3:1 on every background in both appearances (WCAG's floor for large
+    /// text and controls); what the person must read uses `textDim` (4.5:1).
+    static let textFaint = Color(light: 0x80878F, dark: 0x6E747E)
     static let accent = Color(light: 0x0A67D0, dark: 0x4A99FA)
     static let orange = Color(light: 0xB35006, dark: 0xF5A35C)
     static let green = Color(light: 0x187A3F, dark: 0x4CC38A)

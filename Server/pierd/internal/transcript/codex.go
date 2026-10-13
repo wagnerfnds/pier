@@ -54,15 +54,15 @@ func (codexParser) line(c *conv, b []byte) {
 	case "message":
 		var parts []string
 		for _, p := range it.Content {
-			if p.Text != "" {
+			// Codex writes its environment and instructions as the user's,
+			// wrapped in its tags: a part of their own, or a message.
+			if p.Text != "" && !(it.Role == "user" && ownLine(p.Text)) {
 				parts = append(parts, p.Text)
 			}
 		}
 		text := strings.TrimSpace(strings.Join(parts, "\n"))
 		switch it.Role {
 		case "user":
-			// Codex writes its environment and instructions as user
-			// messages wrapped in tags.
 			userText(c, text)
 		case "assistant":
 			if text != "" {

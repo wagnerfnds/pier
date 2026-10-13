@@ -124,3 +124,31 @@ func TestOneKeyAnswersArePressedNotPasted(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// A retried send of the agent's own command (no turn) with the same key
+// types nothing the second time.
+func TestARetriedCommandIsTypedOnce(t *testing.T) {
+	states := &Turns{}
+	c, bus := servedBox(t, func(b *Box) { b.Turns = states })
+	states.Attach(bus)
+	call(t, c, "POST", "/v1/locations", "", map[string]string{"name": "cal", "path": gitRepo(t)}, nil)
+	bin := t.TempDir()
+	fake := filepath.Join(bin, "claude")
+	// It prints each line it reads once: the terminal doesn't echo it.
+	os.WriteFile(fake, []byte("#!/bin/sh\nstty -echo\nexec cat\n"), 0o755)
+	call(t, c, "POST", "/v1/sessions", "", map[string]string{"location": "cal", "name": "agent", "command": fake}, nil)
+	var first, second SendResult
+	req := map[string]any{"text": "/model opus", "when": "now", "idem_key": "ios-1"}
+	if status := call(t, c, "POST", "/v1/sessions/agent/send", "", req, &first); status != 200 || first.Duplicate {
+		t.Fatalf("send: %d %+v", status, first)
+	}
+	if status := call(t, c, "POST", "/v1/sessions/agent/send", "", req, &second); status != 200 || !second.Duplicate || !second.Sent || second.Seq != first.Seq {
+		t.Fatalf("retry: %d %+v", status, second)
+	}
+	time.Sleep(300 * time.Millisecond)
+	var screen struct{ Screen string }
+	call(t, c, "GET", "/v1/sessions/agent/screen", "", nil, &screen)
+	if n := strings.Count(screen.Screen, "/model opus"); n != 1 {
+		t.Fatalf("typed %d times: %q", n, screen.Screen)
+	}
+}
