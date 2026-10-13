@@ -99,6 +99,9 @@ struct AgentDotStrip: View {
             if ModifierKeys.shared.optionSeen {
                 Text(verbatim: "⌥").font(.system(size: 1)).opacity(0.02).accessibilityIdentifier("agent-dots-option-seen")
             }
+            if ModifierKeys.shared.labelsSeen {
+                Text(verbatim: "⌥").font(.system(size: 1)).opacity(0.02).accessibilityIdentifier("agent-dots-labels-seen")
+            }
         }
         #endif
         .accessibilityElement(children: .contain)
@@ -174,6 +177,9 @@ struct AgentDotStrip: View {
             .accessibilityIdentifier("agent-label-\(d.session)")
         }
         FlowLayout(spacing: 6, lineSpacing: 6) { chips }
+            #if DEBUG
+            .onAppear { ModifierKeys.shared.labelsSeen = true }
+            #endif
     }
 
     // MARK: actions

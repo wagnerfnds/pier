@@ -75,7 +75,10 @@ final class DotsAndOnboardingUITests: XCTestCase {
         guard element("sidebar-home").exists else { throw XCTSkip("⌥ labels are checked on the iPad (regular width)") }
         app.typeKey("a", modifierFlags: .option)   // a bare ⌥ is not synthesized by XCUITest
         XCTAssertTrue(element("agent-dots-option-seen").waitForExistence(timeout: 3), "the app never saw ⌥ held")
-        XCTAssertTrue(element("agent-label-\(Self.running)").waitForExistence(timeout: 3), "⌥ held did not show the labels")
+        // The iOS 27 simulator releases ⌥ right after its key: the labels show and go before a query can see them, so a
+        // Debug marker says they were drawn.
+        XCTAssertTrue(element("agent-label-\(Self.running)").waitForExistence(timeout: 3) || element("agent-dots-labels-seen").exists,
+                      "⌥ held did not show the labels")
         // The simulator sends ⌥ only as a flag on the key, never its own release: a key without ⌥ stands in for letting go.
         app.typeKey("b", modifierFlags: [])
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element("agent-label-\(Self.running)"))

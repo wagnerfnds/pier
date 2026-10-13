@@ -14,6 +14,9 @@ final class ModifierKeys {
     #if DEBUG
     /// UI tests: ⌥ reached the app at least once (the simulator cannot hold a modifier for XCUITest).
     private(set) var optionSeen = false
+    /// UI tests: the labels it holds open were drawn at least once. The iOS 27 simulator releases ⌥ right after the key it
+    /// came with, so they are gone again before XCUITest can look.
+    var labelsSeen = false
     #endif
     @ObservationIgnored private var installed = false
 

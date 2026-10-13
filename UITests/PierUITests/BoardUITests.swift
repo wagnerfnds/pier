@@ -140,7 +140,8 @@ final class BoardUITests: XCTestCase {
         shot("filter-project")
         XCTAssertTrue(card("working", running).waitForExistence(timeout: 5), "the filtered project's card is gone")
         XCTAssertTrue(element("board-empty-needsYou").exists, "no empty state in a filtered column")
-        app.buttons.matching(NSPredicate(format: "label CONTAINS 'acme-web'")).firstMatch.tap()   // the chip clears it
+        // The chip clears it (by its id: on the iPad the sidebar lists acme-web too, and its rows come first).
+        app.buttons.matching(NSPredicate(format: "identifier == 'board-filter-chip' AND label CONTAINS 'acme-web'")).firstMatch.tap()
         XCTAssertTrue(card("needsYou", waiting).waitForExistence(timeout: 5), "clearing the filter did not bring sandbox back")
 
         // The board's own field, by its prompt: on iPad the sidebar has a search field too (and it comes first).

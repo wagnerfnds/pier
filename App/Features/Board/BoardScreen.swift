@@ -507,6 +507,7 @@ private struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Remove o filtro")
+        .accessibilityIdentifier("board-filter-chip")
     }
 }
 

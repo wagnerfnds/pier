@@ -161,7 +161,8 @@ final class CleanupUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["Início"].waitForExistence(timeout: 15))
         app.buttons["Projetos"].tap()
-        app.buttons["Faxina"].tap()
+        // On the iPad the sidebar's footer has a Faxina too: either opens it.
+        app.buttons["Faxina"].firstMatch.tap()
         XCTAssertTrue(text("Worktrees sem ninguém").waitForExistence(timeout: 10))
         XCTAssertTrue(text("sandbox · old-pr").exists && text("branch enviada").exists)
         XCTAssertTrue(text("sandbox · wip").exists && text("2 commit(s) só nesta máquina").exists, "risky worktree not flagged")
