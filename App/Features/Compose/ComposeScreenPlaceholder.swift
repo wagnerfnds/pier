@@ -21,12 +21,11 @@ struct ComposeScreenPlaceholder: View {
     /// The prompt as it was when dictation started: what is heard is added after it.
     @State private var dictationBase = ""
     @FocusState private var promptFocused: Bool
-    @Environment(\.horizontalSizeClass) private var sizeClass
     private var dictation: Dictation { TalkCenter.shared.dictation }
 
-    /// The Mac and a wide iPad start from a button at the end of the form, as a dialog does; the iPhone keeps a bar
-    /// above the keyboard.
-    private var inlineSubmit: Bool { Platform.isMac || sizeClass == .regular }
+    /// The Mac starts from a button at the end of the form, as a dialog does; the iPhone and the iPad keep a bar above the
+    /// on-screen keyboard, where it never hides behind it.
+    private var inlineSubmit: Bool { Platform.isMac }
     /// The prompt's type: the body size (Dynamic Type) on iPhone and iPad, a size that reads well on the Mac.
     private var promptFont: Font { Platform.isMac ? .system(size: 15) : .body }
 
@@ -589,8 +588,8 @@ struct ComposeScreenPlaceholder: View {
         }
     }
 
-    /// iPhone: the start button in a bar above the keyboard, on the screen's own background (a hairline over it), and,
-    /// while it can't start yet, in quiet colors that still read.
+    /// iPhone and iPad: the start button in a bar above the keyboard, as wide as the form's column, on the screen's own
+    /// background (a hairline over it), and, while it can't start yet, in quiet colors that still read.
     private var submitBar: some View {
         Button(action: start) { startLabel }
             .buttonStyle(PrimaryButtonStyle(color: vm.canSubmit || vm.stage.isBusy ? Theme.accent : Theme.cardRaised,
@@ -599,14 +598,16 @@ struct ComposeScreenPlaceholder: View {
             .accessibilityIdentifier("compose-start")
             .disabled(!vm.canSubmit)
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 6)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
             .background(alignment: .top) {
                 Theme.bg.ignoresSafeArea(edges: .bottom)
                     .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
             }
     }
 
-    /// Mac and wide iPad: the start button where the form ends, its own size, with the shortcut beside it; what is still
-    /// missing is said there too, instead of a dead full-width bar.
+    /// Mac: the start button where the form ends, its own size, with the shortcut beside it; what is still missing is said
+    /// there too, instead of a dead full-width bar.
     private var inlineSubmitRow: some View {
         HStack(spacing: 12) {
             Text(missingHint ?? (Platform.isMac ? String(localized: "⌘↩ para iniciar") : ""))

@@ -12,8 +12,8 @@ code calls which route.
 2. Home and Inbox: every agent across boxes grouped **Needs you / Working / Your turn / Done**, live; a keyboard-first Inbox.
 3. Create a task: prompt + project + agent up front; worktree, base branch, name, model, effort and title fold under
    "Opções" with smart defaults and a one-line summary (+ photo). Model and effort are chips (every choice in sight,
-   "Outro…" for a name typed by hand); the form is a 720 pt column, and on the Mac and a wide iPad Start sits at its
-   end with ⌘↩ beside it (the iPhone keeps a bar above the keyboard).
+   "Outro…" for a name typed by hand); the form is a 720 pt column, and on the Mac Start sits at its end with ⌘↩
+   beside it (the iPhone and the iPad keep a bar above the on-screen keyboard, the iPad's as wide as the column).
 4. Session = a chat first (transcript folded into turns, Markdown replies, needs-you card above the composer, Send that
    becomes Stop while the agent works); the raw terminal is a secondary view remembered per session.
 5. Needs you: permission Allow once / Always / Deny (screen menu parsing) and question answering.

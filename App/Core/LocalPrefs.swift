@@ -94,6 +94,9 @@ final class LocalPrefs {
     init(url: URL? = nil) {
         self.url = url ?? Self.defaultURL
         load()
+        // A mock run is a test or a screenshot: it starts with no prompt draft a previous run left behind (one test typed
+        // a long prompt and the next found it in Nova tarefa). Within a run the draft comes back as ever.
+        if UITestMock.enabled, !data.composeDraft.isEmpty { data.composeDraft = "" }
         // The widgets' copy follows these prefs from the start, whatever changed it meanwhile.
         if url == nil { mirrorForWidgets() }
     }
