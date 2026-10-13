@@ -14,13 +14,22 @@ struct ConversationView: View {
 
     private var blocks: [ConversationBlock] { ConversationFold.blocks(vm.store.displayItems, live: vm.isRunning || vm.isWaiting) }
 
+    /// What the lazy stack iterates: an id and where the block is. SwiftUI walks a ForEach's data again and again while
+    /// it scrolls, and copying the blocks themselves (each holding whole transcript items) was a tenth of the main thread.
+    private struct Row: Identifiable {
+        let id: String
+        let index: Int
+    }
+
     var body: some View {
+        let blocks = self.blocks
+        let rows = blocks.indices.map { Row(id: blocks[$0].id, index: $0) }
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     top(proxy)
-                    ForEach(blocks) { block in
-                        switch block {
+                    ForEach(rows) { row in
+                        switch blocks[row.index] {
                         case .item(let it):
                             TranscriptRow(vm: vm, item: it).id(it.id)
                         case .fold(let id, let steps, let live):
@@ -156,7 +165,8 @@ struct LiveDraftRow: View {
     let vm: SessionViewModel
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let t = vm.visibleDraft { MarkdownView(text: t, draft: true) }
+            // Words still being written: nothing to select yet, and no cost to pay on every update for it.
+            if let t = vm.visibleDraft { MarkdownView(text: t, draft: true, touchSelection: false) }
             HStack(spacing: 8) {
                 PulsingDot()
                 ShimmerText(text: word)

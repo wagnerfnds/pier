@@ -8,9 +8,13 @@ struct MarkdownView: View {
     let text: String
     /// A reply still being written (draft): quieter, with a caret at the end.
     var draft = false
+    /// Text selection on the iPhone and the iPad too (the Mac always has it). The conversation turns it off: a long press
+    /// there opens the message's own menu (Copiar), and selection only cost time each time a reply first showed.
+    var touchSelection = true
 
     var body: some View {
         MarkdownBlocksView(blocks: MarkdownStyle.blocks(text), depth: 0, caret: draft, draft: draft)
+            .environment(\.markdownSelectable, touchSelection || Platform.isMac)
             .foregroundStyle(Theme.text)
             .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(draft ? 0.86 : 1)
@@ -24,6 +28,7 @@ private struct MarkdownBlocksView: View {
     /// Draw the caret after the last block's words.
     let caret: Bool
     let draft: Bool
+    @Environment(\.markdownSelectable) private var selectable
 
     var body: some View {
         VStack(alignment: .leading, spacing: depth == 0 ? 10 : 6) {
@@ -41,7 +46,7 @@ private struct MarkdownBlocksView: View {
                 .foregroundStyle(Theme.text)
                 .padding(.top, depth == 0 ? 4 : 0)
                 .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
+                .selectable(selectable)
         case .paragraph(let t):
             paragraph(t, caret: caret)
         case .list(let items):
@@ -49,8 +54,15 @@ private struct MarkdownBlocksView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { i, it in
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
                         marker(it)
-                        AnyView(MarkdownBlocksView(blocks: it.blocks, depth: depth + 1, caret: caret && i == items.count - 1, draft: draft))
-                            .foregroundStyle(it.checked == true ? Theme.textDim : Theme.text)
+                        Group {
+                            // Most items are a line of words: drawn as one, without a nested stack of blocks.
+                            if it.blocks.count == 1, case .paragraph(let t) = it.blocks[0] {
+                                paragraph(t, caret: caret && i == items.count - 1)
+                            } else {
+                                AnyView(MarkdownBlocksView(blocks: it.blocks, depth: depth + 1, caret: caret && i == items.count - 1, draft: draft))
+                            }
+                        }
+                        .foregroundStyle(it.checked == true ? Theme.textDim : Theme.text)
                     }
                 }
             }
@@ -89,7 +101,7 @@ private struct MarkdownBlocksView: View {
         }
         return Text(a).font(.body).lineSpacing(2.5)
             .fixedSize(horizontal: false, vertical: true)
-            .textSelection(.enabled)
+            .selectable(selectable)
     }
 }
 
@@ -99,6 +111,7 @@ struct MarkdownTable: View {
     let header: [String]
     let alignments: [MarkdownBlock.Alignment]
     let rows: [[String]]
+    @Environment(\.markdownSelectable) private var selectable
 
     /// The widest a column grows before its text wraps.
     private static var columnCap: CGFloat { Platform.isMac ? 340 : 260 }
@@ -113,8 +126,7 @@ struct MarkdownTable: View {
                             .font(r == 0 ? .footnote.weight(.semibold) : .footnote.monospacedDigit())
                             .foregroundStyle(r == 0 ? Theme.textDim : Theme.text)
                             .multilineTextAlignment(align == .trailing ? .trailing : align == .center ? .center : .leading)
-                            // On the text alone: around the whole cell the selectable container rounded its fill.
-                            .textSelection(.enabled)
+                            .selectable(selectable)
                             .padding(.horizontal, 10).padding(.vertical, 7)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: align == .trailing ? .topTrailing : align == .center ? .top : .topLeading)
                             // A plain rectangle: a style alone took the rounded shape the table's background is drawn in.
@@ -175,6 +187,17 @@ private struct TableGridLayout: Layout {
             }
             y += cache.heights[row]
         }
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether `MarkdownView`'s text can be selected (`MarkdownView.touchSelection`).
+    @Entry var markdownSelectable = true
+}
+
+extension View {
+    @ViewBuilder fileprivate func selectable(_ on: Bool) -> some View {
+        if on { textSelection(.enabled) } else { self }
     }
 }
 

@@ -129,7 +129,9 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   tables with alignment and escaped pipes, indented code, tabs as 4 columns); `MarkdownView` draws it, inline styling
   through `AttributedString(markdown:)` (bare links included). A table's column grows to its longest cell up to a cap
   (260 pt, 340 on the Mac) and wraps past it, the table scrolling sideways when wider than the reply. A paragraph keeps
-  its line breaks (chat convention).
+  its line breaks (chat convention). In the conversation the text is selectable on the Mac only (`touchSelection`: a
+  long press on the iPhone opens the message's Copiar), and the lazy stack iterates light rows (id + index), which
+  took a fling through a long chat on an iPhone from ~28 to ~5.5 ms/s of hitches.
 - A message shows the moment it is sent (`outgoing`, "Enviando…"), through the undo window, until the box's pending
   copy and then the record's replace it in the same turn. A send has 15 s; when it fails on the connection the view
   model drops the connection and sends again with the same `idem_key` (pierd types it once).

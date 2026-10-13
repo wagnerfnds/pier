@@ -1,7 +1,8 @@
 # The chat: quality targets and how to check them
 
 What the conversation screen is held to, where each target comes from, and the command that measures it. Results are
-from Debug builds on an M-series Mac and the iPhone 17 simulator (2026-10), unless the row says otherwise.
+from an iPhone Air (iOS 27, an optimized build with the debug hooks), an M-series Mac and the iPhone 17 simulator
+(2026-10), as each row says.
 
 | Area | Target | How it is measured | Result |
 |---|---|---|---|
@@ -10,8 +11,8 @@ from Debug builds on an M-series Mac and the iPhone 17 simulator (2026-10), unle
 | Streaming cadence | draft updates ≤ 1 s apart while the words grow | `SessionViewModel.followDraft` | every 0.6 s, 1.5 s while nothing changes (before: 1.5 s, and a slow transcript, screen or review read held it back) |
 | Sent exactly once | 0 lost, 0 doubled through retries | one `idem_key` per message, reused by the retry; pierd's `TestSendsWithoutATurnKeepTheirKeys`, `TestARetriedCommandIsTypedOnce` | a send that dies with its connection is sent again on a new one and typed once |
 | A dead connection | found well inside the PING watchdog's 30–45 s | `LinkWatch` (PierKit, tested) | two polls failing on the connection (6 s deadlines, 4 s for the draft) drop it; the next request dials the address and, 0.6 s later, the relay (RFC 8305: 100 ms–2 s) |
-| Scrolling | hitch time < 5 ms per second (Apple, WWDC20 "Eliminate animation hitches with XCTest") | `-chatPerfProbe 1` (frame pacing by CADisplayLink: scroll 6000 pt and back); on a device, `ChatQualityUITests.testScrollingTheLongConversation` (XCTOSSignpostMetric) | Mac: median 2.8 ms/s (0–5.6 over the runs, a browser using the GPU meanwhile); one run of the earlier build had a single 217 ms frame |
-| While a reply streams | no hang (≥ 250 ms main thread, Apple) | the probe's second phase (`-sessionSend <text>`) | ~10 ms of main thread per update; 35–54 ms once at the send and at the turn's end; no hang |
+| Scrolling | hitch time < 5 ms per second (Apple, WWDC20 "Eliminate animation hitches with XCTest"; ≤ 10 is "good" in Organizer's field data) | `-chatPerfProbe 1` (frame pacing by CADisplayLink: a fling of 6000 pt up through rows never drawn, and back), run on the device with `xcrun devicectl device process launch --console … -- -uiTestMock 1 -uiTestChatLab 1 -openSession chatlab-claude-z9 -chatPerfProbe 1`; `ChatQualityUITests.testScrollingTheLongConversation` (XCTOSSignpostMetric) where UI automation is enabled | iPhone Air: median 5.5 ms/s over 10 runs (4.2–8.4), 1–3 frames over the budget per fling, the longest ~40–50 ms (before: 27–31 ms/s, 8–10 such frames). Mac: median 2.8 ms/s |
+| While a reply streams | no hang (≥ 250 ms main thread, Apple) | the probe's second phase (`-sessionSend <text>`) | iPhone Air: median 6.4 ms/s of hitches over 9 s of streaming, 2–4 frames of ~40–50 ms (the send, the record's echo, the turn's end); Mac: ~10 ms of main thread per update; no hang anywhere |
 | Cost of an agent at work | as little main thread as possible | Instruments, Time Profiler, the chat open on a working agent | Mac 21 % → 13 % (the working indicators run in Core Animation; the edge tab redraws only its turning rings) |
 | Work per update | far below one frame (8.3 ms at 120 Hz) | `swift test -c release --filter ChatPerformanceTests` | a 32 KB reply's Markdown 1.9 ms, the fold of 300 items 0.22 ms, a poll merged 0.06 ms, the draft check 0.9 ms |
 | Server time per poll | small next to the network | `go test -run '^$' -bench . -benchmem ./internal/transcript ./internal/box` | transcript poll ~4 ms (before ~12), draft ~8 ms (its parse 0.05 ms) |
@@ -23,5 +24,8 @@ The chat lab (`-uiTestMock 1 -uiTestChatLab 1 -openSession chatlab-claude-z9`, `
 ends the record) is the conversation these run against: 60 turns of what agents write and what breaks readers (wide
 tables, code under list items, quotes holding lists, task lists, long links and paths, emoji, CJK, right to left).
 
-Not measured here: hitch time on an iPhone (no device was attached; run `testScrollingTheLongConversation` on one), and
-end-to-end latency against a real box (`RealBoxUITests` measures send-to-reply with `TEST_RUNNER_REAL_SESSION`).
+What moved the iPhone's numbers: the lazy stack walks a ForEach's data again and again while it scrolls, so it iterates
+light rows (an id and an index) instead of the blocks themselves; a one-paragraph list item is drawn without a nested
+stack; and the conversation's text is selectable on the Mac only (on the iPhone a long press opens the message's Copiar,
+and selection on every paragraph was the costliest part of a reply's first appearance). Not measured here: end-to-end
+latency against a real box (`RealBoxUITests` measures send-to-reply with `TEST_RUNNER_REAL_SESSION`).

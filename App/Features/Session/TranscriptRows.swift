@@ -58,7 +58,7 @@ struct AssistantText: View {
     let text: String
     var folded = false
     var body: some View {
-        MarkdownView(text: text)
+        MarkdownView(text: text, touchSelection: false)
             .opacity(folded ? 0.85 : 1)
             .contextMenu { CopyButton(text: text) }
     }
