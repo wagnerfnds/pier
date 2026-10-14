@@ -92,6 +92,7 @@ struct ProjectScreenPlaceholder: View {
         }
         .sheet(isPresented: $removingProject) {
             RemoveProjectSheet(box: route.box, location: route.location) { router.popTop() }
+                .environment(model).environment(prefs)
         }
         .sheet(item: $removing) { wt in
             RemoveWorktreeSheet(box: route.box, location: route.location, worktree: wt.name,
@@ -100,6 +101,7 @@ struct ProjectScreenPlaceholder: View {
                 message = msg
                 Task { await reload() }
             }
+            .environment(model)
         }
     }
 

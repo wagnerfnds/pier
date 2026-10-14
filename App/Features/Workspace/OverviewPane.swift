@@ -44,6 +44,7 @@ struct OverviewPane: View {
         .refreshable { await loadStatuses() }
         .sheet(isPresented: $removingProject) {
             RemoveProjectSheet(box: ref.box, location: project.name) { router.select(.tab(.projects)) }
+                .environment(model).environment(prefs)
         }
     }
 

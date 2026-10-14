@@ -142,6 +142,7 @@ private struct WorkspaceContent: View {
             RemoveWorktreeSheet(box: ref.box, location: project.name, worktree: worktree.name, changes: changes, sessions: sessions.count) { msg in
                 if case .success = msg.kind { router.select(.project(ProjectRoute(box: ref.box, location: project.name))) } else { banner = msg }
             }
+            .environment(model)
         }
     }
 

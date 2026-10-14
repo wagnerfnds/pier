@@ -78,6 +78,7 @@ struct WorktreeScreenPlaceholder: View {
                 // The worktree is gone (or archiving): leave this screen.
                 if case .success = msg.kind { router.popTop() } else { message = msg }
             }
+            .environment(model)
         }
     }
 

@@ -70,10 +70,11 @@ struct ProjectsRoot: View {
                 }
             }
         }
-        .sheet(isPresented: $showGitHub) { GitHubReposScreen() }
-        .sheet(isPresented: $showCloneLink) { CloneLinkSheet() }
+        .sheet(isPresented: $showGitHub) { GitHubReposScreen().environment(model).environment(router) }
+        .sheet(isPresented: $showCloneLink) { CloneLinkSheet().environment(model).environment(router) }
         .sheet(item: $removingProject) { e in
             RemoveProjectSheet(box: e.box, location: e.location.name) {}
+                .environment(model).environment(prefs)
         }
         #if DEBUG
         .task {
