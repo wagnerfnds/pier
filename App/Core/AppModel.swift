@@ -193,6 +193,13 @@ final class AppModel {
                 if let c = boxes.first, let s = c.sessions.first(where: { $0.isAgent }) { transition(c, s, .waiting) }
             }
         }
+        if let name = UserDefaults.standard.string(forKey: "debugActivitySession") {
+            // Test hook: a Live Activity for that one session (a finished turn's, to see its reply on the Lock Screen).
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                if let c = boxes.first { await liveActivities.start(box: c.name, session: name) }
+            }
+        }
         if UserDefaults.standard.bool(forKey: "debugStartActivity") {
             // Test hook: follow every running/waiting agent session with a Live Activity.
             Task {

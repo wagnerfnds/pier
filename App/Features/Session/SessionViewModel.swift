@@ -116,7 +116,7 @@ final class SessionViewModel {
     var terminalLines: [String] {
         let screen = screen
         if let c = terminalCache, c.screen == screen { return c.lines }
-        let lines = TerminalText.compact(TerminalText.clean(screen)).components(separatedBy: "\n")
+        let lines = TerminalText.compact(ANSI.plainGlyphs(TerminalText.clean(screen))).components(separatedBy: "\n")
         terminalCache = (screen, lines)
         return lines
     }

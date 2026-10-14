@@ -1,6 +1,21 @@
 import Foundation
 
 public enum ANSI {
+    /// Icon fonts' glyphs (Nerd Fonts, Powerline: Unicode's private use areas) as spaces, for text drawn in a font that has
+    /// none of them: a shell prompt's branch or language icon would otherwise draw as a missing-glyph box. A space keeps
+    /// the columns where the terminal had them.
+    public static func plainGlyphs(_ s: String) -> String {
+        guard s.unicodeScalars.contains(where: isPrivateUse) else { return s }
+        var out = String.UnicodeScalarView()
+        for c in s.unicodeScalars { out.append(isPrivateUse(c) ? " " : c) }
+        return String(out)
+    }
+
+    static func isPrivateUse(_ c: Unicode.Scalar) -> Bool {
+        let v = c.value
+        return (0xE000...0xF8FF).contains(v) || (0xF0000...0xFFFFD).contains(v) || (0x100000...0x10FFFD).contains(v)
+    }
+
     /// Remove terminal escape sequences (CSI colours/cursor moves, OSC titles and hyperlinks, charset selects, lone ESC pairs)
     /// and other C0 control characters except tab and newline. `GET .../screen` is already plain text; this is for
     /// raw terminal bytes and pasted output.

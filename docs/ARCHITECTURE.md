@@ -185,7 +185,9 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   underneath as it was (an orange dot on its tab while the agent waits). Only the terminal on screen reads the box, with a
   loop of its own (`TerminalFeed`: the screen and 300 lines of history every second, at once after a line or a key; not the
   conversation's transcript, held prompts or review). × ends the session, asked first unless its program ended; the
-  tab picked and each terminal's lines are kept per session for the app's run. Chats have none.
+  tab picked and each terminal's lines are kept per session for the app's run. Chats have none. A prompt's icon-font
+  glyphs (Nerd Fonts, Powerline: Unicode's private use areas) are drawn as spaces (`ANSI.plainGlyphs`, PierKit), not as
+  missing-glyph boxes.
 
 - Startup dialogs no hook announces (Claude Code's "New MCP server found", trust) are read from the screen. The box reports
   the agent as `running` meanwhile. Current Claude Code draws them **without numbers** (a `❯` on the selected option, "Enter
@@ -425,7 +427,9 @@ follows it); only an exit (`ended`) ends the activity. Debug `-openLink pier://�
 reply like Claude Code's when sent to; `ChatQualityUITests`), `-chatPerfProbe 1 [-sessionSend <text>]` (frame pacing of
 the open conversation, scrolled and while a reply streams: `CHAT-PERF {...}` on stderr and Documents/chat-perf.json), `-openInstallHelp 1` (the onboarding's "Outros jeitos de instalar" sheet),
 `-runIntent postNotif|notifAction|notifDelivered …` (App/Intents/DebugIntentRunner.swift), `-openLink <pier://…>`,
-`-debugStartActivity 1`, `-widgetGallery home|lock|activity|island|all`, `-openTalk 1 [-talkText "…" -talkRoute 1]`,
+`-debugStartActivity 1`, `-debugActivitySession <name>` (a Live Activity for that one session, a finished turn's to see its
+reply on the Lock Screen; `LiveActivityShots` with `TEST_RUNNER_ACTIVITY_SHOTS=<dir>` locks the simulator and saves it),
+`-widgetGallery home|lock|activity|island|all`, `-openTalk 1 [-talkText "…" -talkRoute 1]`,
 `-openPalette 1`, `-openFaxina 1`, `-openGitHubRepos 1` (with `-startTab projects`: the GitHub list), `-openProject <loc>[/<worktree>] [-workspaceTab files|changes|history|overview|details]
 [-openFile <path>]` (a project's workspace); Mac: `-macSurfaceDebug <commands>`, `-macFakeShot <png>`, `-macWindowSize 1280x800`,
 and for the alerts through iCloud (`CloudAlerts`, docs/PUSH.md 8) `-cloudAlertsDiagnose 1` (logs every device's
@@ -454,7 +458,10 @@ Group: its sidebar prefs go to `prefs-mock.json`, and it never writes the widget
 (the app rewrites that copy at launch). `-uiTestExtras 1`,
 `-uiTestChats 1`, `-uiTestPRs 1`, `-uiTestAsk 1` (an agent asking a question with three choices) and `-uiTestHealth 1`
 (a doctor report with three things to fix) add to its data. A task or chat it starts answers `source: "none"` for its first
-3 s, as a starting Claude Code does on pierd (`-mockRecordDelay <s>` makes that longer; `SessionStartUITests`).
+3 s, as a starting Claude Code does on pierd (`-mockRecordDelay <s>` makes that longer; `SessionStartUITests`). A
+message sent with `when: idle` while its agent works is held (`GET/DELETE …/queue`, `…/queue/<turn>/send`, the session's
+`queued`) and goes in when the turn ends, as on pierd; `-mockReplyDelay <s>` makes the agent slower to answer, long enough
+to send a second message meanwhile.
 
 ## UI tests (real keyboard)
 

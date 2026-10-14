@@ -31,6 +31,14 @@ final class MockBox: PierTransport, @unchecked Sendable {
     /// A task or chat just started: Claude Code writes its record only once the prompt is in, so for its first seconds the
     /// box has none to read (`source: "none"`), as on pierd.
     private var recordAt: [String: Date] = [:]
+    /// Messages sent with `when: idle` while the agent works, held until its turn ends (pierd's queue, docs/API.md 4.3):
+    /// `turn`, `preview`, `length`, `at` as `GET .../queue` answers, plus the whole `text`.
+    private var held: [String: [JSON]] = [:]
+    /// How long the agent takes to answer a message: 1.4 s, or `-mockReplyDelay <s>` (a run that sends while it works).
+    private static var replyDelay: Double {
+        let d = UserDefaults.standard.double(forKey: "mockReplyDelay")
+        return d > 0 ? d : 1.4
+    }
     /// How long that lasts: 3 s, or `-mockRecordDelay <s>` (a UI test that looks at the chat meanwhile).
     private static var recordDelay: Double {
         let d = UserDefaults.standard.double(forKey: "mockRecordDelay")
@@ -482,8 +490,21 @@ final class MockBox: PierTransport, @unchecked Sendable {
             self.lock.withLock {
                 self.transcripts[name, default: []].append(self.item("text", text: text))
                 self.setState(name, "finished")
+                self.deliverHeld(name)
             }
         }
+    }
+
+    /// The turn ended: the first message held for it goes in, typed as pierd types it, and is answered like any other.
+    private func deliverHeld(_ name: String) {
+        guard var queue = held[name], !queue.isEmpty, let i = index(name) else { return }
+        let h = queue.removeFirst()
+        held[name] = queue
+        sessions[i]["queued"] = queue.count
+        let text = h["text"] as? String ?? ""
+        transcripts[name, default: []].append(item("user", text: text))
+        seq += 1
+        scheduleReply(name, text: "Picked up your queued message (\(text.count) characters).", after: Self.replyDelay)
     }
 
     /// The chat lab's reply, as Claude Code writes one: running, the words growing on screen (the draft) for about 5 s,
@@ -579,17 +600,40 @@ final class MockBox: PierTransport, @unchecked Sendable {
             return (200, Self.json(["sent": true, "at": Self.iso(), "seq": seq, "turn": "\(name)#\(seq)"]))
         case (.get, "draft"): return (200, Self.json(["agent": "claude"]))
         case (.get, "controls"): return (200, Self.fixture(MockFixtures.controls))
-        case (.get, "queue"): return (200, Data("[]".utf8))
+        case (.get, "queue") where p.count == 4: return (200, Self.json(held[name] ?? []))
+        case (.delete, "queue") where p.count == 5:
+            held[name]?.removeAll { ($0["turn"] as? String) == p[4] }
+            sessions[si]["queued"] = held[name]?.count ?? 0
+            return (200, Data("{}".utf8))
+        case (.post, "queue") where p.count == 6 && p[5] == "send":
+            guard let h = held[name]?.first(where: { ($0["turn"] as? String) == p[4] }) else { return notFound }
+            held[name]?.removeAll { ($0["turn"] as? String) == p[4] }
+            sessions[si]["queued"] = held[name]?.count ?? 0
+            let text = h["text"] as? String ?? ""
+            transcripts[name, default: []].append(item("user", text: text))
+            seq += 1
+            scheduleReply(name, text: "Picked up your queued message (\(text.count) characters).", after: Self.replyDelay)
+            return (200, Self.json(["sent": true, "at": Self.iso(), "seq": seq, "turn": p[4]]))
         case (.get, "diff"): return (200, Self.fixture(MockFixtures.fileDiff))
         case (.post, "send") where name == Self.mcpSession && !mcpAnswered:
             mcpAnswered = true
             scheduleReply(name, text: "MCP server enabled. Ready.", after: 0.8)
             return (200, Self.json(["sent": true, "at": Self.iso(), "seq": seq, "turn": "\(name)#1"]))
+        case (.post, "send") where (req["when"] as? String) == "idle" && ["running", "waiting"].contains(sessions[si]["agent_state"] as? String ?? ""):
+            // While the agent works the message waits for its turn to end, as on pierd.
+            let text = (req["text"] as? String) ?? ""
+            seq += 1
+            let turn = "\(name)#h\(seq)"
+            held[name, default: []].append(["turn": turn, "preview": String(text.prefix(200)), "length": text.count, "origin": "app",
+                                             "at": Self.iso(), "text": text])
+            sessions[si]["queued"] = held[name]?.count ?? 0
+            return (200, Self.json(["sent": false, "queued": true, "at": Self.iso(), "seq": seq, "turn": turn]))
         case (.post, "send"):
             let text = (req["text"] as? String) ?? ""
             transcripts[name, default: []].append(item("user", text: text))
             seq += 1
-            scheduleReply(name, text: "Got it. I read your message (\(text.count) characters) and I'm on it.\n\n```bash\ngit status --short\n```")
+            scheduleReply(name, text: "Got it. I read your message (\(text.count) characters) and I'm on it.\n\n```bash\ngit status --short\n```",
+                          after: Self.replyDelay)
             return (200, Self.json(["sent": true, "at": Self.iso(), "seq": seq, "turn": "\(name)#\(seq)"]))
         case (.post, "keys"), (.post, "answer"):
             scheduleReply(name, text: "Thanks, continuing.", after: 1.0)

@@ -236,6 +236,15 @@ import Testing
 }
 
 @Suite struct ANSITests {
+    /// A starship prompt: the branch and Python icons are Nerd Font glyphs, in the private use area. They become spaces
+    /// (the columns stay), everything else stays as it was.
+    @Test func iconFontGlyphsBecomeSpaces() {
+        #expect(ANSI.plainGlyphs("e2eapp on \u{E0A0} main via \u{E73C} v3.12") == "e2eapp on   main via   v3.12")
+        #expect(ANSI.plainGlyphs("\u{F0001}x\u{10FFFD}") == " x ")
+        let plain = "plain ✓ text ⎇ 漢字 🐍 ❯"
+        #expect(ANSI.plainGlyphs(plain) == plain)
+    }
+
     @Test func stripsEscapes() {
         #expect(ANSI.strip("\u{1B}[31mred\u{1B}[0m plain") == "red plain")
         #expect(ANSI.strip("\u{1B}[1;38;5;208mbold\u{1B}[m!") == "bold!")
