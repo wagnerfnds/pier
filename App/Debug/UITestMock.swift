@@ -836,7 +836,7 @@ extension MockBox {
             let branch = w?["branch"] as? String ?? "main"
             return ok("## \(branch)...origin/\(branch)\0\n--pier-numstat--\n")
         }
-        if cmd.contains(NextSteps.marker) { return ok(UITestShowcase.nextSteps) }
+        if cmd.contains(NextSteps.marker) { return ok(UITestShowcase.nextSteps(prompt: MockPRs.sentText(cmd))) }
         if cmd.contains(AITitle.marker) { return ok("\"\(UITestShowcase.aiTitle(prompt: MockPRs.sentText(cmd)))\"\n") }
         if cmd.contains(TalkRouter.marker) {
             return ok("```json\n" + String(decoding: Self.json(UITestShowcase.talkDecision(prompt: MockPRs.sentText(cmd))), as: UTF8.self) + "\n```\n")

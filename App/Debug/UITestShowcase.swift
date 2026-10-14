@@ -828,8 +828,14 @@ enum UITestShowcase {
 
     // MARK: the AI touches (what `claude -p --model haiku` would answer on the box)
 
-    static var nextSteps: String {
-        portuguese ? #"{"replies":["Abrir um pull request","Mostrar o diff"]}"# : #"{"replies":["Open a pull request","Show me the diff"]}"#
+    /// The replies suggested after a finished turn, from what the agent said: the chat's plan ends asking what comes
+    /// first (it has no repository: a pull request makes no sense there); the other turns changed code.
+    static func nextSteps(prompt: String) -> String {
+        if prompt.contains("funnel events") || prompt.contains("eventos do funil") {
+            return portuguese ? #"{"replies":["Escreva os eventos do funil como especificação","Esboce primeiro a nova tela de conexão"]}"#
+                : #"{"replies":["Draft the funnel events as a spec","Sketch the new connect screen first"]}"#
+        }
+        return portuguese ? #"{"replies":["Abrir um pull request","Mostrar o diff"]}"# : #"{"replies":["Open a pull request","Show me the diff"]}"#
     }
 
     static var aiDraft: String { portuguese ? aiDraftPT : aiDraftEN }
