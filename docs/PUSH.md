@@ -258,8 +258,10 @@ background refresh (iOS decides, typically every 15 minutes or more). Requires t
   device (it would double the banner).
 * **Push-to-start**: for running or waiting sessions, once per session and device, when the device has no activity
   token for it, after an 8 s grace (skipped if the phone registered an activity of its own meanwhile: the app starts
-  one itself for tasks made on the phone, and ends any second activity for the same session). `project` is
-  `repo · worktree`, like the app's own activities.
+  one itself for tasks made on the phone, and ends any second activity for the same session). A newer running or
+  waiting state inside the grace replaces what it starts with (same deadline), so it never says "Working" while the
+  agent waits; when the grace ends the session list is read again, and a session that is gone, finished or back at
+  its prompt starts nothing (a later, longer turn may). `project` is `repo · worktree`, like the app's own activities.
 * **Widgets** (iOS 26+): `apns-push-type: widgets`, topic `<bundle_id>.push-type.widgets`, body
   `{"aps":{"content-changed":true}}`, priority 5, at most one per 60 s per device, on session state changes.
 * **Debounce**: at most one alert per state transition per session.

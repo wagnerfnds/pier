@@ -615,6 +615,68 @@ func TestFinishedWithBackgroundWorkIsNotDone(t *testing.T) {
 	}
 }
 
+func starts(r *rig) (out []string) {
+	for _, q := range r.snd.byType("liveactivity") {
+		var p struct {
+			APS struct {
+				Event string
+				CS    struct{ Phase string } `json:"content-state"`
+			}
+		}
+		json.Unmarshal(q.Payload, &p)
+		if p.APS.Event == "start" {
+			out = append(out, p.APS.CS.Phase)
+		}
+	}
+	return out
+}
+
+// startRig is a rig whose phone takes push-to-start, with a grace long enough to act inside, and a session that
+// starts working: it answers once the engine has the start in its grace.
+func startRig(t *testing.T) *rig {
+	d := dev("c1", "en")
+	d.PushToStartToken = "cc33dd44"
+	r := newRig(t, d)
+	r.eng.opt.StartGrace = 300 * time.Millisecond
+	r.box.set(sess("idle", time.Now().Add(-time.Hour)))
+	r.start()
+	r.change(sess("running", time.Now()))
+	waitFor(t, "the start in its grace", func() bool {
+		r.eng.mu.Lock()
+		defer r.eng.mu.Unlock()
+		return r.eng.started["c1|sandbox-subtract-claude-6s1"]
+	})
+	return r
+}
+
+// A chat ended inside the grace period starts no activity, whether the engine has seen it go or not yet: on the
+// phone it would say "working" on a chat that is gone.
+func TestPushToStartSkippedWhenTheSessionIsGone(t *testing.T) {
+	for _, synced := range []bool{true, false} {
+		r := startRig(t)
+		r.box.set() // ended
+		if synced {
+			r.eng.Sync(context.Background(), false)
+		}
+		time.Sleep(500 * time.Millisecond)
+		if got := starts(r); len(got) > 0 {
+			t.Fatalf("synced %v: push-to-start %v for a session that is gone", synced, got)
+		}
+	}
+}
+
+// A session that moved on to waiting inside the grace period starts its activity once, as it is then: not as
+// "working" while the agent waits for the person.
+func TestPushToStartCarriesTheStateItHasThen(t *testing.T) {
+	r := startRig(t)
+	r.change(sess("waiting", time.Now().Add(10*time.Millisecond)))
+	waitFor(t, "push-to-start", func() bool { return len(starts(r)) > 0 })
+	time.Sleep(200 * time.Millisecond)
+	if got := starts(r); len(got) != 1 || got[0] != "waiting" {
+		t.Fatalf("push-to-start phases %v, want one, waiting", got)
+	}
+}
+
 func TestPushToStartAfterAQuickTurnStillStartsTheNextOne(t *testing.T) {
 	d := dev("c1", "en")
 	d.PushToStartToken = "cc33dd44"

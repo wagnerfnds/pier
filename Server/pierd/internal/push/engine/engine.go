@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,7 +102,8 @@ type Engine struct {
 	boxName   string
 	sessions  []boxapi.Session
 	meta      map[string]finishMeta // by session name and "path:<dir>"
-	started   map[string]bool       // push-to-start sent: client|session
+	started   map[string]bool       // push-to-start scheduled or sent: client|session
+	startDue  map[string]time.Time  // push-to-start still in its grace: when it goes
 	locs      []boxapi.Location
 	locsAt    time.Time
 	preps     map[string]*finishPrep // by session: the finished turn being prepared (prep.go)
@@ -115,7 +117,7 @@ func New(opt Options, box boxapi.API, st *state.Store, send Sender, paired func(
 	return &Engine{
 		opt: opt, box: box, st: st, send: send, paired: paired, log: log, now: time.Now,
 		deb: sched.NewDebouncer(), actThr: sched.NewThrottle(opt.ActivityInterval), widgThr: sched.NewThrottle(opt.WidgetInterval),
-		meta: map[string]finishMeta{}, started: map[string]bool{}, preps: map[string]*finishPrep{}, ctx: context.Background(),
+		meta: map[string]finishMeta{}, started: map[string]bool{}, startDue: map[string]time.Time{}, preps: map[string]*finishPrep{}, ctx: context.Background(),
 	}
 }
 
@@ -621,6 +623,7 @@ func (e *Engine) activityOnly(s boxapi.Session, phase string) {
 
 // endSession ends the session's Live Activities and forgets their tokens.
 func (e *Engine) endSession(ctx context.Context, name string, s boxapi.Session) {
+	e.forgetStarts(name)
 	acts := e.st.ActivitiesFor(name)
 	if len(acts) == 0 {
 		return
@@ -734,24 +737,32 @@ func (e *Engine) updateActivities(ctx context.Context, s boxapi.Session, rcpts [
 			}
 			client, name := r.d.Client, s.Name
 			e.actThr.Do(client+"|"+name, urgent, func() { e.deliver(ctx, req, client, "activity", name, "update:"+phase) })
-		case r.d.PushToStartToken != "" && (phase == "running" || phase == "waiting") && e.markStarted(r.d.Client+"|"+s.Name):
-			e.deb.Do("start|"+r.d.Client+"|"+s.Name, e.opt.StartGrace, func() { e.pushToStart(ctx, r, s, phase, cs, all, locs) })
+		case r.d.PushToStartToken != "" && (phase == "running" || phase == "waiting"):
+			key := r.d.Client + "|" + s.Name
+			if wait, ok := e.startWait(key); ok {
+				e.deb.Do("start|"+key, wait, func() { e.pushToStart(ctx, r, s, phase, cs, all, locs) })
+			}
 		}
 	}
 }
 
 // pushToStart starts an activity on a device that has none for the session (checked again after the grace period).
 func (e *Engine) pushToStart(ctx context.Context, r recipient, s boxapi.Session, phase string, cs payload.ContentState, all []boxapi.Session, locs []boxapi.Location) {
+	key := r.d.Client + "|" + s.Name
+	e.mu.Lock()
+	delete(e.startDue, key)
+	e.mu.Unlock()
 	for _, a := range e.st.ActivitiesFor(s.Name) {
 		if a.Client == r.d.Client {
 			e.log.Info("push-to-start skipped: the phone started its own", "session", s.Name)
 			return
 		}
 	}
-	if cur := e.snapshot(s.Name); stateOf(cur) == "exited" || stateOf(cur) == "finished" {
-		// Over before the grace ended (a one-second answer): nothing to follow now, but a later, longer turn may start one.
+	if !e.still(ctx, s.Name, phase) {
+		// Over, gone or moved on before the grace ended (a one-second answer, a chat ended): nothing to follow now, but
+		// a later, longer turn may start one. A move to waiting started this again with that state.
 		e.mu.Lock()
-		delete(e.started, r.d.Client+"|"+s.Name)
+		delete(e.started, key)
 		e.mu.Unlock()
 		return
 	}
@@ -788,16 +799,52 @@ func (e *Engine) pushToStart(ctx context.Context, r recipient, s boxapi.Session,
 	e.deliver(ctx, req, r.d.Client, "start", s.Name, "start:"+phase)
 }
 
-// markStarted is true the first time it is called for a key: one push-to-start per session and device, so an
-// activity the person dismissed does not come back at every transition.
-func (e *Engine) markStarted(key string) bool {
+// startWait says whether to schedule a push-to-start for key (client|session), and after how long: the grace the
+// first time; what is left of it while that runs, so the start carries the newest state; never once it went, one
+// per session and device, so an activity the person dismissed does not come back at every transition.
+func (e *Engine) startWait(key string) (time.Duration, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if due, ok := e.startDue[key]; ok {
+		return max(due.Sub(e.now()), 0), true
+	}
 	if e.started[key] {
-		return false
+		return 0, false
 	}
 	e.started[key] = true
-	return true
+	e.startDue[key] = e.now().Add(e.opt.StartGrace)
+	return e.opt.StartGrace, true
+}
+
+// still re-reads the sessions: whether name is there and in state.
+func (e *Engine) still(ctx context.Context, name, state string) bool {
+	list, err := e.box.Sessions(ctx)
+	if err != nil {
+		e.log.Warn("sessions fetch failed", "err", err)
+		return false
+	}
+	e.mu.Lock()
+	e.sessions = list
+	e.mu.Unlock()
+	for _, s := range list {
+		if s.Name == name {
+			return stateOf(s) == state
+		}
+	}
+	return false
+}
+
+// forgetStarts drops a session's push-to-starts, waiting or sent: it is over.
+func (e *Engine) forgetStarts(name string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for key := range e.started {
+		if strings.HasSuffix(key, "|"+name) {
+			e.deb.Cancel("start|" + key)
+			delete(e.started, key)
+			delete(e.startDue, key)
+		}
+	}
 }
 
 func indexByte(s string, c byte) int {
