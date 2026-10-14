@@ -52,7 +52,7 @@ struct OnboardingView: View {
             }
         }
         #endif
-        .sheet(isPresented: $showPaste) { PasteLinkSheet() }
+        .sheet(isPresented: $showPaste) { PasteLinkSheet().environment(router) }
         .sheet(isPresented: $showInstallHelp) { InstallHelpSheet() }
         #if DEBUG
         // Screenshot hook: `-openInstallHelp 1` lands on the pairing step with the help sheet up.
@@ -535,6 +535,7 @@ private struct OnboardingDone: View {
             }
             // Tall enough for the whole code without scrolling (a Mac sheet is small by default).
             .frame(minWidth: 460, idealWidth: 540, minHeight: 600, idealHeight: 740)
+            .environment(model)
         }
         .task {
             Haptic.success()

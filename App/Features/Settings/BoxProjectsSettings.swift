@@ -94,7 +94,7 @@ struct BoxProjectsSettingsScreen: View {
             Button("Criar") { Task { await addSpace() } }.keyboardShortcut(.defaultAction)
             Button("Cancelar", role: .cancel) {}
         } message: { Text("Letras, números, ponto, hífen e sublinhado.") }
-        .sheet(item: $removing) { s in RemoveSpaceSheet(box: box, space: s) { Task { await load() } } }
+        .sheet(item: $removing) { s in RemoveSpaceSheet(box: box, space: s) { Task { await load() } }.environment(model) }
     }
 
     private func load() async {

@@ -51,7 +51,9 @@ struct MainLayout: View {
         Group {
             if sizeClass == .regular { MainSplit() } else { MainTabs() }
         }
-        .sheet(isPresented: $router.showPalette) { CommandPalette() }
+        .sheet(isPresented: $router.showPalette) {
+            CommandPalette().environment(model).environment(router).environment(model.prefs)
+        }
         // --- Falar (talk to the agents): the sheet and its receipt ---
         .sheet(item: $talk.request) { r in
             TalkSheet(request: r).environment(model).environment(router).environment(model.prefs)

@@ -201,7 +201,7 @@ struct GitHubReposScreen: View {
                 if box.isEmpty { box = boxes.first?.name ?? ""; if box.isEmpty { return } }
                 await load()
             }
-            .sheet(isPresented: $cloneLink) { CloneLinkSheet(initialBox: box) { dismiss() } }
+            .sheet(isPresented: $cloneLink) { CloneLinkSheet(initialBox: box) { dismiss() }.environment(model).environment(router) }
             .alert("Não foi possível baixar", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(failure ?? "") }

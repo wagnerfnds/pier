@@ -66,6 +66,7 @@ struct PullRequestScreen: View {
                     sheet = nil
                     router.push(WorktreeRoute(box: box, location: loc, worktree: wt))
                 }
+                .environment(model)
             }
         }
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible, presenting: confirm) { action in

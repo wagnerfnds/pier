@@ -88,6 +88,7 @@ struct ProjectScreenPlaceholder: View {
                 NewWorktreeSheet(box: route.box, location: loc) { wt in
                     message = BannerMessage(text: String(localized: "Worktree “\(wt.name)” criada."), kind: .success)
                 }
+                .environment(model)
             }
         }
         .sheet(isPresented: $removingProject) {

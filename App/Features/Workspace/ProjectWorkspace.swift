@@ -137,6 +137,7 @@ private struct WorkspaceContent: View {
             NewWorktreeSheet(box: ref.box, location: project) { wt in
                 router.select(.worktree(WorktreeRoute(box: ref.box, location: project.name, worktree: wt.name)))
             }
+            .environment(model)
         }
         .sheet(isPresented: $removing) {
             RemoveWorktreeSheet(box: ref.box, location: project.name, worktree: worktree.name, changes: changes, sessions: sessions.count) { msg in

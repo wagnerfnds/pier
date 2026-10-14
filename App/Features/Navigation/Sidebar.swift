@@ -136,6 +136,7 @@ struct Sidebar: View {
                 expanded.insert(e.key)
                 router.select(.worktree(WorktreeRoute(box: e.box, location: e.location.name, worktree: wt.name)))
             }
+            .environment(model)
         }
     }
 
