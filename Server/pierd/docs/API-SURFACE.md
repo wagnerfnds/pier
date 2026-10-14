@@ -71,13 +71,13 @@ and Home widgets are shell strings run this way, so the box needs `git`, `gh` an
 |---|---|---|
 | `POST /v1/tasks` | `tasks.go` `addTask` | App `createTask()`: ComposeModel, TaskCreator (Shortcuts); `pierd task new` |
 | `GET /v1/sessions` | `api.go` `listSessions` | App `sessions()`: BoxConnection, BackgroundRefresh, intents, widgets; push engine |
-| `POST /v1/sessions` (agent, command, or `home`) | `api.go` `addSession` | App `startSession()`: ComposeModel, PullRequestStore; `pierd session new` |
-| `DELETE /v1/sessions/{name}` | `api.go` `removeSession` | App `kill()`: EndSessionSheet, Housekeeper, SessionViewModel |
-| `PATCH /v1/sessions/{name}` (title) | `titles.go` `renameSession` | App `rename()`: SessionScreen, SessionViewModel, ProjectsPlaceholder |
-| `GET /v1/sessions/{name}/screen?history=` | `api.go` `screen` | App `screen()`: SessionViewModel, SessionSignals, BoardScreen, LiveActivitySync, intents; push engine (menus) |
+| `POST /v1/sessions` (agent, command, neither: a shell, or `home`) | `api.go` `addSession` | App `startSession()`: ComposeModel, PullRequestStore, SessionTerminals (a shell in the session's worktree); `pierd session new` |
+| `DELETE /v1/sessions/{name}` | `api.go` `removeSession` | App `kill()`: EndSessionSheet, Housekeeper, SessionViewModel, SessionTerminals |
+| `PATCH /v1/sessions/{name}` (title) | `titles.go` `renameSession` | App `rename()`: SessionScreen, SessionViewModel, ProjectsPlaceholder, SessionTerminals |
+| `GET /v1/sessions/{name}/screen?history=` | `api.go` `screen` | App `screen()`: SessionViewModel, SessionTerminals (the terminal tab on screen), SessionSignals, BoardScreen, LiveActivitySync, intents; push engine (menus) |
 | `GET /v1/sessions/{name}/draft` | `draft.go` `draft` | App `draft()`: SessionViewModel; push engine |
-| `POST /v1/sessions/{name}/send` (`when`, `idem_key`, `force`, `enter`) | `orchestrate.go` `sendToSession` | App `send()`: ComposerBar, BoardScreen, Notifications (reply action), AgentIntents, AppModel |
-| `POST /v1/sessions/{name}/keys` | `controls.go` `sessionKeys` | App `keys()`: NeedsYouCard, SessionViewModel (menus, question digits) |
+| `POST /v1/sessions/{name}/send` (`when`, `idem_key`, `force`, `enter`) | `orchestrate.go` `sendToSession` | App `send()`: ComposerBar, BoardScreen, Notifications (reply action), AgentIntents, AppModel, SessionTerminals (a terminal's command line) |
+| `POST /v1/sessions/{name}/keys` | `controls.go` `sessionKeys` | App `keys()`: NeedsYouCard, SessionViewModel (menus, question digits, the keys bar), SessionTerminals |
 | `POST /v1/sessions/{name}/interrupt` | `controls.go` `interruptSession` | App `interrupt()`: ComposerBar (Stop), SessionScreen |
 | `POST /v1/sessions/{name}/answer` | `answer.go` `answerSession` | App `answerQuestions()`: SessionViewModel (falls back to digit keys) |
 | `GET /v1/sessions/{name}/controls` | `controls.go` `sessionControls` | pierctl selftest (the mode list; the app reads the mode from `mode`'s answer) |

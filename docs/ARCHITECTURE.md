@@ -15,7 +15,8 @@ code calls which route.
    "Outro…" for a name typed by hand); the form is a 720 pt column, and on the Mac Start sits at its end with ⌘↩
    beside it (the iPhone and the iPad keep a bar above the on-screen keyboard, the iPad's as wide as the column).
 4. Session = a chat first (transcript folded into turns, Markdown replies, needs-you card above the composer, Send that
-   becomes Stop while the agent works); the raw terminal is a secondary view remembered per session.
+   becomes Stop while the agent works); the raw terminal is a secondary view remembered per session. Beside the chat, the
+   worktree's own terminals (shells the person opens there) in tabs, once there is one.
 5. Needs you: permission Allow once / Always / Deny (screen menu parsing) and question answering.
 6. Review: files changed, per-file diff, git actions (commit, push, open PR) and pull requests, via `exec` on the box.
 7. Projects: user-defined **sections** (stored on the device), each ordered by hand, by name or by recent activity, renames,
@@ -151,6 +152,22 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   context, to-dos, helpers, published pages). The ⋯ menu holds rename, review, terminal toggle, Live Activity, stop.
 - Agents the box keeps no record for (`source: none`) and plain terminals show `ConversationFallback`: the last message
   read from the screen, rendered as Markdown, plus a way into the terminal.
+
+- **Terminals beside the chat** (`SessionTerminals.swift`): an agent working in a worktree gets that worktree's plain
+  terminals in tabs above its conversation, [Conversa] [Terminal 1] [npm run dev] … [+]. The strip shows only once the
+  worktree has a terminal, so a session without one is just its chat; the toolbar's "Novo terminal", the ⋯ menu and ⌃⇧`
+  (the menu bar, a hardware keyboard) open one: `POST /v1/sessions` with the session's location and no agent, titled
+  "Terminal N" so pierd does not name it after the first line typed (a second one in the same second asks again under a
+  name of its own). Every session of the worktree that is no agent and no service has a tab, whoever opened it
+  (`WorktreeTerminals`, PierKit, tested: by its ref, or by the closest worktree folder for one with no location). A tab
+  says what runs at its prompt, read from its screen ("npm run dev", the glyph green), else its number, unless the person
+  named it (Renomear, `PATCH`; empty gives the number back). Picking one shows its lines (`TerminalPane`), a command line
+  (a UITextField: no smart quotes or dashes; Return sends the line with Enter, an empty one is Enter alone; ⌃C, and ↑ ↓ Esc
+  on an empty line, go to the shell) and the keys bar. The composer and the needs-you card belong to Conversa, which stays
+  underneath as it was (an orange dot on its tab while the agent waits). Only the terminal on screen reads the box, with a
+  loop of its own (`TerminalFeed`: the screen and 300 lines of history every second, at once after a line or a key; not the
+  conversation's transcript, held prompts or review). × ends the session, asked first unless its program ended; the
+  tab picked and each terminal's lines are kept per session for the app's run. Chats have none.
 
 - Startup dialogs no hook announces (Claude Code's "New MCP server found", trust) are read from the screen. The box reports
   the agent as `running` meanwhile. Current Claude Code draws them **without numbers** (a `❯` on the selected option, "Enter
@@ -365,7 +382,8 @@ files, a file's patch (`WorkspaceUITests` covers both).
 
 Keyboard (iPad hardware keyboard, Mac menu "Ir", `PierCommands`; the palette lists the same): ⌘1 Início, ⌘2 Inbox,
 ⌘3 the agents board, ⌘4 Projetos (the order of the tabs and the sidebar), ⌘, Ajustes, ⌘N new task, ⌘K / ⌘P the palette, ⇧⌘L Faxina, ⇧⌘Space Falar;
-in a workspace ⌘S, ⇧⌘O, ⌘R and ⌥⌘1–4. Sheets answer Return (or ⌘Return where Return writes a line) and Esc.
+in a workspace ⌘S, ⇧⌘O, ⌘R and ⌥⌘1–4; beside a session in a worktree ⌃⇧` a new terminal. Sheets answer Return (or ⌘Return
+where Return writes a line) and Esc.
 
 ## Live Activity details
 
@@ -378,7 +396,8 @@ follows it); only an exit (`ended`) ends the activity. Debug `-openLink pier://�
 
 ## DEBUG launch arguments (simulator automation)
 
-`-pairLink <pier://…>`, `-openSession <name>`, `-openFirstSession 1`, `-openCompose 1 -composeProject <loc>
+`-pairLink <pier://…>`, `-openSession <name>` (with `-sessionNewTerminal 1`: a terminal tab opens beside it),
+`-openFirstSession 1`, `-openCompose 1 -composeProject <loc>
 -composePrompt <text> -composeNoFocus 1 -composeOptions 1 -composeSheet project|worktree|base -composeSubmit 1`,
 `-startTab inbox|board|projects|settings`, `-seedSections 1`, `-snapshotTo <file.png> [-snapshotAfter <s>]`, `-homeCustomize 1`, `-homeScrollTo <widget>`, `-sessionExpandAll 1`,
 `-sessionDetails 1`, `-sessionTerminal 1`, `-uiTestChatLab 1` (with the mock: a long chat of hard Markdown that streams a
@@ -403,7 +422,10 @@ its side. The hooks above run with the mock as with real boxes (`AppModel.runLau
 `Packages/PierKit/Tests/PierKitTests/Fixtures` into `App/Debug/UITestMockFixtures.swift`): no network, keychain or push.
 It answers like pierd for the endpoints the app uses and is stateful for send, answer and create task; its worktrees
 have files and a history (`App/Debug/UITestMockWorkspace.swift`: the file routes with sha checks, `GitLog` and
-`FileSearch` commands), and saves stick for the run. Its projects come and go too (`App/Debug/UITestMockProjects.swift`:
+`FileSearch` commands), and saves stick for the run. `POST /v1/sessions` with no agent starts a shell at the location
+(`App/Debug/UITestMockTerminals.swift`: a prompt in the worktree's folder, `ubuntu@devbox:~/code/sandbox-subtract$`; it
+answers `ls`, `pwd`, `cd`, `git status`/`log`, the tests, `echo`, `clear`; `npm run dev` serves until ⌃C, `sleep` for its
+time, `exit` ends the session; `DELETE` removes it). Its projects come and go too (`App/Debug/UITestMockProjects.swift`:
 a GitHub account's repositories, clones that are ready after about 3 s, disk use and removal, with `sandbox` holding
 unsaved work, and each worktree's `dev` service, which can be stopped and started), and so do its projects folder (a
 space "clientes" once one is set), spaces and environments (each "building" for 2 s, then ready). On the Mac a mock run shares the installed app's container and App
