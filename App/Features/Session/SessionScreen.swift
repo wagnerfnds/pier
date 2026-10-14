@@ -38,29 +38,32 @@ struct SessionScreen: View {
                 LinkNoticeBar(text: notice.text, symbol: notice.symbol, busy: notice.busy)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
-            Group {
-                switch vm.mode {
-                case .terminal: TerminalPane(vm: vm)
-                case .conversation:
-                    if vm.transcriptUnavailable || (!session.isAgent && vm.loaded) { ConversationFallback(vm: vm) } else { ConversationView(vm: vm) }
+            // Conversa, and the terminals of the session's worktree in tabs beside it (SessionTerminals.swift).
+            SessionTerminalTabs(vm: vm) {
+                Group {
+                    switch vm.mode {
+                    case .terminal: TerminalPane(vm: vm)
+                    case .conversation:
+                        if vm.transcriptUnavailable || (!session.isAgent && vm.loaded) { ConversationFallback(vm: vm) } else { ConversationView(vm: vm) }
+                    }
                 }
+                .frame(maxHeight: .infinity)
+                let background = vm.background
+                if !background.isEmpty && !vm.showsCard {
+                    BackgroundStrip(items: background)
+                        .padding(.horizontal, 10).padding(.top, 6)
+                        .frame(maxWidth: readableColumn + 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if vm.showsCard {
+                    NeedsYouCard(vm: vm)
+                        .padding(.horizontal, 10).padding(.top, 6)
+                        .frame(maxWidth: readableColumn + 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if vm.mode == .terminal, !vm.isClosed { KeysBar(vm: vm) }
+                ComposerBar(vm: vm)
             }
-            .frame(maxHeight: .infinity)
-            let background = vm.background
-            if !background.isEmpty && !vm.showsCard {
-                BackgroundStrip(items: background)
-                    .padding(.horizontal, 10).padding(.top, 6)
-                    .frame(maxWidth: readableColumn + 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            if vm.showsCard {
-                NeedsYouCard(vm: vm)
-                    .padding(.horizontal, 10).padding(.top, 6)
-                    .frame(maxWidth: readableColumn + 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            if vm.mode == .terminal, !vm.isClosed { KeysBar(vm: vm) }
-            ComposerBar(vm: vm)
         }
         .animation(.snappy(duration: 0.3), value: vm.showsCard)
         .animation(.snappy(duration: 0.3), value: vm.background.isEmpty)
@@ -202,6 +205,7 @@ struct SessionScreen: View {
                 .accessibilityHint("Mostra os detalhes da sessão")
             }
         }
+        ToolbarItem(placement: .topBarTrailing) { SessionTerminalButton(vm: vm) }
         if sidePanel {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { toggleDetails() } label: {
@@ -229,6 +233,7 @@ struct SessionScreen: View {
                         ? Label("Ver como conversa", systemImage: "bubble.left.and.text.bubble.right")
                         : Label("Ver terminal", systemImage: "terminal")
                 }
+                SessionTerminalMenuItem(vm: vm)
                 if session.isAgent && !vm.isClosed && model.liveActivities.areEnabled {
                     let tracking = model.liveActivities.isTracking(box: route.box, session: session.name)
                     Button { model.liveActivities.toggle(box: route.box, session: session.name) } label: {

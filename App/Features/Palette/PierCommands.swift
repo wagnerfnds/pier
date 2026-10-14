@@ -3,11 +3,13 @@ import SwiftUI
 /// Menu bar (Mac) and hardware-keyboard (iPad) shortcuts: ⌘K / ⌘P the palette, ⌘N a new task, ⇧⌘N a new chat, ⌘1–4 the
 /// sections in the order the sidebar and the tab bar show them (Início, Inbox, Quadro, Projetos), ⌘, the settings,
 /// ⇧⌘Space Falar, ⇧⌘A "Apontar na tela" (Mac); in a project's workspace ⌘S saves the file, ⇧⌘O opens one by name, ⌘R
-/// reads the box again and ⌥⌘1–4 pick its tabs.
+/// reads the box again and ⌥⌘1–4 pick its tabs; beside a session in a worktree ⌃⇧` opens a terminal (as in VS Code).
 struct PierCommands: Commands {
     let model: AppModel
     /// The project workspace in front, if any (⌘S, ⌘R, ⇧⌘O and its tabs).
     @FocusedValue(\.workspace) private var workspace
+    /// The session screen in front, when its session works in a worktree (⌃⇧`).
+    @FocusedValue(\.newTerminal) private var newTerminal
 
     var body: some Commands {
         CommandGroup(replacing: .saveItem) {
@@ -29,6 +31,8 @@ struct PierCommands: Commands {
                 .keyboardShortcut("n").disabled(box == nil)
             Button("Nova conversa") { if let b = box { PaletteActions.newChat(model.router, box: b) } }
                 .keyboardShortcut("n", modifiers: [.command, .shift]).disabled(box == nil)
+            Button("Novo terminal") { newTerminal?.open() }
+                .keyboardShortcut("`", modifiers: [.control, .shift]).disabled(newTerminal == nil)
         }
         CommandGroup(replacing: .appSettings) {
             Button("Ajustes…") { model.router.select(.tab(.settings)) }.keyboardShortcut(",")
