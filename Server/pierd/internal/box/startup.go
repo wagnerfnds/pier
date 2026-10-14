@@ -369,8 +369,9 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 			continue
 		}
 		// Answered: at its prompt once its screen holds still (working on
-		// the prompt it started with, it never does: then after a while).
-		if drawn || time.Since(answered) > startupSettle {
+		// the prompt it started with, it never does: then once its hooks
+		// speak, which they do only once it is trusted, or after a while).
+		if drawn || b.hooked(sess.Name) && !loading || time.Since(answered) > startupSettle {
 			b.startupAnswered(from, sess)
 			return
 		}

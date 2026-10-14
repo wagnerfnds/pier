@@ -98,24 +98,30 @@ func TestTheTrustMenuIsReadOffTheScreen(t *testing.T) {
 // A chat's agent asks whether to trust the folder pierd made for the chat:
 // with nothing in it, pierd answers yes itself, moving the cursor and
 // reading the screen as a person would, so the chat goes on to its first
-// prompt with nobody told it waits (no push, no "needs you"). A chat folder
+// prompt with nobody told it waits (no push, no "needs you"); its start is
+// over once its hooks speak, though its screen never holds still while it
+// works on that prompt, so a send then is not kept waiting. A chat folder
 // something was already put in is asked about, as a project's folder is.
 func TestAChatTrustsItsOwnFolder(t *testing.T) {
 	for _, c := range []struct {
-		name   string
-		litter bool
-	}{{"its own empty folder", false}, {"a folder with files in it", true}} {
+		name         string
+		litter, spin bool
+	}{{"its own empty folder", false, false}, {"working at once", false, true}, {"a folder with files in it", true, false}} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 			out := t.TempDir()
 			fake := trustingAgent(t, out)
-			// claude on PATH is the stand-in, after writing a file into its folder for the second case.
+			// claude on PATH is the stand-in, after writing a file into its folder, or with its spinner.
 			bin := t.TempDir()
-			script := "#!/bin/sh\nexec " + shellQuote(fake) + " \"$@\"\n"
+			script := "#!/bin/sh\n"
 			if c.litter {
-				script = "#!/bin/sh\necho notes > notes.md\nexec " + shellQuote(fake) + " \"$@\"\n"
+				script += "echo notes > notes.md\n"
 			}
+			if c.spin {
+				script += "export SPIN=1\n"
+			}
+			script += "exec " + shellQuote(fake) + " \"$@\"\n"
 			if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -166,6 +172,14 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 				return
 			}
 			waitUntil(t, "the agent to be trusted", 10*time.Second, func() bool { return read("trusted") != "" })
+			if c.spin {
+				time.Sleep(time.Second)
+				if st := bx.startingState(sess.Name); st != startBooting {
+					t.Fatalf("start state %d before its hooks spoke, its screen never still", st)
+				}
+				hook(bus, "agent.started", sess.Name, sess.Dir, "claude")
+				waitUntil(t, "the start to end once its hooks speak", 2*time.Second, func() bool { return bx.startingState(sess.Name) == startReady })
+			}
 			waitUntil(t, "the start to end", 15*time.Second, func() bool { return bx.startingState(sess.Name) == startReady })
 			if got := read("got"); got != "ran: plan a garden\n" {
 				t.Fatalf("the agent got %q, want its first prompt", got)
@@ -189,7 +203,8 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 // exits on Enter unless Down moved its cursor to "Yes, I trust this
 // folder" first (Up moves it back), redrawing the menu as Claude Code's own
 // question does. Trusted, it runs its first prompt (out/got), says so
-// (out/trusted), and reads prompts a line at a time.
+// (out/trusted), and reads prompts a line at a time; with SPIN set, while a
+// spinner runs on, as it does working on that prompt.
 func trustingAgent(t *testing.T, out string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "claude")
@@ -226,6 +241,7 @@ stty sane
 printf '\033[2J\033[H'
 echo "ran: $1" >> "$out/got"
 echo yes > "$out/trusted"
+if [ -n "$SPIN" ]; then (i=0; while printf '\r✻ Working %s ' "$i"; do i=$((i+1)); sleep 0.1; done) & fi
 printf '> '
 while IFS= read -r line; do echo "$line" >> "$out/got"; printf '> '; done
 `
