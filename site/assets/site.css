@@ -241,8 +241,9 @@ h1, h2, h3 { font-family: var(--display); font-optical-sizing: auto; }
 .device-stage .tablet, .device-stage .phone {
   border-radius: 26px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--stroke); background: var(--surface);
 }
-.device-stage .tablet { width: 82%; margin-left: 18%; border-radius: 24px; }
-.device-stage .phone { position: absolute; width: 27%; left: 0; bottom: -6%; border-radius: 34px; }
+/* the phone on the right, over the conversation's margin: the iPad's sidebar stays in view */
+.device-stage .tablet { width: 82%; margin-right: 18%; border-radius: 24px; }
+.device-stage .phone { position: absolute; width: 27%; right: 0; bottom: -6%; border-radius: 34px; }
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     .device-stage .tablet { animation: rise linear both; animation-timeline: view(); animation-range: entry 0% cover 45%; }
@@ -394,7 +395,7 @@ pre.install code::before { content: "$ "; color: #8a919a; user-select: none; }
 
 /* get it */
 
-.plans { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .plan { position: relative; overflow: hidden; background: var(--surface); border: 1px solid var(--stroke); border-radius: var(--radius); padding: 32px; display: flex; flex-direction: column; }
 .plan.featured { box-shadow: var(--shadow); }
 .plan.featured::before {   /* the beanie's bands along the top */
