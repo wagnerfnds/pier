@@ -1,8 +1,8 @@
 # The chat: quality targets and how to check them
 
 What the conversation screen is held to, where each target comes from, and the command that measures it. Results are
-from an iPhone Air (iOS 27, an optimized build with the debug hooks), an M-series Mac and the iPhone 17 simulator
-(2026-10), as each row says.
+from an iPhone Air (iOS 27, an optimized build with the debug hooks), an M-series Mac, the iPhone 17 simulator and a
+Linux box running pierd and Claude Code 2.1 (2026-10), as each row says.
 
 | Area | Target | How it is measured | Result |
 |---|---|---|---|
@@ -19,6 +19,9 @@ from an iPhone Air (iOS 27, an optimized build with the debug hooks), an M-serie
 | Markdown | CommonMark 0.31.2 + GFM block structure | `Tools/markdown-conformance/run.sh` (markdown-it 14 as the reference) | 100 % of 3,000 real replies (before 99.5 %; of the 405 with block Markdown, 96.0 % → 100 %), 49 of 50 edge cases (before 32; the one left is raw HTML, drawn as text on purpose) |
 | Contrast | WCAG 2.2 AA: 4.5:1 text, 3:1 large text and controls | the theme's colors on the screen, card and raised backgrounds, light and dark | body 11.9–16.4:1, secondary 4.6–6.3:1, links 4.7–6.1:1, tertiary 3.1–3.8:1 (dark was 2.4–2.9:1); what must be read uses the secondary tone |
 | Memory | no growth from reply to reply | `ChatQualityUITests.testStreamingCost` (XCTMemoryMetric) | peak ~77 MB with the 60-turn chat lab; −0.8 MB over three streamed replies |
+| A new chat, on a real box | answers with nobody asked anything (no "needs you", no push) | `Tools/chat-e2e/chat_e2e.py` on the box (Claude Code 2.1, haiku): 5 runs, then 3 with `--long` | 8 of 8 (before: every new chat stopped at Claude Code's "trust this folder" question, in the empty folder pierd had just made for it) |
+| First words of a reply, on a real box | streaming shows them well before the reply ends | the same, `--long` (a reply of ~150 words), from Start chat: Claude Code starting, its trust question, the model | first words 2.8–3.2 s, the whole reply 4.4–4.8 s; a one-sentence reply recorded in 2.8–4.1 s (median 3.2) |
+| A follow-up, on a real box | typed at once; sent once | the same: `when: idle`, an idem key, the same request again | acknowledged in ~175 ms (before ~830: the start watch held it until the screen stopped moving); the reply in 1.5–1.8 s; the retry a duplicate of the same turn, every run |
 
 The chat lab (`-uiTestMock 1 -uiTestChatLab 1 -openSession chatlab-claude-z9`, `-uiTestChatLabTail <n>` for which reply
 ends the record) is the conversation these run against: 60 turns of what agents write and what breaks readers (wide
@@ -27,5 +30,10 @@ tables, code under list items, quotes holding lists, task lists, long links and 
 What moved the iPhone's numbers: the lazy stack walks a ForEach's data again and again while it scrolls, so it iterates
 light rows (an id and an index) instead of the blocks themselves; a one-paragraph list item is drawn without a nested
 stack; and the conversation's text is selectable on the Mac only (on the iPhone a long press opens the message's Copiar,
-and selection on every paragraph was the costliest part of a reply's first appearance). Not measured here: end-to-end
-latency against a real box (`RealBoxUITests` measures send-to-reply with `TEST_RUNNER_REAL_SESSION`).
+and selection on every paragraph was the costliest part of a reply's first appearance).
+
+On a real box, `Tools/chat-e2e/chat_e2e.py [model] [--long]` (copy it there and run it as pierd's user) starts a chat
+through pierd's local socket, follows it as the app does (the draft, the record, the turn), sends a follow-up and its
+retry, ends the chat and prints timings and checks, never the agent's words; it exits 1 when a check fails. A chat
+that stops to ask the person sends that box's devices a push, as a real one would. The app's side of the same path,
+with a real box: `RealBoxUITests` (send-to-reply with `TEST_RUNNER_REAL_SESSION`).

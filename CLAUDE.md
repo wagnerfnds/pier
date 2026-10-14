@@ -23,6 +23,7 @@ mutual TLS.
 | `Server/pierd` | The box server, its own Go module (`go.mod`, standard library only), own README and `docs/` | Go |
 | `Tools/pierctl` | macOS CLI client for end-to-end checks against a real box | Swift |
 | `Tools/markdown-conformance` | The chat's Markdown reader against CommonMark/GFM (markdown-it) on real replies and edge cases | Swift, JS, Python |
+| `Tools/chat-e2e` | A real chat on a box, timed end to end through pierd's local socket (run it on the box after a deploy) | Python |
 | `Vendor/swift-nio-ssl` | Vendored with a TLS-exporter patch needed for pairing (see `Vendor/README.md`) | Swift |
 | `UITests/PierUITests` | XCUITest against the in-memory mock box | Swift |
 | `Config/` | `Base.xcconfig` (identifiers), `Signing.example.xcconfig`, build-number script | |

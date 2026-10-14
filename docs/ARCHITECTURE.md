@@ -37,6 +37,7 @@ Packages/PierKit/           # SwiftPM: transport, identity, pairing, typed API, 
     Support/    ConversationFold, MenuParser, GitActions, PRCommands, AgentBoard, InboxRules, NextSteps, TalkRouter, …
   Tests/PierKitTests/  Fixtures/*.json (pierd answers, sample data) and synthetic/ (hand-written edge cases)
 Tools/pierctl/              # macOS CLI client for end-to-end checks against a real box (~/.config/pierctl or $PIERCTL_HOME)
+Tools/chat-e2e/             # a real chat timed end to end on a box, through pierd's local socket (docs/CHAT-QUALITY.md)
 App/                        # the app target (SwiftUI)
   PierApp.swift
   Core/        AppModel (@Observable), BoxConnection, EventHub, Router/Routes, Notifications, PushManager, LiveActivities
