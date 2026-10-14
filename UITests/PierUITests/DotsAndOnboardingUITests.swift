@@ -172,9 +172,8 @@ final class DotsAndOnboardingUITests: XCTestCase {
 
     // MARK: demo
 
-    /// No box yet: "Explorar com dados de exemplo" opens the demo's made-up box (the showcase's projects and agents), it
-    /// comes back after a relaunch, and leaving it in Ajustes brings the onboarding back. No mock: the app's own start.
-    func testDemoFromTheOnboarding() {
+    /// "Explorar com dados de exemplo" from a fresh onboarding. No mock: the app's own start, as in a Release build.
+    private func enterDemo() {
         app.launchArguments = ["-uiTestDemoReset", "1", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
         app.launch()
         let demo = element("onboarding-demo")
@@ -187,6 +186,21 @@ final class DotsAndOnboardingUITests: XCTestCase {
         shot("demo-offer")
         demo.tap()
         XCTAssertTrue(element("home-demo-banner").waitForExistence(timeout: 15), "the demo's Home has no banner")
+    }
+
+    private func bubble(containing s: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "(identifier == 'outgoing-message' OR identifier == 'user-message') AND label CONTAINS %@", s)).firstMatch
+    }
+
+    private func words(_ s: String) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", s)).firstMatch
+    }
+
+    /// No box yet: "Explorar com dados de exemplo" opens the demo's made-up box (the showcase's projects and agents), it
+    /// comes back after a relaunch, and leaving it in Ajustes brings the onboarding back.
+    func testDemoFromTheOnboarding() {
+        enterDemo()
         let stripe = "storefront-stripe-checkout-claude-7f2a"
         XCTAssertTrue(app.buttons.matching(identifier: "agent-dot-\(stripe)").firstMatch.waitForExistence(timeout: 15),
                       "the demo box's agents are not on the Home")
@@ -202,6 +216,38 @@ final class DotsAndOnboardingUITests: XCTestCase {
         element("home-leave-demo").tap()
         XCTAssertTrue(element("onboarding-demo").waitForExistence(timeout: 15), "leaving the demo did not bring the onboarding back")
         XCTAssertFalse(element("home-demo-banner").exists)
+    }
+
+    /// What is said in the demo lands after its conversation: the agent's reply after Permitir (a key in the menu, as
+    /// on pierd, not a "1" in the conversation), then a message and its answer, each below the one before. Before, they
+    /// landed above everything: the showcase's record starts at offsets far above the ones the demo's box hands out,
+    /// and the app orders a record by offset.
+    func testDemoRepliesLandAfterTheConversation() {
+        enterDemo()
+        dot("storefront-stripe-checkout-claude-7f2a").tap()
+        let allow = element("needs-allow")
+        XCTAssertTrue(allow.waitForExistence(timeout: 15), "the demo's permission card did not show")
+        let request = bubble(containing: "checkout do Stripe")
+        XCTAssertTrue(request.exists, "the demo's conversation is not shown")
+        allow.tap()
+        let reply = words("Instalei o")
+        XCTAssertTrue(reply.waitForExistence(timeout: 10), "no reply after Permitir")
+        XCTAssertGreaterThan(reply.frame.minY, request.frame.maxY, "the reply after Permitir landed above the conversation")
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(
+            format: "(identifier == 'outgoing-message' OR identifier == 'user-message') AND label ENDSWITH ': 1'")).firstMatch.exists,
+                       "Permitir showed up as a message")
+
+        let field = element("composer-field")
+        field.tap()
+        field.typeText("E os testes?")
+        element("composer-send").tap()
+        let mine = bubble(containing: "E os testes?")
+        XCTAssertTrue(mine.waitForExistence(timeout: 2), "the message is not in the conversation")
+        let answer = words("Isto é a demonstração")
+        XCTAssertTrue(answer.waitForExistence(timeout: 10), "the demo's agent did not answer")
+        XCTAssertGreaterThan(mine.frame.minY, reply.frame.maxY, "the message landed above the reply")
+        XCTAssertGreaterThan(answer.frame.minY, mine.frame.maxY, "the answer landed above the message")
+        shot("demo-replies-in-order")
     }
 
     // MARK: Levar para o iPhone

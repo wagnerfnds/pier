@@ -38,6 +38,15 @@ enum UITestShowcase {
         t("Installed `stripe` 17.4. Next: a server action that opens a Checkout Session per plan, then the webhook.",
           "Instalei o `stripe` 17.4. Agora: uma server action que abre uma Checkout Session por plano e, depois, o webhook.")
     }
+    static var declineReply: String {
+        t("Okay, I won't install it. I can call Stripe's API with fetch instead, without the SDK. Shall I?",
+          "Tudo bem, não instalo. Posso chamar a API do Stripe com fetch, sem o SDK. Quer assim?")
+    }
+    /// What the demo's agents answer to a message: nothing runs here.
+    static var demoReply: String {
+        t("This is the demo: no agent runs here. For a real one, leave the demo and pair your box.",
+          "Isto é a demonstração: nenhum agente roda aqui. Para um de verdade, saia da demonstração e pareie a sua box.")
+    }
     static func questionReply(_ pick: String) -> String {
         t("Going with **\(pick)**. Building the pricing page now.", "Vamos de **\(pick)**. Já estou montando a página de preços.")
     }

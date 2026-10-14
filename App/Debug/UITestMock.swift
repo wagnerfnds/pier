@@ -89,6 +89,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
         if UITestShowcase.enabled {
             sessions = UITestShowcase.sessions()
             transcripts = UITestShowcase.transcripts()
+            // What is said later (a message, the reply after Permitir) lands after the showcase's record, as in the lab.
+            off = max(off, transcripts.values.joined().compactMap { $0["off"] as? Int }.max() ?? 0)
             return
         }
         sessions = [
@@ -880,6 +882,17 @@ extension MockBox {
             guard let pick = picks.first else { return (409, Data(#"{"error":"that option isn't on screen"}"#.utf8)) }
             scheduleReply(name, text: UITestShowcase.questionReply(pick), after: 1.0)
             return (200, Self.json(["answered": [pick]]))
+        case (.post, "send") where name == UITestShowcase.permission && waiting && (req["enter"] as? Bool) == false:
+            // Permitir and Negar type the menu's digit, as on pierd: a key, not a message (nothing joins the record).
+            let allow = ["1", "2"].contains((req["text"] as? String) ?? "")
+            scheduleReply(name, text: allow ? UITestShowcase.permissionReply : UITestShowcase.declineReply, after: 1.2)
+            return (200, Self.json(["sent": true, "at": Self.iso()]))
+        case (.post, "send") where (req["enter"] as? Bool) != false:
+            let text = (req["text"] as? String) ?? ""
+            transcripts[name, default: []].append(item("user", text: text))
+            seq += 1
+            scheduleReply(name, text: UITestShowcase.demoReply)
+            return (200, Self.json(["sent": true, "at": Self.iso(), "seq": seq, "turn": "\(name)#\(seq)"]))
         default:
             return nil
         }
