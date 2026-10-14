@@ -14442,6 +14442,16 @@
           }
         }
       }
+    },
+    "Na fila: vai quando o agente terminar a vez" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queued: goes in when the agent ends its turn"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

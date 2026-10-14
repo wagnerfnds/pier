@@ -188,6 +188,7 @@ import PierKit
             ("dictate", S("Ditar")), ("more", S("Mais")),
             // The agent's conversation in the panel.
             ("olderMessages", S("Mensagens anteriores")), ("conversationStart", S("Início da conversa")), ("sent", S("Enviado")),
+            ("queued", S("Na fila: vai quando o agente terminar a vez")),
             ("openingConversation", S("Abrindo a conversa…")), ("toBottom", S("Ir para o fim")),
             // The Inbox card.
             ("recommended", S("Recomendado")), ("nextSteps", S("Próximos passos")), ("cardOpen", S("Abrir sessão")), ("cardConversation", S("Ver conversa")),

@@ -21,6 +21,10 @@ import PierKit
                 rows.append(["id": id, "kind": "meta", "symbol": "chevron.right", "text": summary.isEmpty ? word : "\(word) · \(summary)"])
             }
         }
+        // Held on the box until the agent's turn ends (sent while it worked): still the person's words, marked as waiting.
+        for h in vm.held where !h.preview.isEmpty {
+            rows.append(["id": "held-\(h.turn)", "kind": "user", "text": h.preview, "state": "queued"])
+        }
         for o in vm.outgoing {
             let photos = o.photos == 0 ? "" : (o.photos == 1 ? S("1 foto") : S("\(o.photos) fotos"))
             let text = [o.text, photos].filter { !$0.isEmpty }.joined(separator: "\n")

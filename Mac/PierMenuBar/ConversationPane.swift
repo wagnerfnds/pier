@@ -102,8 +102,12 @@ final class ChatRowView: NSView {
         case "user":
             body.set(NSAttributedString(string: text, attributes: [.font: PanelStyle.font(13), .foregroundColor: PanelStyle.text,
                                                                    .paragraphStyle: Self.lineSpacing]))
-            caption.stringValue = state == "sending" ? (strings["sending"] ?? "Enviando…") : (strings["sent"] ?? "Enviado")
-            alphaValue = state == "sending" ? 0.75 : 1
+            caption.stringValue = switch state {
+            case "sending": strings["sending"] ?? "Enviando…"
+            case "queued": strings["queued"] ?? "Na fila"
+            default: strings["sent"] ?? "Enviado"
+            }
+            alphaValue = state == "sending" || state == "queued" ? 0.75 : 1
         case "meta":
             let color: NSColor = switch tone {
             case "warning": PanelStyle.orange
