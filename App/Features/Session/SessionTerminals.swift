@@ -42,10 +42,17 @@ final class SessionTerminals {
     }
 
     private static var registry: [String: SessionTerminals] = [:]
+    private static var recent: [String] = []
 
-    /// The tabs of the session `vm` shows, kept per session while the app runs.
+    /// The tabs of the session `vm` shows, kept for the sessions opened last while the app runs (older ones are let go:
+    /// their terminals stay on the box and come back as tabs when the session is opened again).
     static func of(_ vm: SessionViewModel) -> SessionTerminals {
         let key = "\(vm.box)/\(vm.name)"
+        if recent.last != key {
+            recent.removeAll { $0 == key }
+            recent.append(key)
+            while recent.count > 24 { registry[recent.removeFirst()] = nil }
+        }
         if let t = registry[key] {
             if t.model == nil { t.model = vm.model }
             return t
@@ -188,7 +195,7 @@ final class SessionTerminals {
     private func read() async {
         let client = vm.client, name = vm.name
         do {
-            let screen = try await Self.bounded(.seconds(6)) { try await client.screen(session: name, history: 300) }
+            let screen = try await SessionViewModel.bounded(.seconds(6)) { try await client.screen(session: name, history: 300) }
             if screen != vm.screen { vm.screen = screen }
             if !vm.screenLoaded { vm.screenLoaded = true }
         } catch {
@@ -205,7 +212,7 @@ final class SessionTerminals {
             } else {
                 // One key per line: a retry after a lost answer gets the first back instead of typing it twice.
                 let request = SendRequest(text: line, enter: true, when: .now, idemKey: "ios-\(UUID().uuidString)")
-                _ = try await Self.bounded(.seconds(15)) { try await client.send(session: name, request) }
+                _ = try await SessionViewModel.bounded(.seconds(15)) { try await client.send(session: name, request) }
             }
             kickSoon()
             return true
@@ -233,14 +240,6 @@ final class SessionTerminals {
         }
     }
 
-    private static func bounded<T: Sendable>(_ d: Duration, _ op: @escaping @Sendable () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { g in
-            g.addTask { try await op() }
-            g.addTask { try await Task.sleep(for: d); throw PierError.timeout }
-            defer { g.cancelAll() }
-            return try await g.next()!
-        }
-    }
 }
 
 /// Opens a shell in a worktree for the person: `POST /v1/sessions` with its ref and neither agent nor command (docs/API.md

@@ -85,7 +85,7 @@ final class SessionViewModel {
         self.initial = session
         self.client = client
         self.model = model
-        // The conversation as it was last shown in this run: drawn at once, then only what is new is read.
+        // The conversation as it was last shown: drawn at once, then only what is new is read (from disk: `run`).
         if let cached = TranscriptCache.shared.store(box: box, session: session.name) {
             store = cached
             loaded = true
@@ -178,6 +178,12 @@ final class SessionViewModel {
         if let startedHere { return Date().timeIntervalSince(startedHere) < 120 }
         return Date().timeIntervalSince(session.created) < 90
     }
+    /// The working line's word: the agent's own ("Brewing…"), else what it is doing in Pier's words.
+    var liveWord: String {
+        if let w = draft?.status?.word, !w.isEmpty { return w.hasSuffix("…") ? w : w + "…" }
+        if starting { return S("Iniciando \(session.agentLabel)…") }
+        return S("Trabalhando…")
+    }
     /// The agent is starting: no record yet, or a task started here whose first read has not answered yet.
     var starting: Bool { recordPending || (!loaded && startingPrompt != nil && !isClosed) }
     /// The first prompt of a task started on this device (`StartingPrompts`), shown until the record has the person's words.
@@ -234,6 +240,13 @@ final class SessionViewModel {
     // MARK: polling loop
 
     func run() async {
+        // Not in memory: the kept file, read off the main thread before the first poll (which then asks only for what is new).
+        if !loaded, let kept = await TranscriptCache.shared.load(box: box, session: name), !loaded {
+            store = kept
+            loaded = true
+        }
+        // Leaving the screen writes what this conversation now holds.
+        defer { TranscriptCache.shared.flush() }
         let events = model?.hub.subscribe()
         let listener = Task { [weak self] in
             guard let events else { return }
@@ -405,7 +418,8 @@ final class SessionViewModel {
         }
     }
 
-    private static func bounded<T: Sendable>(_ d: Duration, _ op: @escaping @Sendable () async throws -> T) async throws -> T {
+    /// `op` with a deadline: `PierError.timeout` when it runs past `d` (one slow answer never stalls a loop).
+    static func bounded<T: Sendable>(_ d: Duration, _ op: @escaping @Sendable () async throws -> T) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { g in
             g.addTask { try await op() }
             g.addTask { try await Task.sleep(for: d); throw PierError.timeout }
@@ -492,11 +506,16 @@ final class SessionViewModel {
         let atts = paths ?? attachments.compactMap(\.path)
         let previous = sendTail
         let task = Task { [self] in
-            _ = await previous?.value
+            // Behind a message that did not go out, the ones queued after it do not either: they would reach the box
+            // before it. They come back with it, in order (their senders restore them).
+            if let previous, !(await previous.value) { return false }
             return await sendNow(text, attachments: atts, fromComposer: paths == nil, when: forced)
         }
         sendTail = task
-        return await task.value
+        let sent = await task.value
+        // The queue that failed is over: the next message starts afresh.
+        if !sent, sendTail == task { sendTail = nil }
+        return sent
     }
 
     private func sendNow(_ text: String, attachments atts: [String], fromComposer: Bool, when forced: SendRequest.When?) async -> Bool {
@@ -713,7 +732,9 @@ final class SessionViewModel {
     /// purpose, it skips the undo window, which is for one-tap answers (a slip of the finger); one sent by mistake is
     /// stopped with Interromper, or taken back from the queue while the agent works. Its text and photos come back if it
     /// fails. False when there is nothing to send.
-    func scheduleSend(_ text: String) -> Bool {
+    /// `done`: a sender other than this screen's composer (the Mac panel) hears how it went, with the error, and puts the
+    /// text back itself; without it a failed message's text comes back through `composerRestore`.
+    func scheduleSend(_ text: String, done: (@MainActor (_ sent: Bool, _ error: String?) -> Void)? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let photos = attachments.filter { $0.path != nil }
         guard canSend, !trimmed.isEmpty || !photos.isEmpty else { return false }
@@ -725,9 +746,14 @@ final class SessionViewModel {
             let sent = await send(text, attachments: photos.compactMap(\.path))
             // Sent, `send` put the box's own pending copy in place in the same turn: no gap, no double.
             outgoing.removeAll { $0.id == out.id }
-            if !sent {
-                if !text.isEmpty { composerRestore = ComposerRestore(text: text) }
-                attachments = photos + attachments
+            if sent { done?(true, nil); return }
+            attachments = photos + attachments
+            if let done {
+                done(false, actionError)
+                actionError = nil
+            } else if !text.isEmpty {
+                // Messages that failed together come back in the order they were sent.
+                composerRestore = ComposerRestore(text: composerRestore.map { $0.text + "\n" + text } ?? text)
             }
         }
         return true

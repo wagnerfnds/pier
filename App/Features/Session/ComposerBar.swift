@@ -9,6 +9,8 @@ struct ComposerBar: View {
     @State private var text = ""
     @State private var photo: PhotosPickerItem?
     @State private var showQueue = false
+    /// The text a failed send gave back last, while the field still holds just that.
+    @State private var restored: String?
     @FocusState private var focused: Bool
 
     private var session: Session { vm.session }
@@ -116,12 +118,15 @@ struct ComposerBar: View {
         if vm.scheduleSend(t) { text = "" }
     }
 
-    /// Text given back by an undone or failed send: in front of whatever was typed since.
+    /// Text given back by a failed send: in front of whatever was typed since, after the text given back just before it
+    /// (messages that failed one after the other come back in the order they were written).
     private func restore(_ r: SessionViewModel.ComposerRestore?) {
         guard let r else { return }
         vm.composerRestore = nil
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        text = typed.isEmpty ? r.text : r.text + "\n" + text
+        if let restored, text == restored { text = text + "\n" + r.text }
+        else { text = typed.isEmpty ? r.text : r.text + "\n" + text }
+        restored = text
         focused = true
     }
 

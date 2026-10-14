@@ -11,7 +11,11 @@ import PierKit
     static func payload(_ vm: SessionViewModel, limit: Int) -> [String: Any] {
         var rows: [[String: Any]] = []
         if vm.showsStartingPrompt, let p = vm.startingPrompt { rows.append(["id": "starting-prompt", "kind": "user", "text": p]) }
-        for b in ConversationFold.blocks(vm.store.displayItems, live: vm.isRunning || vm.isWaiting) {
+        // The newest items are enough for `limit` rows (a stretch of work folds several into one, a message is one): a
+        // long conversation is not folded whole on every update while a reply streams.
+        let items = vm.store.displayItems
+        let tail = items.count > limit * 6 ? Array(items.suffix(limit * 6)) : items
+        for b in ConversationFold.blocks(tail, live: vm.isRunning || vm.isWaiting) {
             switch b {
             case .item(let it):
                 if let r = row(it) { rows.append(r) }
@@ -30,22 +34,15 @@ import PierKit
             let text = [o.text, photos].filter { !$0.isEmpty }.joined(separator: "\n")
             rows.append(["id": o.id.uuidString, "kind": "user", "text": text, "state": "sending"])
         }
-        var out: [String: Any] = ["rows": Array(rows.suffix(limit)), "more": rows.count > limit || vm.store.hasMoreBefore,
+        var out: [String: Any] = ["rows": Array(rows.suffix(limit)), "more": rows.count > limit || tail.count < items.count || vm.store.hasMoreBefore,
                                   "loadingOlder": vm.loadingOlder, "loaded": vm.loaded || vm.showsStartingPrompt]
         if vm.isRunning || vm.starting {
-            var live: [String: Any] = ["word": liveWord(vm), "since": (vm.session.stateSince ?? vm.session.created).timeIntervalSince1970]
+            var live: [String: Any] = ["word": vm.liveWord, "since": (vm.session.stateSince ?? vm.session.created).timeIntervalSince1970]
             if let d = vm.visibleDraft { live["draft"] = d }
             if let s = vm.step, !s.isEmpty, s != StepText.thinking || vm.draft?.status == nil { live["step"] = s }
             out["live"] = live
         }
         return out
-    }
-
-    /// The agent's own status word ("Brewing…"), else what it is doing in Pier's words.
-    private static func liveWord(_ vm: SessionViewModel) -> String {
-        if let w = vm.draft?.status?.word, !w.isEmpty { return w.hasSuffix("…") ? w : w + "…" }
-        if vm.starting { return S("Iniciando \(vm.session.agentLabel)…") }
-        return S("Trabalhando…")
     }
 
     private static func row(_ it: TranscriptItem) -> [String: Any]? {

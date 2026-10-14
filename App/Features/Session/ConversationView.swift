@@ -175,7 +175,7 @@ struct LiveDraftRow: View {
             if let t = vm.visibleDraft { MarkdownView(text: t, draft: true, touchSelection: false) }
             HStack(spacing: 8) {
                 PulsingDot()
-                ShimmerText(text: word)
+                ShimmerText(text: vm.liveWord)
                 if let step = vm.step, !step.isEmpty, step != StepText.thinking || vm.draft?.status == nil {
                     Text("· \(step)").font(.footnote).foregroundStyle(Theme.textFaint).lineLimit(1)
                 }
@@ -189,11 +189,6 @@ struct LiveDraftRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var word: String {
-        if let w = vm.draft?.status?.word, !w.isEmpty { return w.hasSuffix("…") ? w : w + "…" }
-        if vm.starting { return S("Iniciando \(vm.session.agentLabel)…") }
-        return S("Trabalhando…")
-    }
 }
 
 /// The working dot: fades and shrinks a little, back and forth. Core Animation runs it (a `phaseAnimator` updated the

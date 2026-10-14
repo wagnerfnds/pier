@@ -225,6 +225,10 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     private var stepRows: [OptionRowView] = []
     private let loading = SurfaceStyle.label("", font: PanelStyle.font(13), color: PanelStyle.textDim)
     private let composer = ReplyFieldView()
+    /// Why the last message did not go out (its words are back in the field).
+    private let failure = SurfaceStyle.label("", font: PanelStyle.font(12, .medium), color: PanelStyle.red, lines: 2)
+    private var failureToken: String?
+    private var restoredText: String?
     private let hint = HintPill()
     private var actions: [PillButton] = []
     private let openLink = ClickableView()
@@ -236,7 +240,7 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     init(id: String) {
         self.id = id
         super.init(frame: .zero)
-        for v in [avatar, name, sub, elapsed, conversation, question, commandBox, why, stepsHeading, loading, composer, hint, openLink] as [NSView] { addSubview(v) }
+        for v in [avatar, name, sub, elapsed, conversation, question, commandBox, why, stepsHeading, loading, failure, composer, hint, openLink] as [NSView] { addSubview(v) }
         conversation.agentID = id
         commandBox.addSubview(command)
         openLink.addSubview(openLabel)
@@ -337,6 +341,20 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         loading.stringValue = (d["nextStepsLoading"] as? Bool ?? false) && steps.isEmpty ? (strings["suggesting"] ?? "") : ""
         composer.placeholder = d["replyPlaceholder"] as? String ?? (strings["message"] ?? "")
         composer.isHidden = starting
+        // A message that did not go out: its words back in the field (in place of the ones given back before, else in
+        // front of what was typed since), and why.
+        if let f = d["failure"] as? [String: Any], let token = f["token"] as? String {
+            failure.stringValue = f["error"] as? String ?? ""
+            if token != failureToken {
+                failureToken = token
+                let back = f["text"] as? String ?? ""
+                let current = composer.text
+                composer.text = current.isEmpty || current == restoredText ? back : back + " " + current
+                restoredText = composer.text
+            }
+        } else {
+            failure.stringValue = ""
+        }
         for a in actions { a.removeFromSuperview() }
         actions = []
         func pill(_ key: String, _ symbol: String, _ color: NSColor, _ action: String) {
@@ -399,6 +417,7 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         for r in stepRows { st.place(r, height: r.height, gap: 6) }
         if !loading.stringValue.isEmpty { st.place(loading, height: 18, gap: 8) } else { st.skip(loading) }
         if !stepRows.isEmpty { st.gap(6) }
+        if !failure.stringValue.isEmpty { st.place(failure, height: SurfaceStyle.height(of: failure, width: width), gap: 6) } else { st.skip(failure) }
         if !composer.isHidden { st.place(composer, height: 44, gap: 10) }
         if !hint.isHidden {
             let w = hint.measure().width
@@ -421,7 +440,10 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
 
     func handleKey(_ e: NSEvent) -> Bool {
         guard let chars = e.charactersIgnoringModifiers, !e.modifierFlags.contains(.command) else { return false }
-        if e.keyCode == 53, pending != nil { onAction?("agent:undo"); return true }
+        if e.keyCode == 53, let p = pending,
+           ((p["deadline"] as? NSNumber)?.doubleValue ?? 0) > ((p["start"] as? NSNumber)?.doubleValue ?? 0) {
+            onAction?("agent:undo"); return true
+        }
         if let n = Int(chars), (1...9).contains(n) { onAction?("agent:pick:\(id)|\(n)"); return true }
         if chars == "r" { onAction?("panel:focus"); return true }
         if chars == "e", detail["canArchive"] as? Bool ?? false { onAction?("agent:archive:\(id)"); return true }

@@ -299,6 +299,9 @@ final class ConversationPane: NSView {
     /// Older rows came in above the ones shown: the next layout keeps the distance from the bottom, so what the person was
     /// reading stays where it was (rows coming in below need nothing: the top stays put).
     private var prepended = false
+    /// The height of rows that left the top as new ones came in below (the window of rows slides): taken off the scroll
+    /// position at the next layout, so the text in view stays put while the person reads above the bottom.
+    private var droppedTop: CGFloat = 0
     private var programmatic = false
     private var askedOlder: Date?
     override var isFlipped: Bool { true }
@@ -348,6 +351,9 @@ final class ConversationPane: NSView {
             next.append(id)
         }
         let keep = Set(next)
+        if let first = next.first, let at = order.firstIndex(of: first), at > 0 {
+            droppedTop += order[..<at].reduce(0) { sum, id in sum + (rows[id].map { $0.frame.height + $0.gapAfter } ?? 0) }
+        }
         for (id, v) in rows where !keep.contains(id) { v.removeFromSuperview(); rows[id] = nil }
         if let first = order.first, let at = next.firstIndex(of: first), at > 0 { prepended = true }
         order = next
@@ -415,10 +421,13 @@ final class ConversationPane: NSView {
             clip.scroll(to: NSPoint(x: 0, y: bottom))
         } else if prepended {
             clip.scroll(to: NSPoint(x: 0, y: min(max(0, docHeight - fromBottom), bottom)))
+        } else if droppedTop > 0 {
+            clip.scroll(to: NSPoint(x: 0, y: min(max(0, clip.bounds.minY - droppedTop), bottom)))
         } else if clip.bounds.minY > bottom {
             clip.scroll(to: NSPoint(x: 0, y: bottom))
         }
         prepended = false
+        droppedTop = 0
         scroll.reflectScrolledClipView(clip)
         programmatic = false
         toBottom.frame = NSRect(x: bounds.width - 30 - 6, y: bounds.height - 30 - 6, width: 30, height: 30)

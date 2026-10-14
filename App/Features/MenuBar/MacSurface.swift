@@ -169,11 +169,18 @@ enum MacSurfaceSettings {
         }
         let vm = agentVMs[id]
         if let vm { out["conversation"] = PanelConversation.payload(vm, limit: conversationLimit[id] ?? Self.conversationPage) }
+        if let f = agentFailure, f.id == id { out["failure"] = ["token": f.token, "text": f.text, "error": f.error] }
         if s.agentState == .finished, let since = s.stateSince {
             let key = NextSteps.Key(box: d.box, session: s.name, since: since)
-            let last = vm?.store.items.last { $0.type == .text }?.text
-            let reply = signals.replies[id]?.since == since ? signals.replyTexts[id] ?? last : last
-            if panelScreen == "agent:\(id)" { steps.request(key, place: s.execPlace, reply: reply, task: s.title, client: conn.client) }
+            // This very turn's reply: the board's (read for this turn), else the conversation's once its record was
+            // written as the turn ended (a kept or late conversation can still end on the turn before, and the next
+            // steps are asked once per turn).
+            let written = vm.flatMap { v -> String? in
+                guard let last = v.store.last, Double(last) / 1000 >= since.timeIntervalSince1970 - 60 else { return nil }
+                return v.store.items.last { $0.type == .text }?.text
+            }
+            let reply = signals.replies[id]?.since == since ? (signals.replyTexts[id] ?? written) : written
+            if panelScreen == "agent:\(id)", let reply { steps.request(key, place: s.execPlace, reply: reply, task: s.title, client: conn.client) }
             switch steps.phase(key) {
             case .ready(let r)?: out["nextSteps"] = r
             case .loading?: out["nextStepsLoading"] = true
@@ -243,11 +250,38 @@ enum MacSurfaceSettings {
     func agentPick(_ id: String, _ n: Int) { pick(id, n) }
 
     /// A message for the agent from its screen: it shows in the conversation at once and goes out at once, as from the
-    /// session screen's composer (queued on the box while the agent works).
+    /// session screen's composer (queued on the box while the agent works). Gone out, it answers the agent's Inbox card
+    /// as a reply from the Inbox would; failed, its words come back to the field with the reason (`agentFailure`).
     func agentSend(_ id: String, _ text: String) {
         guard let vm = vm(for: id) else { return }
         stopDictation()
-        if vm.scheduleSend(text) { onChange?() }
+        let card = item(id)
+        let started = vm.scheduleSend(text) { [weak self] sent, error in
+            guard let self else { return }
+            if sent {
+                if let card, let model = self.model { self.store.markAnswered(card, model: model) }
+            } else {
+                self.agentFailed(id, text: text, error: error)
+            }
+        }
+        if started { onChange?() }
+    }
+
+    /// A message from the panel that did not go out: its words go back into the agent screen's field (one line: several
+    /// in a row together, in order) and the reason shows over it for a few seconds.
+    private var agentFailure: (id: String, token: String, text: String, error: String)?
+
+    private func agentFailed(_ id: String, text: String, error: String?) {
+        let token = UUID().uuidString
+        let earlier = agentFailure.flatMap { $0.id == id ? $0.text : nil }
+        agentFailure = (id, token, earlier.map { $0 + " " + text } ?? text, error ?? S("A mensagem não foi enviada."))
+        onChange?()
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard let self, self.agentFailure?.token == token else { return }
+            self.agentFailure = nil
+            self.onChange?()
+        }
     }
 
     func agentInterrupt(_ id: String) {
@@ -646,13 +680,14 @@ enum MacSurfaceSettings {
         freeze(i, model: model)
         Task {
             guard let token = await store.perform(.send(t), on: i, model: model, typed: true) else { frozen = nil; onChange?(); return }
-            began(id, option: 0, label: t, token: token, title: i.item.session.agentShortName)
+            // Typed words go out at once: "Enviando…", never an undo that could not take them back.
+            began(id, option: 0, label: t, token: token, title: i.item.session.agentShortName, undoable: false)
         }
     }
 
-    private func began(_ id: String, option: Int, label: String, token: PendingActions.Token, title: String) {
+    private func began(_ id: String, option: Int, label: String, token: PendingActions.Token, title: String, undoable: Bool = true) {
         let now = Date()
-        let secs = Double(PendingActions.seconds)
+        let secs = undoable ? Double(PendingActions.seconds) : 0
         pending = (id, option, label, token, now, now.addingTimeInterval(secs))
         onChange?()
         Task { [weak self] in

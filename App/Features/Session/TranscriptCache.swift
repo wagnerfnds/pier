@@ -1,13 +1,16 @@
 import CryptoKit
 import Foundation
 import PierKit
+import UIKit
 
 /// The conversations read lately, so a session opens on what it showed last time and only asks the box for what is new
 /// (`since` / `gen`): reopening a chat, the Mac panel and the window showing the same agent, or the app launched again
 /// from a notification, costs no full read and never shows "Abrindo a conversa…" for a conversation already seen. The
-/// newest ones in memory, and on disk (the Caches folder, written a moment after they change, the most recent kept);
-/// a box's mock or demo conversations never touch the disk. Messages still on their way are left out (they belong to
-/// the screen that sent them), and so is an answer with no record (an agent still starting).
+/// newest ones in memory; on disk (the Caches folder, the most recent kept) a conversation is written when its screen
+/// closes, when the app goes to the background, or after 10 s without a change, one file after the other on a queue of
+/// their own, and read off the main thread. A box's mock or demo conversations never touch the disk. Messages still on
+/// their way are left out (they belong to the screen that sent them), and so is an answer with no record (an agent still
+/// starting).
 @MainActor final class TranscriptCache {
     static let shared = TranscriptCache()
     private var stores: [String: TranscriptStore] = [:]
@@ -15,22 +18,35 @@ import PierKit
     private let limit = 16
     /// Changed since the last write, and allowed on disk.
     private var dirty: Set<String> = []
-    /// Looked for on disk already this run (found or not).
-    private var probed: Set<String> = []
     private var saving: Task<Void, Never>?
     private nonisolated static let keepOnDisk = 40
+    /// Files are written one after the other: a slow write never lands after a newer one.
+    private nonisolated static let writer = DispatchQueue(label: "pier.transcript-cache", qos: .utility)
 
-    func store(box: String, session: String) -> TranscriptStore? {
+    private init() {
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { TranscriptCache.shared.flush() }
+        }
+    }
+
+    /// What memory holds for the conversation (the disk is `load`).
+    func store(box: String, session: String) -> TranscriptStore? { stores[Self.key(box, session)] }
+
+    /// The conversation's file, read and decoded off the main thread; nil without one.
+    func load(box: String, session: String) async -> TranscriptStore? {
         let k = Self.key(box, session)
         if let s = stores[k] { return s }
-        guard !probed.contains(k), Self.diskAllowed, let url = Self.file(k) else { return nil }
-        probed.insert(k)
-        guard let data = try? Data(contentsOf: url), let s = try? JSONDecoder().decode(TranscriptStore.self, from: data) else { return nil }
+        guard Self.diskAllowed, let url = Self.file(k) else { return nil }
+        let kept = await Task.detached(priority: .userInitiated) { () -> TranscriptStore? in
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return try? JSONDecoder().decode(TranscriptStore.self, from: data)
+        }.value
+        guard let kept else { return nil }
         #if DEBUG
-        NSLog("Pier: conversation %@ opened from disk (%ld items)", k, s.items.count)
+        NSLog("Pier: conversation %@ opened from disk (%ld items)", k, kept.items.count)
         #endif
-        remember(s, k)
-        return s
+        if stores[k] == nil { remember(kept, k) }
+        return stores[k]
     }
 
     /// `persist`: false for a mock or demo box.
@@ -44,10 +60,19 @@ import PierKit
         dirty.insert(k)
         if saving == nil {
             saving = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled else { return }
+                self?.saving = nil
                 self?.save()
             }
         }
+    }
+
+    /// Writes what changed now: a conversation's screen closed, or the app goes to the background.
+    func flush() {
+        saving?.cancel()
+        saving = nil
+        save()
     }
 
     private func remember(_ s: TranscriptStore, _ k: String) {
@@ -59,13 +84,12 @@ import PierKit
         }
     }
 
-    /// Writes what changed off the main thread, then leaves only the most recent files.
+    /// Encodes and writes the changed conversations on the writer's queue, then leaves only the most recent files.
     private func save() {
-        saving = nil
         let batch = dirty.compactMap { k in stores[k].map { (Self.file(k), $0) } }
         dirty = []
         guard let folder = Self.folder, !batch.isEmpty else { return }
-        Task.detached(priority: .utility) {
+        Self.writer.async {
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             for case (let url?, let store) in batch {

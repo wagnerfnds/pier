@@ -14452,6 +14452,16 @@
           }
         }
       }
+    },
+    "A mensagem não foi enviada." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The message was not sent."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

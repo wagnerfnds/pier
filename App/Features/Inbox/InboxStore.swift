@@ -110,6 +110,15 @@ final class InboxStore {
     /// Something acted on a box outside the Inbox's own path (a notification button): read it again for a moment.
     func noteActed(box: String) { followUps[box] = Date().addingTimeInterval(20) }
 
+    /// A message reached the agent from elsewhere (the Mac panel's agent screen): its card counts as answered, as it would
+    /// replied from here.
+    func markAnswered(_ i: InboxItem, model: AppModel) {
+        withAnimation(.snappy) { handled[i.id] = i.since }
+        signals.invalidate()
+        model.connection(for: i.item.box)?.scheduleRefresh(sessions: true)
+        noteActed(box: i.item.box)
+    }
+
     /// The session screen's model for a card (created once, kept while the card exists).
     func vm(_ i: InboxItem, model: AppModel) -> SessionViewModel? {
         if let v = vms[i.id] { return v }
