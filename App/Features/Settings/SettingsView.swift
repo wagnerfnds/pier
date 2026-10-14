@@ -299,7 +299,7 @@ struct MacSurfaceSettingsSection: View {
 }
 #endif
 
-/// "Tempo para desfazer": how long answers and messages wait before they go out (`PendingActions`).
+/// "Tempo para desfazer": how long one-tap answers wait before they go out (`PendingActions`); typed messages go at once.
 struct UndoSettingsSection: View {
     @AppStorage(PendingActions.secondsKey) private var seconds = PendingActions.defaultSeconds
 
@@ -313,7 +313,7 @@ struct UndoSettingsSection: View {
             .accessibilityIdentifier("undo-seconds")
             .listRowBackground(Theme.card)
         } header: { Text("Respostas") } footer: {
-            Text("Respostas e mensagens esperam esse tempo antes de sair, com “Desfazer” embaixo da tela (Esc ou ⌘Z no teclado).")
+            Text("Respostas de um toque (permissões, opções, próximos passos) esperam esse tempo antes de sair, com “Desfazer” embaixo da tela (Esc ou ⌘Z no teclado). Mensagens digitadas saem na hora.")
         }
     }
 }

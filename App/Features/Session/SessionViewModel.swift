@@ -85,6 +85,12 @@ final class SessionViewModel {
         self.initial = session
         self.client = client
         self.model = model
+        // The conversation as it was last shown in this run: drawn at once, then only what is new is read.
+        if let cached = TranscriptCache.shared.store(box: box, session: session.name) {
+            store = cached
+            loaded = true
+        }
+        if let p = StartingPrompts.prompt(box: box, session: session.name) { startingPrompt = p.text; startedHere = p.at }
         if let m = SessionViewPrefs.mode(box: box, name: session.name) {
             mode = m; modeChosen = true
         } else if !session.isAgent {
@@ -96,6 +102,13 @@ final class SessionViewModel {
 
     var session: Session { model?.connection(for: box)?.sessions.first { $0.name == name } ?? initial }
     var conn: BoxConnection? { model?.connection(for: box) }
+    /// The demo's (or a test's) made-up box: what it says is never kept on disk.
+    private var isMockBox: Bool {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "transcriptDisk") { return false }
+        #endif
+        return conn?.raw is MockBox
+    }
 
     var isWaiting: Bool { session.needsYou && answeredFor != session.stateSince }
     /// The terminal's lines (ANSI stripped, side panel cut, compacted), computed once per screen.
@@ -150,7 +163,34 @@ final class SessionViewModel {
     var isRunning: Bool { session.agentState == .running && !session.exited }
     var hasTranscript: Bool { store.source == "claude" || store.source == "codex" }
     /// The transcript answered and this agent keeps no record the box can read: the conversation shows the screen instead.
-    var transcriptUnavailable: Bool { loaded && store.source == "none" }
+    var transcriptUnavailable: Bool { loaded && store.source == "none" && !recordPending }
+    /// Claude Code and Codex write their record once the first prompt goes in, so for the first moments of a task the box
+    /// has none to read: the chat shows the person's prompt and the agent starting (a startup question comes up as the
+    /// needs-you card), never the terminal. Past a minute and a half with still no record, outside a wait, the record is
+    /// one the box cannot read, and the screen takes over.
+    var recordPending: Bool {
+        guard loaded, store.source == "none", !isClosed, session.isAgent, let agent = session.agent,
+              agent == "claude" || agent == "codex" else { return false }
+        if session.needsYou { return true }
+        // A turn that ended with still no record: the box cannot read this one.
+        guard session.agentState != .finished else { return false }
+        // Started here: this device's clock says how long ago; started elsewhere: the box's.
+        if let startedHere { return Date().timeIntervalSince(startedHere) < 120 }
+        return Date().timeIntervalSince(session.created) < 90
+    }
+    /// The agent is starting: no record yet, or a task started here whose first read has not answered yet.
+    var starting: Bool { recordPending || (!loaded && startingPrompt != nil && !isClosed) }
+    /// The first prompt of a task started on this device (`StartingPrompts`), shown until the record has the person's words.
+    var startingPrompt: String?
+    /// When this device started it (`StartingPrompts`), by this device's clock.
+    @ObservationIgnored private var startedHere: Date?
+    /// The box listed this session at least once since the screen opened: only then can its absence mean it ended.
+    @ObservationIgnored private var listed = false
+    private let openedAt = Date()
+    var showsStartingPrompt: Bool {
+        guard startingPrompt != nil else { return false }
+        return !store.items.contains { $0.kind == "user" }
+    }
     /// No input possible: the program ended or the session is gone.
     var isClosed: Bool { session.exited || gone }
 
@@ -293,7 +333,8 @@ final class SessionViewModel {
         // The transcript follows the box's events (`transcript.changed`, `agent.*`); the timer only backs them up: every 3 s
         // while the agent works, every ~7.5 s otherwise. The reply being written follows its own clock (`followDraft`).
         let backup = s.agentState == .running ? tickCount % 2 == 0 : tickCount % 5 == 0
-        let wantTranscript = !loaded || (store.source != "none" && (woken || backup)) || tickCount % 10 == 0
+        // An agent still starting has no record yet: ask for it on every tick, so the chat fills the moment it is written.
+        let wantTranscript = !loaded || recordPending || (store.source != "none" && (woken || backup)) || tickCount % 10 == 0
         // The screen feeds the terminal, the needs-you card, the fallback conversation and (every few seconds) the "doing" line.
         // Not running: also look for a menu no hook announces (startup dialogs), right after a state change, then every ~9 s.
         let idleLook = s.agentState != .running && !s.exited && (tickCount % 6 == 0 || s.stateSince != screenLookedAt)
@@ -327,7 +368,10 @@ final class SessionViewModel {
         if case .success(let p)? = p {
             var next = store
             next.apply(p)
-            if next != store { store = next }
+            if next != store {
+                store = next
+                TranscriptCache.shared.put(next, box: box, session: name, persist: !isMockBox)
+            }
             if loadError != nil { loadError = nil }
             if !loaded { loaded = true }
             expirePending()
@@ -349,8 +393,16 @@ final class SessionViewModel {
             Task { await refreshUncommitted(); checkingReview = false }
         }
         if case .success(let h)? = h { if h != held { held = h } } else if (s.queued ?? 0) == 0, !held.isEmpty, !wantHeld { held = [] }
-        if conn?.state.isOnline == true, conn?.hasLoadedSessions == true,
-           conn?.sessions.contains(where: { $0.name == name }) == false { gone = true } else if gone, conn?.sessions.contains(where: { $0.name == name }) == true { gone = false }
+        // Missing from the box's list: gone, once the list had it (a session started a moment ago is listed only at the
+        // next refresh, and must not read as closed meanwhile), or when it never shows up.
+        if let conn, conn.state.isOnline, conn.hasLoadedSessions {
+            if conn.sessions.contains(where: { $0.name == name }) {
+                listed = true
+                if gone { gone = false }
+            } else if !gone, listed || Date().timeIntervalSince(openedAt) > 15 {
+                gone = true
+            }
+        }
     }
 
     private static func bounded<T: Sendable>(_ d: Duration, _ op: @escaping @Sendable () async throws -> T) async throws -> T {
@@ -392,6 +444,7 @@ final class SessionViewModel {
             guard let page = try? await client.transcriptBefore(session: name, before: before, limit: 300) else { break }
             store.absorbHistory(page)
         }
+        TranscriptCache.shared.put(store, box: box, session: name, persist: !isMockBox)
     }
 
     // MARK: history & detail
@@ -402,6 +455,7 @@ final class SessionViewModel {
         defer { loadingOlder = false }
         if let page = try? await client.transcriptBefore(session: name, before: off, limit: 120) {
             store.absorbHistory(page)
+            TranscriptCache.shared.put(store, box: box, session: name, persist: !isMockBox)
         }
     }
 
@@ -424,13 +478,28 @@ final class SessionViewModel {
 
     // MARK: sending
 
-    var canSend: Bool { !isClosed && !sending }
+    /// Messages queue (`send` goes one at a time), so the composer takes the next one while the last is on its way.
+    var canSend: Bool { !isClosed }
+
+    /// The send in flight or queued last: each `send` waits for it, so messages typed one after the other reach the box
+    /// in that order and never trip over each other (the composer, the Inbox, the Mac panel and the next steps all send here).
+    @ObservationIgnored private var sendTail: Task<Bool, Never>?
 
     /// Prompt composer: `idle` while the agent works (held on the box), `now` otherwise. `paths`: photos already taken
-    /// out of the composer (a send that waited the undo window); nil sends the composer's own. `when` forces one
-    /// (suggested next steps go with `idle`, so they never cut into a turn that started meanwhile).
+    /// out of the composer; nil sends the composer's own. `when` forces one (suggested next steps go with `idle`, so they
+    /// never cut into a turn that started meanwhile).
     func send(_ text: String, attachments paths: [String]? = nil, when forced: SendRequest.When? = nil) async -> Bool {
         let atts = paths ?? attachments.compactMap(\.path)
+        let previous = sendTail
+        let task = Task { [self] in
+            _ = await previous?.value
+            return await sendNow(text, attachments: atts, fromComposer: paths == nil, when: forced)
+        }
+        sendTail = task
+        return await task.value
+    }
+
+    private func sendNow(_ text: String, attachments atts: [String], fromComposer: Bool, when forced: SendRequest.When?) async -> Bool {
         var full = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !atts.isEmpty { full += (full.isEmpty ? "" : "\n") + atts.joined(separator: "\n") }
         guard !full.isEmpty, canSend else { return false }
@@ -459,7 +528,7 @@ final class SessionViewModel {
             }
             Haptic.impact(.light)
             sendTick += 1
-            if paths == nil { attachments = [] }
+            if fromComposer { attachments.removeAll { $0.path.map(atts.contains) ?? false } }
             if r.queued == true {
                 held = (try? await client.heldPrompts(session: name)) ?? held
             } else {
@@ -640,31 +709,27 @@ final class SessionViewModel {
         let text: String
     }
 
-    /// Composer Send: the message waits the undo window. False when there is nothing to send.
+    /// Composer Send: the message shows in the conversation at once, as in any chat, and goes out at once. Typed and sent on
+    /// purpose, it skips the undo window, which is for one-tap answers (a slip of the finger); one sent by mistake is
+    /// stopped with Interromper, or taken back from the queue while the agent works. Its text and photos come back if it
+    /// fails. False when there is nothing to send.
     func scheduleSend(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let photos = attachments.filter { $0.path != nil }
         guard canSend, !trimmed.isEmpty || !photos.isEmpty else { return false }
         attachments.removeAll { $0.path != nil }
-        // The message shows in the conversation at once (as it would in any chat), marked as on its way.
         let out = Outgoing(text: trimmed, photos: photos.count)
         outgoing.append(out)
-        let restore: @MainActor () -> Void = { [self] in
-            if !text.isEmpty { composerRestore = ComposerRestore(text: text) }
-            attachments = photos + attachments
-        }
-        let firstLine = trimmed.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        let label = !firstLine.isEmpty ? String(firstLine.prefix(80))
-            : photos.count == 1 ? S("1 foto") : S("\(photos.count) fotos")
-        PendingActions.shared.schedule(label: label, symbol: "paperplane.fill", perform: { [self] in
+        sendTick += 1   // the conversation follows the new bubble down now, not after the box answers
+        Task { [self] in
             let sent = await send(text, attachments: photos.compactMap(\.path))
             // Sent, `send` put the box's own pending copy in place in the same turn: no gap, no double.
             outgoing.removeAll { $0.id == out.id }
-            if !sent { restore() }
-        }, onUndo: { [self] in
-            outgoing.removeAll { $0.id == out.id }
-            restore()
-        })
+            if !sent {
+                if !text.isEmpty { composerRestore = ComposerRestore(text: text) }
+                attachments = photos + attachments
+            }
+        }
         return true
     }
 

@@ -11221,16 +11221,6 @@
         }
       }
     },
-    "Respostas e mensagens esperam esse tempo antes de sair, com “Desfazer” embaixo da tela (Esc ou ⌘Z no teclado)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Answers and messages wait this long before going out, with “Undo” at the bottom of the screen (Esc or ⌘Z on a keyboard)."
-          }
-        }
-      }
-    },
     "Restaurar original" : {
       "localizations" : {
         "en" : {
@@ -14229,6 +14219,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⚠️ %lld item(s) lose work not sent yet"
+          }
+        }
+      }
+    },
+    "Iniciando %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting %@…"
+          }
+        }
+      }
+    },
+    "Respostas de um toque (permissões, opções, próximos passos) esperam esse tempo antes de sair, com “Desfazer” embaixo da tela (Esc ou ⌘Z no teclado). Mensagens digitadas saem na hora." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One-tap answers (permissions, options, next steps) wait this long before going out, with “Undo” at the bottom of the screen (Esc or ⌘Z on a keyboard). Typed messages go out at once."
+          }
+        }
+      }
+    },
+    "Ocultar detalhes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide Details"
+          }
+        }
+      }
+    },
+    "Mostrar detalhes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Details"
+          }
+        }
+      }
+    },
+    "Página" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page"
+          }
+        }
+      }
+    },
+    "Ver conversa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View Conversation"
           }
         }
       }

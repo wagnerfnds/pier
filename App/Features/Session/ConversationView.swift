@@ -28,6 +28,11 @@ struct ConversationView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     top(proxy)
+                    // A task just started here: the person's words first, while the agent writes its record.
+                    if vm.showsStartingPrompt, let p = vm.startingPrompt {
+                        UserBubble(item: TranscriptItem(kind: "user", id: "starting-prompt", text: p), agent: vm.session.agentShortName)
+                            .id("starting-prompt")
+                    }
                     ForEach(rows) { row in
                         switch blocks[row.index] {
                         case .item(let it):
@@ -37,7 +42,7 @@ struct ConversationView: View {
                         }
                     }
                     ForEach(vm.outgoing) { o in OutgoingBubble(message: o).id(o.id) }
-                    if vm.isRunning { LiveDraftRow(vm: vm).id("draft") }
+                    if vm.isRunning || vm.starting { LiveDraftRow(vm: vm).id("draft") }
                     if let card = vm.reviewCard, let (loc, wt) = vm.reviewTarget {
                         ReviewCard(changes: card.changes, uncommittedOnly: card.uncommittedOnly) {
                             router.push(ReviewRoute(box: vm.box, location: loc, worktree: wt, session: vm.name))
@@ -47,7 +52,7 @@ struct ConversationView: View {
                     }
                     // Suggested replies for a finished turn (Inbox feature): only sent when the person taps one.
                     SessionNextSteps(vm: vm).id("next-steps")
-                    if vm.store.displayItems.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning { emptyNote }
+                    if vm.store.displayItems.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning, !vm.starting, !vm.showsStartingPrompt { emptyNote }
                     Color.clear.frame(height: 1).id("bottom")
                         .onAppear { bottomVisible = true; detached = false }
                         .onDisappear { bottomVisible = false }
@@ -66,7 +71,8 @@ struct ConversationView: View {
                 scrolledUp = true
                 Task { try? await Task.sleep(for: .milliseconds(450)); if !bottomVisible { detached = true } }
             })
-            .overlay { if !vm.loaded { loading } }
+            // A task just started here already has its first message to show: no spinner over it.
+            .overlay { if !vm.loaded && !vm.showsStartingPrompt { loading } }
             .overlay(alignment: .bottomTrailing) {
                 if detached {
                     Button {
@@ -185,6 +191,7 @@ struct LiveDraftRow: View {
 
     private var word: String {
         if let w = vm.draft?.status?.word, !w.isEmpty { return w.hasSuffix("…") ? w : w + "…" }
+        if vm.starting { return S("Iniciando \(vm.session.agentLabel)…") }
         return S("Trabalhando…")
     }
 }

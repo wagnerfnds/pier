@@ -14,6 +14,8 @@ enum MarkdownText {
         let mono = PanelStyle.mono(size - 1)
         var lastBlock: Int?
         var lastListItem: (ordinal: Int, list: Int)?
+        /// The width of the current list item's bullet, which its wrapped lines hang under.
+        var listMarker: CGFloat?
         for run in parsed.runs {
             var text = String(parsed[run.range].characters)
             var font = body
@@ -24,6 +26,7 @@ enum MarkdownText {
             var spacingBefore: CGFloat = 0
             var blockID: Int?
             var isCode = false
+            var isListItem = false
             if let intent = run.presentationIntent {
                 for component in intent.components {
                     switch component.kind {
@@ -37,9 +40,11 @@ enum MarkdownText {
                         spacingBefore = 6
                     case .listItem(let ordinal):
                         indent = 14
+                        isListItem = true
                         let list = component.identity
                         if lastListItem?.list != list || lastListItem?.ordinal != ordinal {
                             prefix = intent.components.contains { if case .orderedList = $0.kind { true } else { false } } ? "\(ordinal). " : "• "
+                            listMarker = nil
                         }
                         lastListItem = (ordinal, list)
                     case .blockQuote:
@@ -64,14 +69,21 @@ enum MarkdownText {
             }
             if let blockID { lastBlock = blockID }
             if isCode { text = text.trimmingCharacters(in: .newlines) }
+            // A list item's bullet in the body font, never in the style of the run it precedes (an item that starts with
+            // inline code drew its bullet inside the code's box); its wrapped lines hang under the text, not the bullet.
+            let marker = listMarker ?? (prefix.isEmpty ? nil : (prefix as NSString).size(withAttributes: [.font: body]).width)
+            if !prefix.isEmpty { listMarker = marker }
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineSpacing = 1.5
             paragraph.paragraphSpacingBefore = spacingBefore
             paragraph.firstLineHeadIndent = indent
-            paragraph.headIndent = indent + (prefix.isEmpty ? 0 : 0)
+            paragraph.headIndent = indent + (indent > 0 && isListItem ? (marker ?? 0) : 0)
+            if !prefix.isEmpty {
+                out.append(NSAttributedString(string: prefix, attributes: [.font: body, .foregroundColor: PanelStyle.textDim, .paragraphStyle: paragraph]))
+            }
             var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fg, .paragraphStyle: paragraph]
             if let bg { attrs[.backgroundColor] = bg }
-            out.append(NSAttributedString(string: prefix + text, attributes: attrs))
+            out.append(NSAttributedString(string: text, attributes: attrs))
         }
         return out
     }

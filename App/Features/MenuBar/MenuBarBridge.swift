@@ -186,8 +186,11 @@ import PierKit
             ("menuScreen", S("Tela")), ("menuMainScreen", S("Principal")), ("menuPointerScreen", S("Onde está o ponteiro")),
             ("menuFullScreen", S("Mostrar sobre apps em tela cheia")), ("menuHide", S("Ocultar a aba")), ("menuSettings", S("Ajustes…")),
             ("dictate", S("Ditar")), ("more", S("Mais")),
+            // The agent's conversation in the panel.
+            ("olderMessages", S("Mensagens anteriores")), ("conversationStart", S("Início da conversa")), ("sent", S("Enviado")),
+            ("openingConversation", S("Abrindo a conversa…")), ("toBottom", S("Ir para o fim")),
             // The Inbox card.
-            ("recommended", S("Recomendado")), ("nextSteps", S("Próximos passos")), ("cardOpen", S("Abrir sessão")),
+            ("recommended", S("Recomendado")), ("nextSteps", S("Próximos passos")), ("cardOpen", S("Abrir sessão")), ("cardConversation", S("Ver conversa")),
             ("review", S("Revisar")), ("archive", S("Arquivar")), ("dismiss", S("Dispensar")),
             ("readingOptions", S("Lendo as opções na tela…")), ("suggesting", S("Sugerindo próximos passos…")),
             ("noReply", S("Terminou a vez.")), ("sending", S("Enviando…")), ("undoEsc", S("Esc desfaz")),
@@ -229,6 +232,7 @@ import PierKit
         if command == "undo" { surface.undo(); return "undo" }
         if command.hasPrefix("page:"), let n = Int(command.dropFirst(5)) { surface.page(by: n); return "page" }
         if command.hasPrefix("reply:"), let id = surface.current { surface.reply(id, String(command.dropFirst(6))); return "reply" }
+        if command.hasPrefix("agentsend:") { return surface.debugAgentSend(String(command.dropFirst(10))) }
         if command == "pointat" { pointAt(); return "pointat" }
         return plugin?.debugSurface(command) ?? "-"
     }
@@ -317,9 +321,11 @@ import PierKit
         return (String(s[..<bar]), String(s[s.index(after: bar)...]))
     }
 
-    /// The agent screen: `pick:<id>|<n>`, `send:<id>|<text>`, `interrupt:<id>`, `archive:<id>`, `review:<id>`, `open:<id>`, `undo`.
+    /// The agent screen: `pick:<id>|<n>`, `send:<id>|<text>`, `older:<id>`, `interrupt:<id>`, `archive:<id>`, `review:<id>`,
+    /// `open:<id>`, `undo`.
     private func agent(_ a: String) {
         if a.hasPrefix("pick:"), let (id, n) = split(a.dropFirst(5)), let n = Int(n) { surface.agentPick(id, n) }
+        else if a.hasPrefix("older:") { surface.agentOlder(String(a.dropFirst(6))) }
         else if a.hasPrefix("send:"), let (id, text) = split(a.dropFirst(5)) { surface.agentSend(id, text) }
         else if a.hasPrefix("interrupt:") { surface.agentInterrupt(String(a.dropFirst(10))) }
         else if a.hasPrefix("archive:") { surface.agentArchive(String(a.dropFirst(8))) }

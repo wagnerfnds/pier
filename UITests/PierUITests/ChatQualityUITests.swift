@@ -81,12 +81,10 @@ final class ChatQualityUITests: XCTestCase {
         field.tap()
         field.typeText(message)
         element("composer-send").tap()
-        // While the undo toast is up the message has not gone out yet: the bubble must already be in the conversation.
-        let toast = element("undo-toast")
-        XCTAssertTrue(toast.waitForExistence(timeout: 2), "no undo toast after sending")
-        XCTAssertTrue(bubble.exists, "the message is not in the conversation while its undo window runs")
-        XCTAssertTrue(toast.exists, "the undo window ended before the check (the run was too slow to tell)")
-        // Through the undo window and the send, the words never leave the screen.
+        // A typed message goes out at once, an undo window set or not: its bubble is in the conversation at once…
+        XCTAssertTrue(bubble.waitForExistence(timeout: 1), "the message is not in the conversation at once")
+        XCTAssertFalse(element("undo-toast").exists, "a typed message waited the undo window")
+        // …and through the send and the record's echo, the words never leave the screen.
         let until = Date().addingTimeInterval(4)
         var gaps = 0
         while Date() < until {

@@ -66,11 +66,14 @@ enum MacSurfaceSettings {
     /// The side panel's screen, as the plugin reports it ("none" when closed): the agent view and the form refresh only
     /// while they are up.
     private(set) var panelScreen = "none"
-    /// The agent the panel shows, with the fetched parts of its view.
+    /// The agent the panel shows: its `SessionViewModel` runs (the session screen's own loop: the record, the screen, the
+    /// reply being written) while that screen is up, and its conversation goes into the payload, the newest
+    /// `conversationLimit` rows of it.
     private var selectedAgent: String?
-    private var agentReply: (id: String, since: Date?, text: String?)?
     private var agentTask: Task<Void, Never>?
     private var agentVMs: [String: SessionViewModel] = [:]
+    private var conversationLimit: [String: Int] = [:]
+    private static let conversationPage = 40
     /// A task or chat just started from the panel: the panel shows its agent.
     private var started: (id: String, until: Date)?
     /// The new task / chat form (ComposeModel: the app's own rules for projects, agents, models and names).
@@ -164,10 +167,12 @@ enum MacSurfaceSettings {
                 return r
             }
         }
-        if let r = agentReply, r.id == id, let text = r.text { out["reply"] = text }
+        let vm = agentVMs[id]
+        if let vm { out["conversation"] = PanelConversation.payload(vm, limit: conversationLimit[id] ?? Self.conversationPage) }
         if s.agentState == .finished, let since = s.stateSince {
             let key = NextSteps.Key(box: d.box, session: s.name, since: since)
-            let reply = signals.replies[id]?.since == since ? signals.replyTexts[id] : agentReply.flatMap { $0.id == id ? $0.text : nil }
+            let last = vm?.store.items.last { $0.type == .text }?.text
+            let reply = signals.replies[id]?.since == since ? signals.replyTexts[id] ?? last : last
             if panelScreen == "agent:\(id)" { steps.request(key, place: s.execPlace, reply: reply, task: s.title, client: conn.client) }
             switch steps.phase(key) {
             case .ready(let r)?: out["nextSteps"] = r
@@ -178,30 +183,50 @@ enum MacSurfaceSettings {
         return out
     }
 
-    /// The panel shows this agent: its transcript's tail is read every few seconds for the last reply (running or
-    /// waiting agents have no card to carry it), the waiting screens are refreshed, the view follows the session.
+    /// The panel shows this agent: its view model runs as the session screen's does (events, the record, the screen, the
+    /// reply being written), so the conversation is live and what was read stays for the next time (`TranscriptCache`);
+    /// the board's signals (line changes, waiting screens) are refreshed beside it, and a finished turn shown is seen.
     func select(agent id: String?) {
         guard selectedAgent != id else { return }
         selectedAgent = id
-        agentReply = nil
         agentTask?.cancel(); agentTask = nil
         onChange?()
-        guard let id, let model else { return }
+        guard let id, model != nil else { return }
         agentTask = Task { [weak self] in
+            // A task just started is listed a moment later: wait for it.
+            var vm: SessionViewModel?
+            while vm == nil, !Task.isCancelled {
+                vm = self?.vm(for: id)
+                if vm == nil { try? await Task.sleep(for: .milliseconds(500)) }
+            }
+            guard let vm, !Task.isCancelled else { return }
+            self?.onChange?()
+            let follow = Task { await vm.run() }
+            defer { follow.cancel() }
             while !Task.isCancelled {
                 guard let self, let model = self.model else { return }
-                let dots = AgentDots.make(model)
-                guard let d = dots.first(where: { $0.id == id }), let conn = model.connection(for: d.box) else {
-                    try? await Task.sleep(for: .seconds(2)); continue
-                }
-                let since = conn.sessions.first { $0.name == d.session }?.stateSince
-                if let tail = try? await conn.client.transcriptBefore(session: d.session, before: 0, limit: 40) {
-                    let text = SessionSignals.lastReplyMarkdown(tail)
-                    if self.agentReply?.text != text || self.agentReply?.since != since { self.agentReply = (id, since, text); self.onChange?() }
-                }
+                if vm.session.agentState == .finished, !vm.isClosed { model.prefs.markSeen(box: vm.box, session: vm.name) }
                 await self.signals.refreshBoard(model: model)
                 try? await Task.sleep(for: .seconds(3))
             }
+        }
+    }
+
+    /// Debug (`-macSurfaceDebug agentsend:<text>`): a message from the agent screen the panel shows.
+    func debugAgentSend(_ text: String) -> String {
+        guard let id = selectedAgent else { return "no agent shown" }
+        agentSend(id, text)
+        return "agentsend \(id)"
+    }
+
+    /// "Mensagens anteriores" in the panel: more of what is held, then the box's older pages.
+    func agentOlder(_ id: String) {
+        guard let vm = agentVMs[id] else { return }
+        conversationLimit[id] = (conversationLimit[id] ?? Self.conversationPage) + Self.conversationPage
+        onChange?()
+        Task { [weak self] in
+            await vm.loadOlder()
+            self?.onChange?()
         }
     }
 
@@ -217,16 +242,12 @@ enum MacSurfaceSettings {
     /// The agent screen's 1–9: an Inbox answer while it waits, a next step when its turn ended.
     func agentPick(_ id: String, _ n: Int) { pick(id, n) }
 
-    /// A message for the agent from its screen (the undo window, like everywhere else).
+    /// A message for the agent from its screen: it shows in the conversation at once and goes out at once, as from the
+    /// session screen's composer (queued on the box while the agent works).
     func agentSend(_ id: String, _ text: String) {
-        if item(id) != nil { reply(id, text); return }
-        guard let vm = vm(for: id), let model else { return }
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
+        guard let vm = vm(for: id) else { return }
         stopDictation()
-        let token = PendingActions.shared.schedule(label: t, perform: { _ = await vm.send(t, when: .idle) })
-        began(id, option: 0, label: t, token: token, title: vm.session.agentShortName)
-        _ = model
+        if vm.scheduleSend(text) { onChange?() }
     }
 
     func agentInterrupt(_ id: String) {
@@ -624,7 +645,7 @@ enum MacSurfaceSettings {
         stopDictation()
         freeze(i, model: model)
         Task {
-            guard let token = await store.perform(.send(t), on: i, model: model) else { frozen = nil; onChange?(); return }
+            guard let token = await store.perform(.send(t), on: i, model: model, typed: true) else { frozen = nil; onChange?(); return }
             began(id, option: 0, label: t, token: token, title: i.item.session.agentShortName)
         }
     }

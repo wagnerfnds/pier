@@ -196,12 +196,14 @@ final class AgentsScreen: NSView, PanelScreenView, PanelDataSink {
 
 // MARK: - one agent
 
-/// One agent, in the panel: its state and step, the question with its answers while it waits, the last reply, the
-/// suggested next steps when its turn ended, a reply field with dictation, and the actions (Interromper, Arquivar,
-/// Revisar; "Abrir no Pier" small, the secondary way out).
+/// One agent, in the panel, as a chat: its conversation (the person's messages, the agent's replies, the work in
+/// between, the reply being written; `ConversationPane`), the question with its answers while it waits, the suggested
+/// next steps when its turn ended, a reply field with dictation that sends at once, and the actions (Interromper,
+/// Arquivar, Revisar; "Abrir no Pier" small, the secondary way out). The panel grows with the conversation up to its
+/// maximum, then the conversation scrolls and the reply field stays in view.
 final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     let id: String
-    var onAction: ((String) -> Void)?
+    var onAction: ((String) -> Void)? { didSet { conversation.onAction = onAction } }
     private(set) var title = ""
     private var strings: [String: String] = [:]
     private var detail: [String: Any] = [:]
@@ -213,14 +215,12 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     private let name = SurfaceStyle.label("", font: PanelStyle.font(15, .semibold), color: PanelStyle.text)
     private let sub = SurfaceStyle.label("", font: PanelStyle.font(13), color: PanelStyle.textDim)
     private let elapsed = SurfaceStyle.label("", font: PanelStyle.font(12).withMonospacedDigits, color: PanelStyle.textFaint, alignment: .right)
-    private let stepLine = SurfaceStyle.label("", font: PanelStyle.font(13), color: PanelStyle.accent, lines: 2)
-    private let question = SurfaceStyle.label("", font: PanelStyle.font(16, .semibold), color: PanelStyle.text, lines: 4)
+    private let conversation = ConversationPane()
+    private let question = SurfaceStyle.label("", font: PanelStyle.font(15, .semibold), color: PanelStyle.text, lines: 4)
     private let command = SurfaceStyle.label("", font: PanelStyle.mono(12), color: PanelStyle.text, lines: 4)
     private let commandBox = CodeBoxView()
     private let why = SurfaceStyle.label("", font: PanelStyle.font(13), color: PanelStyle.textDim, lines: 3)
     private var optionRows: [OptionRowView] = []
-    private let replyHeading = panelHeading("")
-    private let reply = MarkdownView()
     private let stepsHeading = panelHeading("")
     private var stepRows: [OptionRowView] = []
     private let loading = SurfaceStyle.label("", font: PanelStyle.font(13), color: PanelStyle.textDim)
@@ -230,19 +230,23 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     private let openLink = ClickableView()
     private let openLabel = SurfaceStyle.label("", font: PanelStyle.font(12, .medium), color: PanelStyle.textDim)
     private var ticker: Timer?
+    private var tickerFast = false
     override var isFlipped: Bool { true }
 
     init(id: String) {
         self.id = id
         super.init(frame: .zero)
-        for v in [avatar, name, sub, elapsed, stepLine, question, commandBox, why, replyHeading, reply, stepsHeading, loading, composer, hint, openLink] as [NSView] { addSubview(v) }
+        for v in [avatar, name, sub, elapsed, conversation, question, commandBox, why, stepsHeading, loading, composer, hint, openLink] as [NSView] { addSubview(v) }
+        conversation.agentID = id
         commandBox.addSubview(command)
         openLink.addSubview(openLabel)
         openLink.onClick = { [weak self] in guard let self else { return }; self.onAction?("agent:open:\(self.id)") }
         composer.onSubmit = { [weak self] text in
-            guard let self else { return }
+            guard let self, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             self.onAction?("agent:send:\(self.id)|\(text)")
             self.composer.text = ""
+            // What was just sent shows at the bottom of the conversation: follow it there.
+            self.conversation.followBottom()
         }
         composer.onMic = { [weak self] in
             guard let self else { return }
@@ -254,6 +258,11 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     }
     required init?(coder: NSCoder) { nil }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { ticker?.invalidate(); ticker = nil }
+    }
+
     func apply(_ data: [String: Any], strings: [String: String]) {
         self.strings = strings
         let d = (data["agentDetail"] as? [String: Any]).flatMap { ($0["id"] as? String) == id ? $0 : nil }
@@ -263,19 +272,25 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         pending = (p?["card"] as? String) == id ? p : nil
         receipt = (data["receiptFor"] as? String) == id ? data["receipt"] as? String : nil
         render()
-        if pending != nil, ticker == nil {
-            ticker = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
+        // The hint's countdown wants 20 frames a second while an answer waits; otherwise the clocks move once a second.
+        let fast = pending != nil
+        if ticker == nil || tickerFast != fast {
+            ticker?.invalidate()
+            tickerFast = fast
+            ticker = Timer.scheduledTimer(withTimeInterval: fast ? 1.0 / 20 : 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.tick() }
             }
-        } else if pending == nil { ticker?.invalidate(); ticker = nil }
+        }
     }
 
     private func tick() {
-        guard let p = pending else { return }
-        hint.tick(pending: .init(cardID: id, option: (p["option"] as? NSNumber)?.intValue ?? 0, label: "",
-                                 start: Date(timeIntervalSince1970: (p["start"] as? NSNumber)?.doubleValue ?? 0),
-                                 deadline: Date(timeIntervalSince1970: (p["deadline"] as? NSNumber)?.doubleValue ?? 0)))
+        if let p = pending {
+            hint.tick(pending: .init(cardID: id, option: (p["option"] as? NSNumber)?.intValue ?? 0, label: "",
+                                     start: Date(timeIntervalSince1970: (p["start"] as? NSNumber)?.doubleValue ?? 0),
+                                     deadline: Date(timeIntervalSince1970: (p["deadline"] as? NSNumber)?.doubleValue ?? 0)))
+        }
         if let since = (detail["since"] as? NSNumber)?.doubleValue { elapsed.stringValue = Elapsed.short(since: Date(timeIntervalSince1970: since)) }
+        conversation.tick()
     }
 
     private func render() {
@@ -290,7 +305,8 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         sub.stringValue = project.isEmpty ? word : "\(word) · \(project)"
         sub.textColor = state == "needsYou" ? PanelStyle.orange : PanelStyle.textDim
         elapsed.stringValue = (d["since"] as? NSNumber).map { Elapsed.short(since: Date(timeIntervalSince1970: $0.doubleValue)) } ?? ""
-        stepLine.stringValue = state == "working" ? (d["step"] as? String ?? (strings["workingStep"] ?? "")) : ""
+        conversation.apply(d["conversation"] as? [String: Any] ?? [:], strings: strings,
+                           placeholderText: starting ? (strings["starting"] ?? "Iniciando…") : (strings["openingConversation"] ?? "Abrindo a conversa…"))
         let waiting = state == "needsYou"
         question.stringValue = waiting ? (d["question"] as? String ?? "") : ""
         command.stringValue = waiting ? (d["command"] as? String ?? "") : ""
@@ -308,9 +324,6 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
                 addSubview(r); optionRows.append(r)
             }
         }
-        let replyText = d["reply"] as? String ?? ""
-        replyHeading.stringValue = replyText.isEmpty ? "" : (strings["lastReply"] ?? "Última resposta").uppercased()
-        reply.set(markdown: replyText)
         for r in stepRows { r.removeFromSuperview() }
         stepRows = []
         let steps = d["nextSteps"] as? [String] ?? []
@@ -348,28 +361,40 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         needsLayout = true
     }
 
-    func layoutContent(width: CGFloat) -> CGFloat {
-        var st = Stacker(width: width, apply: true)
+    func layoutContent(width: CGFloat) -> CGFloat { layoutContent(width: width, available: 560) }
+
+    func layoutContent(width: CGFloat, available: CGFloat) -> CGFloat {
         // Header: avatar, name over state · project, elapsed at the right.
         avatar.frame = NSRect(x: 0, y: 0, width: 40, height: 40)
         name.frame = NSRect(x: 52, y: 1, width: width - 52 - 60, height: 19)
         sub.frame = NSRect(x: 52, y: 22, width: width - 52 - 60, height: 17)
         elapsed.frame = NSRect(x: width - 60, y: 2, width: 60, height: 16)
-        st.y = 40 + 14
-        if !stepLine.stringValue.isEmpty { st.place(stepLine, height: SurfaceStyle.height(of: stepLine, width: width), gap: 12) } else { st.skip(stepLine) }
+        let top: CGFloat = 40 + 12
+        // The answers, the next steps, the field and the actions under the conversation take what they need; the
+        // conversation gets the rest, up to all it wants.
+        // A tall question (four answers and a command) leaves the conversation less: a couple of lines, or none, but the
+        // screen never runs past the panel (its answers and actions would scroll out of reach).
+        let below = layoutBelow(width: width, from: 0, apply: false)
+        let room = available - top - below - 12
+        let paneHeight = room < 40 ? 0 : min(conversation.naturalHeight(for: width), room)
+        conversation.isHidden = paneHeight == 0
+        conversation.frame = NSRect(x: 0, y: top, width: width, height: paneHeight)
+        return layoutBelow(width: width, from: top + (paneHeight == 0 ? 0 : paneHeight + 12), apply: true)
+    }
+
+    /// The part under the conversation, from `y`: its end.
+    private func layoutBelow(width: CGFloat, from y: CGFloat, apply: Bool) -> CGFloat {
+        var st = Stacker(width: width, apply: apply)
+        st.y = y
         if !question.stringValue.isEmpty { st.place(question, height: SurfaceStyle.height(of: question, width: width), gap: 8) } else { st.skip(question) }
         if !command.stringValue.isEmpty {
             let h = SurfaceStyle.height(of: command, width: width - 24)
             st.place(commandBox, height: h + 16, gap: 8)
-            command.frame = NSRect(x: 12, y: 8, width: width - 24, height: h)
+            if apply { command.frame = NSRect(x: 12, y: 8, width: width - 24, height: h) }
         } else { st.skip(commandBox) }
         if !why.stringValue.isEmpty { st.place(why, height: SurfaceStyle.height(of: why, width: width), gap: 12) } else { st.skip(why) }
         for r in optionRows { st.place(r, height: r.height, gap: 6) }
         if !optionRows.isEmpty { st.gap(8) }
-        if !replyHeading.stringValue.isEmpty {
-            st.place(replyHeading, height: 14, gap: 6)
-            st.place(reply, height: reply.height(for: width), gap: 14)
-        } else { st.skip(replyHeading); st.skip(reply) }
         if !stepsHeading.stringValue.isEmpty { st.place(stepsHeading, height: 14, gap: 6) } else { st.skip(stepsHeading) }
         for r in stepRows { st.place(r, height: r.height, gap: 6) }
         if !loading.stringValue.isEmpty { st.place(loading, height: 18, gap: 8) } else { st.skip(loading) }
@@ -379,18 +404,19 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
             let w = hint.measure().width
             st.place(hint, height: 30, x: (width - w) / 2, width: w, gap: 10)
         }
-        var x: CGFloat = 0
         let rowY = st.y
-        for a in actions {
-            let s = a.measure()
-            a.frame = NSRect(x: x, y: rowY, width: s.width, height: s.height)
-            x += s.width + 8
+        if apply {
+            var x: CGFloat = 0
+            for a in actions {
+                let s = a.measure()
+                a.frame = NSRect(x: x, y: rowY, width: s.width, height: s.height)
+                x += s.width + 8
+            }
+            let ow = (openLabel.stringValue as NSString).size(withAttributes: [.font: openLabel.font ?? PanelStyle.font(12)]).width + 8
+            openLink.frame = NSRect(x: width - ow, y: rowY + 6, width: ow, height: 18)
+            openLabel.frame = NSRect(x: 0, y: 0, width: ow, height: 18)
         }
-        let ow = (openLabel.stringValue as NSString).size(withAttributes: [.font: openLabel.font ?? PanelStyle.font(12)]).width + 8
-        openLink.frame = NSRect(x: width - ow, y: rowY + 6, width: ow, height: 18)
-        openLabel.frame = NSRect(x: 0, y: 0, width: ow, height: 18)
-        st.y = rowY + 30
-        return st.y
+        return rowY + 30
     }
 
     func handleKey(_ e: NSEvent) -> Bool {
@@ -403,6 +429,8 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     }
 
     func focusField() { window?.makeFirstResponder(composer.field) }
+
+    func debugScrollToTop() { conversation.debugScrollToTop() }
 
     func dictation(target: String, active: Bool, text: String) {
         guard target == "agent:\(id)" else { return }

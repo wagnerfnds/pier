@@ -48,11 +48,13 @@ enum TaskCreator {
             for a in attachments { paths.append(try await box.uploadToWorktree(location: location.name, worktree: wt.name, name: a.name, data: a.data).path) }
             let session = try await box.client.startSession(SessionRequest(location: location.ref(wt), agent: agentID, prompt: text + "\n\n" + paths.joined(separator: "\n"),
                                                                            model: modelArg, effort: effortArg, title: title))
+            StartingPrompts.note(box: box.name, session: session.name, prompt: text)
             return Created(box: box.name, location: location.name, worktree: wt.name, session: session, agent: agentID)
         }
         let req = request(location: location.name, worktree: name, base: location.defaultBranch, agent: agentID, prompt: text,
                           model: modelArg, effort: effortArg, title: title)
         let r = try await box.client.createTask(req)
+        StartingPrompts.note(box: box.name, session: r.session.name, prompt: text)
         return Created(box: box.name, location: location.name, worktree: r.worktree.name, session: r.session, agent: agentID)
     }
 }

@@ -110,7 +110,7 @@ struct ComposerBar: View {
         }
     }
 
-    /// The message waits the undo window (`PendingActions`); undone or failed, its text comes back through `composerRestore`.
+    /// The message shows and goes out at once (`scheduleSend`); failed, its text comes back through `composerRestore`.
     private func send() async {
         let t = text
         if vm.scheduleSend(t) { text = "" }

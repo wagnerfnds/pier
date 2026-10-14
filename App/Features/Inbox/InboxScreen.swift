@@ -195,6 +195,7 @@ struct InboxScreen: View {
                                   busy: store.busy.contains(i.id), replyFocus: $replyFocus,
                                   open: { open(i) }, review: review(i).map { r in { router.push(r) } },
                                   archive: { store.archive(i, model: model) }, send: { text in act(.send(text), i) },
+                                  sendTyped: { text in act(.send(text), i, typed: true) },
                                   onSeen: { prefs.markSeen(box: i.item.box, session: i.item.session.name) })
             }
         }
@@ -232,9 +233,9 @@ struct InboxScreen: View {
         router.push(i.item.route)
     }
 
-    private func act(_ a: InboxAction, _ i: InboxItem) {
+    private func act(_ a: InboxAction, _ i: InboxItem, typed: Bool = false) {
         focused = i.id
-        Task { await store.perform(a, on: i, model: model) }
+        Task { await store.perform(a, on: i, model: model, typed: typed) }
     }
 
     /// The worktree to review: the session's own, or the project's main worktree for a main-checkout session.
@@ -595,7 +596,10 @@ private struct InboxFinishedCard: View {
     let open: () -> Void
     let review: (() -> Void)?
     let archive: () -> Void
+    /// A next step picked (a tap or 1–2): waits the undo window, like an answer.
     let send: (String) -> Void
+    /// Words typed in the reply field: they go out at once, as a message does.
+    let sendTyped: (String) -> Void
     /// The person opened the reply: it counts as seen.
     var onSeen: () -> Void = {}
     @State private var expanded = false
@@ -713,7 +717,7 @@ private struct InboxFinishedCard: View {
         let t = text
         text = ""
         replyFocus.wrappedValue = nil
-        send(t)
+        sendTyped(t)
     }
 }
 

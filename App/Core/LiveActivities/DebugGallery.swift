@@ -66,9 +66,12 @@ struct WidgetGalleryView: View {
     private var activity: some View {
         VStack(spacing: 14) {
             ForEach(Array([samples.running, samples.waiting, samples.finished].enumerated()), id: \.offset) { _, s in
+                // As the Lock Screen draws it: at most 160 pt tall, what overflows cut off at the banner's edges.
                 SessionLockScreenView(attrs: s.attrs, state: s.state)
-                    .background(BTheme.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .frame(width: 369)
+                    .frame(maxHeight: 160)
+                    .background(BTheme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             }
         }
     }

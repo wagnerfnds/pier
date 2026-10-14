@@ -379,7 +379,14 @@ import AppKit
     /// Screenshots without Screen Recording (`snapshot:<dir>`): the tab's view and the open side panel's drawn into
     /// `tab.png` and `panel.png` at 2×, transparent outside their shapes, so they compose over any background and never
     /// carry what is on the person's screen.
+    /// `snapshot:stderr:<name>`: the panel's PNG goes to standard error as one `PIER-SNAPSHOT <name> <base64>` line, for a
+    /// run whose sandbox keeps its files where the shell that started it cannot read them.
     func snapshot(to dir: String) -> String {
+        if dir.hasPrefix("stderr:") {
+            guard panelController.isOpen, let root = panelController.panel.contentView, let png = Self.png(of: root) else { return "snapshot: no panel" }
+            FileHandle.standardError.write(Data("PIER-SNAPSHOT \(dir.dropFirst(7)) \(png.base64EncodedString())\n".utf8))
+            return "snapshot: stderr"
+        }
         let url = URL(fileURLWithPath: dir)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         var written: [String] = []

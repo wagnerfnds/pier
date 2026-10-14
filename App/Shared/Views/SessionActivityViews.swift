@@ -61,13 +61,13 @@ struct ActivityPermissionButtons: View {
             Button(intent: DenyPermissionIntent(box: attrs.box, session: attrs.session)) {
                 Label("Negar", systemImage: "xmark").labelStyle(.titleAndIcon)
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(BTheme.red)
-                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity).padding(.vertical, 7)
                     .background(BTheme.red.opacity(0.16), in: Capsule())
             }
             Button(intent: AllowPermissionIntent(box: attrs.box, session: attrs.session)) {
                 Label("Permitir", systemImage: "checkmark").labelStyle(.titleAndIcon)
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(BTheme.onFill)
-                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity).padding(.vertical, 7)
                     .background(BTheme.orange, in: Capsule())
             }
         }
@@ -82,27 +82,29 @@ struct ReviewLink: View {
         Link(destination: Shared.reviewURL(box: attrs.box, name: attrs.session)) {
             Label("Revisar", systemImage: "doc.text.magnifyingglass")
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(BTheme.onFill)
-                .padding(.horizontal, 14).padding(.vertical, 8)
+                .padding(.horizontal, 14).padding(.vertical, 7)
                 .background(BTheme.green, in: Capsule())
         }
     }
 }
 
-/// The line under the title: what the agent asks, does, or did.
+/// The line under the title: what the agent asks, does, or did, in at most `lines` lines. The Lock Screen gives a Live
+/// Activity 160 pt in all and takes whatever overflows out of its margins (the pill and the buttons ended up touching
+/// the edges), so a row of buttons under this line leaves it two lines, and nothing here asks for more than it gets.
 struct DetailLine: View {
     let state: ActivityContentState
+    var lines = 3
     var body: some View {
         switch state.phase {
         case .waiting:
             Text(state.ask ?? "Aguardando sua resposta")
-                .font(.system(size: 12, design: .monospaced)).foregroundStyle(BTheme.orange).lineLimit(3)
+                .font(.system(size: 12, design: .monospaced)).foregroundStyle(BTheme.orange).lineLimit(lines)
         case .running, .starting:
             Text(state.step ?? (state.phase == .starting ? "Iniciando…" : "Trabalhando…"))
                 .font(.system(size: 12)).foregroundStyle(BTheme.textDim).lineLimit(1)
         case .finished:
             if let reply = state.reply, !reply.isEmpty {
-                Text(reply).font(.system(size: 13)).foregroundStyle(BTheme.text).lineLimit(4)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(reply).font(.system(size: 13)).foregroundStyle(BTheme.text).lineLimit(lines)
             } else {
                 Text("Terminou").font(.system(size: 12)).foregroundStyle(BTheme.textDim)
             }
@@ -118,10 +120,13 @@ struct SessionLockScreenView: View {
     let attrs: SessionActivityAttributes
     let state: ActivityContentState
 
+    /// A row of buttons closes the banner: Permitir / Negar, or the line counts and Revisar.
+    private var hasActions: Bool { (state.phase == .waiting && state.hasMenu) || state.phase == .finished }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                SharedAgentGlyph(agent: attrs.agent, size: 34)
+                SharedAgentGlyph(agent: attrs.agent, size: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(attrs.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(BTheme.text).lineLimit(1)
                     Text(attrs.project).font(.system(size: 12)).foregroundStyle(BTheme.textDim).lineLimit(1)
@@ -138,7 +143,7 @@ struct SessionLockScreenView: View {
                     if !state.phase.isFinal { PhaseTimer(state: state, size: 13) }
                 }
             }
-            DetailLine(state: state)
+            DetailLine(state: state, lines: hasActions ? 2 : 3)
             if state.phase == .waiting && state.hasMenu {
                 ActivityPermissionButtons(attrs: attrs)
             } else if state.phase == .finished {
@@ -149,7 +154,8 @@ struct SessionLockScreenView: View {
                 }
             }
         }
-        .padding(16)
+        // 14 + 32 + 8 + two lines + 8 + a 31 pt button + 14 is about 140 pt: always inside the Lock Screen's 160.
+        .padding(.horizontal, 16).padding(.vertical, 14)
     }
 }
 
@@ -221,7 +227,8 @@ struct IslandExpandedBottom: View {
     let state: ActivityContentState
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            DetailLine(state: state).frame(maxWidth: .infinity, alignment: .leading)
+            DetailLine(state: state, lines: (state.phase == .waiting && state.hasMenu) || state.phase == .finished ? 2 : 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if state.phase == .waiting && state.hasMenu {
                 ActivityPermissionButtons(attrs: attrs)
             } else if state.phase == .waiting, let n = state.choices, n > 1 {
@@ -251,5 +258,5 @@ extension ActivityContentState {
     static var sampleWaiting: Self { .init(phase: .waiting, since: Date().addingTimeInterval(-42), step: nil, ask: "Bash  rm -rf node_modules && pnpm install", hasMenu: true) }
     static var sampleQuestion: Self { .init(phase: .waiting, since: Date().addingTimeInterval(-20), step: nil, ask: "Which layout for the pricing page?", hasMenu: false, choices: 3) }
     static var sampleFinished: Self { .init(phase: .finished, since: Date().addingTimeInterval(-60), step: nil, ask: nil, hasMenu: false, added: 128, removed: 34,
-                                            reply: "Corrigi os retries do webhook: agora o backoff é exponencial e os testes de integração passam. Também removi o timeout fixo de 30 s.") }
+                                            reply: "Corrigi os retries do webhook: agora o backoff é exponencial e os testes de integração passam. Também removi o timeout fixo de 30 s, que derrubava as entregas lentas, e o log mostra cada tentativa com o tempo de espera.") }
 }

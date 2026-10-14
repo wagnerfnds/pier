@@ -15,6 +15,20 @@ private func page(
 }
 
 @Suite struct TranscriptStoreTests {
+    @Test func survivesEncodingWithItsCursorAndHole() throws {
+        var s = TranscriptStore()
+        s.apply(page([item("user", 1), item("text", 5, text: "olá")], next: 2))
+        s.apply(page([item("text", 100), item("text", 110)], next: 2, gen: "g2", reset: true, start: 100, more: true))
+        _ = s.addPendingUser("on its way")
+        let back = try JSONDecoder().decode(TranscriptStore.self, from: JSONEncoder().encode(s))
+        #expect(back == s)
+        #expect(back.since == 2 && back.gen == "g2" && back.gapBefore == 100 && back.pending.count == 1)
+        // and it goes on from where it was: the next poll's items are merged, not taken as a new conversation
+        var next = back
+        next.apply(page([item("text", 120)], next: 3, gen: "g2"))
+        #expect(next.items.map { $0.off } == [1, 5, 100, 110, 120])
+    }
+
     @Test func openThenIncrementalUpsert() {
         var s = TranscriptStore()
         s.apply(page([item("user", 10), item("tools", 20, done: false)], next: 2))

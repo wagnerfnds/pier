@@ -1,0 +1,118 @@
+import CryptoKit
+import Foundation
+import PierKit
+
+/// The conversations read lately, so a session opens on what it showed last time and only asks the box for what is new
+/// (`since` / `gen`): reopening a chat, the Mac panel and the window showing the same agent, or the app launched again
+/// from a notification, costs no full read and never shows "Abrindo a conversa…" for a conversation already seen. The
+/// newest ones in memory, and on disk (the Caches folder, written a moment after they change, the most recent kept);
+/// a box's mock or demo conversations never touch the disk. Messages still on their way are left out (they belong to
+/// the screen that sent them), and so is an answer with no record (an agent still starting).
+@MainActor final class TranscriptCache {
+    static let shared = TranscriptCache()
+    private var stores: [String: TranscriptStore] = [:]
+    private var order: [String] = []
+    private let limit = 16
+    /// Changed since the last write, and allowed on disk.
+    private var dirty: Set<String> = []
+    /// Looked for on disk already this run (found or not).
+    private var probed: Set<String> = []
+    private var saving: Task<Void, Never>?
+    private nonisolated static let keepOnDisk = 40
+
+    func store(box: String, session: String) -> TranscriptStore? {
+        let k = Self.key(box, session)
+        if let s = stores[k] { return s }
+        guard !probed.contains(k), Self.diskAllowed, let url = Self.file(k) else { return nil }
+        probed.insert(k)
+        guard let data = try? Data(contentsOf: url), let s = try? JSONDecoder().decode(TranscriptStore.self, from: data) else { return nil }
+        #if DEBUG
+        NSLog("Pier: conversation %@ opened from disk (%ld items)", k, s.items.count)
+        #endif
+        remember(s, k)
+        return s
+    }
+
+    /// `persist`: false for a mock or demo box.
+    func put(_ store: TranscriptStore, box: String, session: String, persist: Bool = true) {
+        guard store.source == "claude" || store.source == "codex" else { return }
+        var s = store
+        for p in s.pending { s.removePending(id: p.id) }
+        let k = Self.key(box, session)
+        remember(s, k)
+        guard persist, Self.diskAllowed else { return }
+        dirty.insert(k)
+        if saving == nil {
+            saving = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                self?.save()
+            }
+        }
+    }
+
+    private func remember(_ s: TranscriptStore, _ k: String) {
+        stores[k] = s
+        if order.last != k {
+            order.removeAll { $0 == k }
+            order.append(k)
+            while order.count > limit { stores[order.removeFirst()] = nil }
+        }
+    }
+
+    /// Writes what changed off the main thread, then leaves only the most recent files.
+    private func save() {
+        saving = nil
+        let batch = dirty.compactMap { k in stores[k].map { (Self.file(k), $0) } }
+        dirty = []
+        guard let folder = Self.folder, !batch.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            for case (let url?, let store) in batch {
+                if let data = try? encoder.encode(store) { try? data.write(to: url, options: .atomic) }
+            }
+            let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+            let dated = files.map { ($0, (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+            for (url, _) in dated.sorted(by: { $0.1 > $1.1 }).dropFirst(Self.keepOnDisk) { try? FileManager.default.removeItem(at: url) }
+        }
+    }
+
+    /// A UI test's mock run (on the Mac it shares the installed app's container) keeps everything in memory; in Debug,
+    /// `-transcriptDisk 1` lets one use the disk anyway (a simulator, to see a cold start open on the kept conversation).
+    private static var diskAllowed: Bool {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "transcriptDisk") { return true }
+        #endif
+        return !UITestMock.enabled
+    }
+    private nonisolated static let folder: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+        .appendingPathComponent("Transcripts", isDirectory: true)
+
+    /// The file of a conversation: named by a hash of box and session (a box's name can hold anything).
+    private nonisolated static func file(_ key: String) -> URL? {
+        let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+        return folder?.appendingPathComponent(digest.prefix(32) + ".json")
+    }
+
+    private static func key(_ box: String, _ session: String) -> String { "\(box)/\(session)" }
+}
+
+/// The first prompt of a session started from this device, for the moments before the agent's record has it: the
+/// conversation opens on the person's words and the agent starting, instead of a screen the box reads while Claude Code
+/// or Codex has not written its record yet. Kept for ten minutes, in memory.
+@MainActor enum StartingPrompts {
+    private static var prompts: [String: (text: String, at: Date)] = [:]
+
+    static func note(box: String, session: String, prompt: String) {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let now = Date()
+        prompts = prompts.filter { now.timeIntervalSince($0.value.at) < 600 }
+        prompts["\(box)/\(session)"] = (text, now)
+    }
+
+    static func prompt(box: String, session: String) -> (text: String, at: Date)? {
+        guard let p = prompts["\(box)/\(session)"], Date().timeIntervalSince(p.at) < 600 else { return nil }
+        return p
+    }
+}

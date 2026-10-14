@@ -28,6 +28,14 @@ final class MockBox: PierTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var sessions: [JSON] = []
     private var transcripts: [String: [JSON]] = [:]
+    /// A task or chat just started: Claude Code writes its record only once the prompt is in, so for its first seconds the
+    /// box has none to read (`source: "none"`), as on pierd.
+    private var recordAt: [String: Date] = [:]
+    /// How long that lasts: 3 s, or `-mockRecordDelay <s>` (a UI test that looks at the chat meanwhile).
+    private static var recordDelay: Double {
+        let d = UserDefaults.standard.double(forKey: "mockRecordDelay")
+        return d > 0 ? d : 3
+    }
     private var seq = 300
     private var off = 1000
 
@@ -426,7 +434,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
         let s = Self.session(name, location: location, dir: "/home/ubuntu/code/\(location)", state: "running", title: String(prompt.prefix(40)))
         sessions.insert(s, at: 0)
         transcripts[name] = [item("user", text: prompt)]
-        scheduleReply(name, text: "Started. I'll let you know when it's done.")
+        recordAt[name] = Date().addingTimeInterval(Self.recordDelay)
+        scheduleReply(name, text: "Started. I'll let you know when it's done.", after: Self.recordDelay + 2)
         var out = Self.fixtureObject(MockFixtures.taskCreate)
         out["session"] = s
         return (201, Self.json(out))
@@ -443,7 +452,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
         s["agent"] = req["agent"] ?? "claude"
         sessions.insert(s, at: 0)
         transcripts[name] = [item("user", text: prompt)]
-        scheduleReply(name, text: "Good question. Let's think it through together.")
+        recordAt[name] = Date().addingTimeInterval(Self.recordDelay)
+        scheduleReply(name, text: "Good question. Let's think it through together.", after: Self.recordDelay + 2)
         return (200, Self.json(s))
     }
 
@@ -510,6 +520,10 @@ final class MockBox: PierTransport, @unchecked Sendable {
         }
         switch (method, p[3]) {
         case (.get, "transcript") where p.count == 4:
+            if let at = recordAt[name], Date() < at {
+                return (200, Self.json(["source": "none", "items": [JSON](), "crew": [JSON](),
+                                        "reason": "No claude conversation for /home/ubuntu/code/\(name) yet in ~/.claude/projects."]))
+            }
             let all = transcripts[name] ?? []
             // --- Agents board: `before=0` is "the tail" (the board's last reply of a finished turn), as on pierd. ---
             if query["before"] == "0" { return (200, Self.json(["source": "claude", "items": Array(all.suffix(40)), "more": all.count > 40, "next": 0])) }

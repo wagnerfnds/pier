@@ -256,6 +256,7 @@ final class ComposeModel {
         app?.prefs.noteComposed(box: box, location: loc.name, pick: .init(agent: agent.id, model: modelArg, effort: effortArg))
         conn.scheduleRefresh(sessions: true, locations: true)
         if let session {   // the Live Activity manager follows new tasks
+            StartingPrompts.note(box: box, session: session.name, prompt: text)
             NotificationCenter.default.post(name: .pierTaskCreated, object: nil, userInfo: ["box": box, "session": session.name])
             // No title typed: Haiku on the box writes one from the prompt (in the background; failures keep the box's).
             if titleArg == nil { AITitler.titleNewTask(box: box, session: session, prompt: text, model: app) }
@@ -287,6 +288,7 @@ final class ComposeModel {
         app?.prefs.setComposeDraft("")
         app?.prefs.noteChatted(box: box, pick: .init(agent: agent.id, model: modelArg, effort: effortArg))
         conn.scheduleRefresh(sessions: true)
+        StartingPrompts.note(box: box, session: session.name, prompt: text)
         NotificationCenter.default.post(name: .pierTaskCreated, object: nil, userInfo: ["box": box, "session": session.name])
         return session
     }

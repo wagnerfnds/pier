@@ -224,7 +224,9 @@ public final class PierMenuBarPlugin: NSObject {
                 return RegionPicker.renderDemo(to: String(command.dropFirst(15)))
             } else if command.hasPrefix("panel:") {
                 let name = String(command.dropFirst(6))
-                if name == "close" { surface?.panelController.close() } else { surface?.panelController.show(screen(named: name)) }
+                if name == "close" { surface?.panelController.close() }
+                else if name == "scrolltop" { surface?.panelController.debugScrollTop() }
+                else { surface?.panelController.show(screen(named: name)) }
             } else {
                 surface?.debug(command)
             }

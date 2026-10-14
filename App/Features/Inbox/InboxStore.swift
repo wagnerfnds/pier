@@ -173,7 +173,9 @@ final class InboxStore {
     /// (`PendingActions`): "Desfazer" brings the card back and nothing is sent. The window's token when it was scheduled
     /// (the Mac's Inbox card follows it to show "Enviando…" and then the receipt), nil when nothing happened.
     @discardableResult
-    func perform(_ action: InboxAction, on i: InboxItem, model: AppModel) async -> PendingActions.Token? {
+    /// `typed`: words written in a reply field, which go out at once like any message; a pick (an answer, a next step)
+    /// waits the undo window.
+    func perform(_ action: InboxAction, on i: InboxItem, model: AppModel, typed: Bool = false) async -> PendingActions.Token? {
         guard vm(i, model: model) != nil, !busy.contains(i.id) else { return nil }
         let label: String
         switch action {
@@ -181,7 +183,7 @@ final class InboxStore {
         case .send(let text): label = text
         }
         withAnimation(.snappy) { handled[i.id] = i.since }
-        return PendingActions.shared.schedule(label: label, perform: { [weak self] in
+        return PendingActions.shared.schedule(label: label, after: typed ? .zero : nil, perform: { [weak self] in
             guard let self else { return }
             if !(await self.execute(action, on: i, model: model)) { withAnimation(.snappy) { self.handled[i.id] = nil } }
         }, onUndo: { [weak self] in

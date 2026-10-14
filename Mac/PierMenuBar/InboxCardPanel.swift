@@ -331,13 +331,14 @@ final class CardView: NSView, NSTextFieldDelegate {
             }
         }
         replyBox.placeholder = card.replyPlaceholder
-        // Bottom row: open the session; Revisar / Arquivar for a finished turn, Dispensar for a question.
+        // Bottom row: the whole conversation, here in the panel (the app is a click away from it, "Abrir no Pier");
+        // Revisar / Arquivar for a finished turn, Dispensar for a question.
         func pill(_ key: String, _ symbol: String, _ color: NSColor, _ action: String) {
             let b = PillButton(title: strings[key] ?? key, symbol: symbol, color: color)
             b.onClick = { [weak self] in self?.onAction?(action) }
             addSubview(b); bottomButtons.append(b); built.append(b)
         }
-        pill("cardOpen", "arrow.up.forward.app", PanelStyle.accent, "card:open:\(card.id)")
+        pill("cardConversation", "bubble.left.and.text.bubble.right", PanelStyle.accent, "panel:show:agent:\(card.id)")
         if card.kind == "finished" {
             if card.canReview { pill("review", "doc.text.magnifyingglass", PanelStyle.accent, "card:review:\(card.id)") }
             pill("archive", "archivebox", PanelStyle.textDim, "card:clear:\(card.id)")

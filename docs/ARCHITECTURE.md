@@ -14,8 +14,8 @@ code calls which route.
    "Opções" with smart defaults and a one-line summary (+ photo). Model and effort are chips (every choice in sight,
    "Outro…" for a name typed by hand); the form is a 720 pt column, and on the Mac Start sits at its end with ⌘↩
    beside it (the iPhone and the iPad keep a bar above the on-screen keyboard, the iPad's as wide as the column).
-4. Session = a chat first (transcript folded into turns, Markdown replies, needs-you card above the composer, Send that
-   becomes Stop while the agent works); the raw terminal is a secondary view remembered per session.
+4. Session = a chat first, from its first second (transcript folded into turns, Markdown replies, needs-you card above
+   the composer, Send that becomes Stop while the agent works); the raw terminal is a secondary view remembered per session.
 5. Needs you: permission Allow once / Always / Deny (screen menu parsing) and question answering.
 6. Review: files changed, per-file diff, git actions (commit, push, open PR) and pull requests, via `exec` on the box.
 7. Projects: user-defined **sections** (stored on the device), each ordered by hand, by name or by recent activity, renames,
@@ -68,7 +68,8 @@ docs/
 - **Persistence**: Keychain for the identity key and the pairings (shared with the widget extension); JSON files in
   Application Support / the App Group for sections, renames, hidden projects, prompt drafts and caches.
 - **Live updates**: one event stream per box while the app is active (`/v1/events?since=` NDJSON, resume by seq); refresh
-  affected resources on events; the transcript polls ~1.5 s while a conversation is open.
+  affected resources on events; the transcript polls ~1.5 s while a conversation is open, from what `TranscriptCache`
+  kept of it (memory and disk), so a conversation seen before opens at once.
 - **Background**: push from pierd, or the Mac's alerts through iCloud (docs/PUSH.md 8); BGAppRefreshTask polls
   `/v1/sessions` and posts local notifications for new `waiting`/`finished` on boxes without push.
 - **Never** set `open` on task/session requests. Always pass `when` on send (`idle` from the composer, `now` for answers).
@@ -133,9 +134,23 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   its line breaks (chat convention). In the conversation the text is selectable on the Mac only (`touchSelection`: a
   long press on the iPhone opens the message's Copiar), and the lazy stack iterates light rows (id + index), which
   took a fling through a long chat on an iPhone from ~28 to ~5.5 ms/s of hitches.
-- A message shows the moment it is sent (`outgoing`, "Enviando…"), through the undo window, until the box's pending
-  copy and then the record's replace it in the same turn. A send has 15 s; when it fails on the connection the view
-  model drops the connection and sends again with the same `idem_key` (pierd types it once).
+- A message shows the moment it is sent (`outgoing`, "Enviando…") and goes out at once: typed and sent on purpose, it
+  skips the undo window (that is for one-tap answers; a message sent by mistake is stopped with Interromper, or taken back
+  from the queue). The box's pending copy and then the record's replace it in the same turn. Sends go one at a time in
+  the order they were made (`sendTail`), whoever sends (the composer, the Inbox, the Mac panel, the next steps), so the
+  composer takes the next message while the last is on its way. A send has 15 s; when it fails on the connection the
+  view model drops the connection and sends again with the same `idem_key` (pierd types it once).
+- A task starts in its chat: Claude Code and Codex write their record only once the prompt is in, and until then the box
+  answers `source: "none"`. `recordPending` (a Claude or Codex session with no record yet, waiting, or younger than 2 min
+  by this device's clock when started here, `StartingPrompts`, else 90 s by the box's) keeps the conversation, not the
+  screen: the prompt as the first bubble, "Iniciando Claude Code…" with the step read from the screen, the transcript read
+  on every tick until the record is there; a startup dialog comes up as the needs-you card. A finished turn with still no
+  record is one the box cannot read: then `ConversationFallback` shows the screen. A session not yet in the box's list (a
+  task made a moment ago) is not "gone" until it was listed once, or 15 s passed.
+- `TranscriptCache`: what each conversation held, the newest 16 in memory and 40 on disk (Caches/Transcripts, a hash of
+  box and session; written 2 s after a change, off the main thread; `TranscriptStore` is Codable). A session screen, the
+  Mac panel's agent and a relaunch from a notification open on it and poll from its `next` / `gen`. Mock and demo boxes
+  stay in memory (Debug: `-transcriptDisk 1` lets a mock run use the disk, to try a cold start on a simulator).
 - `LinkWatch` (PierKit): polls that fail on the connection itself (not on the box's answer) mark the screen troubled
   ("A box não está respondendo. Reconectando…" at the top, as are "offline", revoked and another key), and two in a
   row drop the connection, so the next request dials again, address and relay, instead of waiting for the PING
@@ -147,8 +162,11 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   the view graph every frame (about a fifth of the main thread while an agent worked). XCUITest takes an endless Core
   Animation for an app that never idles (60 s per tap), so with `-uiTestMock` they stand still (`Motion.endless`),
   except under `-chatPerfProbe`.
-- The compact title (name + "Claude Code · Trabalhando · 12s") opens a Details sheet (project, box, model, mode,
-  context, to-dos, helpers, published pages). The ⋯ menu holds rename, review, terminal toggle, Live Activity, stop.
+- Details (project, box, model, mode, context, to-dos, helpers, published pages; `SessionDetailsList`): on the iPad and
+  the Mac the inspector column at the window's right (`.inspector`; the toolbar's sidebar button, ⌥⌘I, the Mac's state
+  line or the ⋯ menu; open or closed for every session, `session.inspector`; iPadOS lays it over the chat when the
+  window is too narrow for three columns); on the iPhone a sheet from the compact title (name + "Claude Code · Trabalhando
+  · 12s"). The ⋯ menu holds rename, review, terminal toggle, Live Activity, stop.
 - Agents the box keeps no record for (`source: none`) and plain terminals show `ConversationFallback`: the last message
   read from the screen, rendered as Markdown, plus a way into the terminal.
 
@@ -206,14 +224,15 @@ the undo window. Keys: Return copies the fix, E ignores. Debug: `-uiTestHealth 1
 
 ## Undo window ("Enviando… Desfazer")
 
-Answers and messages wait before they go out (Ajustes → Respostas → "Tempo para desfazer": Desligado / 2 s / 5 s, default 2 s,
-UserDefaults `undoSeconds`; `-undoSeconds 0` as a launch argument for a run). `PendingActions.shared.schedule(label:symbol:after:
-perform:onUndo:)` (App/Core/PendingAction.swift) returns a token for `undo(_:)`; `PendingActionToast` (mounted once in RootView) shows
+One-tap answers (a permission, a menu, a question's choice, a next step) wait before they go out (Ajustes → Respostas → "Tempo
+para desfazer": Desligado / 2 s / 5 s, default 2 s, UserDefaults `undoSeconds`; `-undoSeconds 0` as a launch argument for a run).
+Typed messages (the composer, the Inbox's reply field, the Mac panel's) go out at once. `PendingActions.shared.schedule(label:symbol:after:
+perform:onUndo:)` (App/Core/PendingAction.swift; `after: .zero` runs it at once) returns a token for `undo(_:)`; `PendingActionToast` (mounted once in RootView) shows
 the newest one at the bottom with a ring and a shrinking bar; "Desfazer", ⌘Z (on the button) and Esc (the ring's shortcut, and the
 composer's own key handler) undo it. The work runs when the window ends even if its screen closed, and at once when the app goes to
 the background (under a background-task assertion). Used by the needs-you card (permission, menu, cursor menu, trust, questions: the
-card hides meanwhile and comes back on undo; an answer whose wait changed meanwhile is dropped), the composer (text and photos come
-back on undo or failure) and the board's Permitir/Negar. Live Activity and notification actions stay immediate.
+card hides meanwhile and comes back on undo; an answer whose wait changed meanwhile is dropped), the next steps, the Inbox's
+answers (`InboxStore.perform`; `typed: true` for its reply field skips the window) and the board's Permitir/Negar. Live Activity and notification actions stay immediate.
 
 ## AI titles
 
@@ -372,7 +391,9 @@ in a workspace ⌘S, ⇧⌘O, ⌘R and ⌥⌘1–4. Sheets answer Return (or ⌘
 `SessionActivityAttributes.ContentState` carries `choices` (how many answers a question offers, read by `LiveActivitySync`
 through `ChoiceOptions.fetch`, optional on the wire): the island's compact side shows "?3", the expanded bottom "3 opções ·
 toque para responder". "Revisar" is `pier://review?box=&name=` (`Shared.reviewURL`): the Review of the session's worktree
-(`Router.onOpenReview` → `AppModel.openSession(review: true)`), the chat when it has none. A finished turn is an update with
+(`Router.onOpenReview` → `AppModel.openSession(review: true)`), the chat when it has none. The Lock Screen gives an activity 160 pt and takes what overflows out of its margins, so
+`SessionLockScreenView` budgets its lines (the ask or the reply in two lines over a row of buttons, three without; 14 / 16 pt
+margins) and `-widgetGallery activity` draws it capped and clipped the same way. A finished turn is an update with
 a stale date an hour out, as pierd pushes it (the agent can run again on the person's next words and the same activity
 follows it); only an exit (`ended`) ends the activity. Debug `-openLink pier://…` opens a link as if tapped.
 
@@ -410,7 +431,8 @@ space "clientes" once one is set), spaces and environments (each "building" for 
 Group: its sidebar prefs go to `prefs-mock.json`, and it never writes the widgets' copy of names and hidden projects
 (the app rewrites that copy at launch). `-uiTestExtras 1`,
 `-uiTestChats 1`, `-uiTestPRs 1`, `-uiTestAsk 1` (an agent asking a question with three choices) and `-uiTestHealth 1`
-(a doctor report with three things to fix) add to its data.
+(a doctor report with three things to fix) add to its data. A task or chat it starts answers `source: "none"` for its first
+3 s, as a starting Claude Code does on pierd (`-mockRecordDelay <s>` makes that longer; `SessionStartUITests`).
 
 ## UI tests (real keyboard)
 
@@ -476,9 +498,11 @@ Revisar button is tapped by position in that test.
   "Aba oculta · ⌃⌥P mostra de novo" and turns the menu bar item on, whose first item is then "Mostrar a aba na borda".
   Debug: `-macSurfaceDebug "hover,panel:inbox,pick:1,…"` (one command every 1.5 s: hover, unhover, option, labels,
   collapse, toast, point:<y>, panel:<inbox|agents|agent:<id>|task|chat|project|talk|close>, page:<n>, pick:<n>,
-  reply:<text>, undo, optiontap, pointat, pointat:auto, probe, menu, state — `state` logs the canvas, the openness, every
-  button's frame and the panel's stack; screenshots without Screen Recording: `snapshot:<dir>` writes `tab.png` and
-  `panel.png` drawn from the views at 2× with alpha, `pointat:render:<dir>` the point-at-it overlay as `pointat.png`,
+  reply:<text>, agentsend:<text> (a message from the agent screen shown), undo, optiontap, pointat, pointat:auto, probe,
+  menu, state — `state` logs the canvas, the openness, every button's frame and the panel's stack; screenshots without
+  Screen Recording: `snapshot:<dir>` writes `tab.png` and `panel.png` drawn from the views at 2× with alpha
+  (`snapshot:stderr:<name>` sends the panel's as a `PIER-SNAPSHOT <name> <base64>` line to standard error, for a shell the
+  app's sandbox keeps out of its container), `pointat:render:<dir>` the point-at-it overlay as `pointat.png`,
   `offscreen` keeps the tab and the panel laying out but off the screen, `hidewindow` orders the app's window out),
   `-macFakeShot <png>` stands in for the screen, `-uiTestEmpty 1` a box with no session.
 - **The side panel (Mac)**: `SidePanelController` (`SidePanel.swift`, `PanelScreens.swift`, `InboxCardPanel.swift`,
@@ -490,10 +514,17 @@ Revisar button is tapped by position in that test.
   time (`InboxStore.items`, needs-you then finished; a page indicator, ← → / J K), the agent, its question (a command in
   a code box), the answers as rows with keycaps, a reply field (the mic dictates into it with the app's `Dictation`), a
   hint pill; 1–9 answer through `InboxStore.perform` (the undo window: the row turns green with a check, "Enviando… Esc
-  desfaz", then "✓ Enviado para Claude"), E archives / dismisses, Return opens the agent. **Agentes** → one **agent**:
-  its state and step, the last reply as compact Markdown (`MarkdownText`, Foundation's `AttributedString(markdown:)`),
-  its question and choices, the next steps as keycap rows (`NextStepsStore`, asked only while that screen shows), a
-  composer with the mic, Interromper / Arquivar / Revisar +N −M, "Abrir no Pier". **Nova tarefa / Nova conversa** on the
+  desfaz", then "✓ Enviado para Claude"), E archives / dismisses, Return or "Ver conversa" opens the agent. **Agentes**
+  → one **agent**, as a chat: its conversation (`ConversationPane`: the person's messages as bubbles, the agent's replies
+  as compact Markdown, `MarkdownText` on Foundation's `AttributedString(markdown:)`, one quiet line per stretch of work,
+  edit, notice or page, the reply being written and the working line), in a scroll view of its own that follows the
+  bottom while the person is there, keeps the place when they scrolled up ("Ir para o fim"), and asks for older rows at
+  the top (`agent:older:<id>`); the panel grows with it up to its maximum (`layoutContent(width:available:)`), then it
+  scrolls and the reply field stays in view. The app side runs the agent's own `SessionViewModel` while the screen shows
+  (events, the record, the screen, the draft; `TranscriptCache` holds what it read) and sends its newest 40 rows
+  (`PanelConversation`: `ConversationFold` flattened, the messages on their way included). Under it the question and
+  choices, the next steps as keycap rows (`NextStepsStore`, asked only while that screen shows), a composer with the mic
+  that sends at once (`scheduleSend`), Interromper / Arquivar / Revisar +N −M, "Abrir no Pier". **Nova tarefa / Nova conversa** on the
   app's `ComposeModel` and `TaskCreator`: a searchable project picker recent-first, new worktree or main, the agent,
   model and effort, the prompt (⌘↩ starts), dictation, a screenshot through Apontar; started, the panel shows the agent
   ("Iniciando…") without opening the app. **Falar** on `TalkModel`: the words, Encaminhar, the plan to confirm or adjust

@@ -2,8 +2,8 @@ import XCTest
 
 /// "Every answer waits a moment; Desfazer takes it back" and "titles are written by AI", against the mock box:
 /// a permission answered and undone (the card comes back, nothing is sent), answered and left alone (it goes out after the
-/// window), a composer message undone (its text comes back), and a new task whose prompt-derived title is replaced by the
-/// one Haiku wrote (the mock answers the title prompt after 3 s).
+/// window), a typed composer message that skips the window (it goes out at once), and a new task whose prompt-derived title
+/// is replaced by the one Haiku wrote (the mock answers the title prompt after 3 s).
 final class UndoAndTitleUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -105,38 +105,22 @@ final class UndoAndTitleUITests: XCTestCase {
 
     // MARK: composer
 
-    func testComposerMessageUndoneComesBackToTheField() {
-        launch(session: Self.finished)
+    /// A typed message is not a one-tap answer: it shows in the conversation and goes out at once, with no undo window even
+    /// with one set (a message sent by mistake is stopped with Interromper, or taken back from the queue).
+    func testComposerMessageGoesOutAtOnce() {
+        launch(session: Self.finished, undo: 5)
         let field = element("composer-field")
         XCTAssertTrue(field.waitForExistence(timeout: 15), "session screen did not open")
         field.tap()
         let message = "Roda os testes de novo, por favor"
         field.typeText(message)
         element("composer-send").tap()
-        let toast = element("undo-toast")
-        XCTAssertTrue(toast.waitForExistence(timeout: 2), "no undo toast after sending")
-        XCTAssertTrue(text(containing: message).exists, "the toast does not show the message")
-        XCTAssertNotEqual(field.value as? String, message, "the composer kept the text while it waits")
-        shot("undo-composer-pending")
-        element("undo-button").tap()
-        XCTAssertTrue(toast.waitForNonExistence(timeout: 2), "the toast stayed after Desfazer")
-        for _ in 0..<15 where (field.value as? String) != message { usleep(200_000) }
-        XCTAssertEqual(field.value as? String, message, "the text did not come back to the composer")
-        shot("undo-composer-undone")
-        sleep(4)
-        XCTAssertFalse(reply.exists, "the undone message reached the agent")
-    }
-
-    func testComposerMessageGoesOutAfterTheWindow() {
-        launch(session: Self.finished)
-        let field = element("composer-field")
-        XCTAssertTrue(field.waitForExistence(timeout: 15), "session screen did not open")
-        field.tap()
-        field.typeText("Pode seguir")
-        element("composer-send").tap()
-        XCTAssertTrue(element("undo-toast").waitForExistence(timeout: 2), "no undo toast after sending")
-        XCTAssertFalse(reply.exists, "sent before the window ended")
-        XCTAssertTrue(reply.waitForExistence(timeout: 10), "the message never reached the agent")
+        XCTAssertTrue(text(containing: message).waitForExistence(timeout: 2), "the message is not in the conversation")
+        XCTAssertFalse(element("undo-toast").exists, "a typed message waited the undo window")
+        XCTAssertNotEqual(field.value as? String, message, "the composer kept the text")
+        shot("composer-sent-at-once")
+        // The window is 5 s: the agent answering before it would have ended means the message did not wait for it.
+        XCTAssertTrue(reply.waitForExistence(timeout: 4.5), "the message did not go out at once")
     }
 
     func testUndoOffSendsAtOnce() {

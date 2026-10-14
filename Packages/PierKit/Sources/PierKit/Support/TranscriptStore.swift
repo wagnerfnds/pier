@@ -5,7 +5,10 @@ import Foundation
 /// Flow: `apply` every answer to `transcript(session:since: store.next, gen: store.gen)`; scroll up with
 /// `transcriptBefore(before: store.oldestOffset)` and `absorbHistory`; after a reset that left a hole, keep calling
 /// `transcriptBefore(before: store.gapBefore)` + `absorbHistory` until `gapBefore` is nil.
-public struct TranscriptStore: Sendable, Equatable {
+///
+/// Codable, so an app can keep what it read and open the conversation on it next time, then poll from `next` / `gen`
+/// as usual (a `gen` or `file` the box no longer knows answers with a reset, which `apply` handles).
+public struct TranscriptStore: Sendable, Equatable, Codable {
     public private(set) var items: [TranscriptItem] = []
     /// `since` for the next poll.
     public private(set) var next = 0
@@ -25,7 +28,7 @@ public struct TranscriptStore: Sendable, Equatable {
     public private(set) var pending: [TranscriptItem] = []
 
     /// A hole left by a `reset` between older items you hold and the fresh window.
-    public struct Gap: Sendable, Equatable {
+    public struct Gap: Sendable, Equatable, Codable {
         /// Offset of the newest older item held.
         public var after: Int64
         /// Next `before=` to request (the oldest offset known above the hole).

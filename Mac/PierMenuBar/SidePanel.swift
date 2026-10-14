@@ -43,6 +43,9 @@ enum PanelStyle {
     var title: String { get }
     /// Lays the content out for `width` and returns its height (the panel sizes itself to it, up to a maximum).
     func layoutContent(width: CGFloat) -> CGFloat
+    /// The same, knowing the most the panel can give (`available`): a screen with a scroll view of its own (the agent's
+    /// conversation) fills up to it and scrolls inside, keeping its reply field in view.
+    func layoutContent(width: CGFloat, available: CGFloat) -> CGFloat
     /// Keys while the panel is key and no field is editing; true when handled.
     func handleKey(_ event: NSEvent) -> Bool
     /// The dictation transcript for the field this screen owns (`target`), while it listens and once it stopped.
@@ -51,6 +54,7 @@ enum PanelStyle {
 }
 
 extension PanelScreenView {
+    func layoutContent(width: CGFloat, available: CGFloat) -> CGFloat { layoutContent(width: width) }
     func handleKey(_ event: NSEvent) -> Bool { false }
     func dictation(target: String, active: Bool, text: String) {}
     func focusField() {}
@@ -296,6 +300,9 @@ extension PanelScreenView {
         "open=\(isOpen) frame=\(NSStringFromRect(panel.frame)) stack=\(navigator.stack) key=\(panel.isKeyWindow)"
     }
 
+    /// Debug (`panel:scrolltop`): the agent's conversation scrolled to its top.
+    func debugScrollTop() { (current as? AgentScreen)?.debugScrollToTop() }
+
     /// Tests: the current screen's content height and title.
     var debugContent: String { "\(current?.title ?? "-") h=\(root.contentHeight)" }
 }
@@ -382,7 +389,7 @@ final class PanelRootView: NSView {
         self.edge = edge
         panelWidth = width
         let inner = width - Self.pad * 2
-        contentHeight = screenView?.layoutContent(width: inner) ?? 0
+        contentHeight = screenView?.layoutContent(width: inner, available: maxHeight - headerHeight - 22) ?? 0
         let wanted = headerHeight + contentHeight + 22
         panelHeight = min(wanted, maxHeight)
         needsLayout = true
@@ -403,6 +410,10 @@ final class PanelRootView: NSView {
         pointerY = y0 + 30
         scroll.frame = NSRect(x: x0 + pad, y: y0 + headerHeight, width: panelWidth - pad * 2, height: panelHeight - headerHeight - 12)
         if let s = screenView { s.frame = NSRect(x: 0, y: 0, width: panelWidth - pad * 2, height: max(contentHeight, scroll.frame.height)) }
+        // A screen that fits does not bounce (the agent's conversation scrolls inside it, and its ends must not drag the panel).
+        scroll.verticalScrollElasticity = contentHeight > scroll.frame.height + 1 ? .allowed : .none
+        // Overlay scrollers, always: a legacy one would take 15 pt off the right of a screen laid out for the full width.
+        if scroll.scrollerStyle != .overlay { scroll.scrollerStyle = .overlay }
     }
 
     override func draw(_ dirtyRect: NSRect) {
