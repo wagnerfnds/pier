@@ -95,6 +95,32 @@ func TestTheTrustMenuIsReadOffTheScreen(t *testing.T) {
 	}
 }
 
+// While a session's startup watch runs, its startup question is the
+// watch's to answer or report: the screen poller, reading it first, would
+// say the agent waits for someone, and a chat whose question pierd answers
+// would flash "needs you". Once no watch runs (pierd restarted while it
+// asked), the poller reads it as before.
+func TestAStartupQuestionIsItsWatchsToRead(t *testing.T) {
+	b := &Box{}
+	question := " Quick safety check: Is this a project you trust?\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n"
+	if b.startupOwns("s", question) {
+		t.Fatal("no watch runs, yet the poller leaves the question alone")
+	}
+	st := &startup{changed: make(chan struct{})}
+	startups.Store(startKey{b, "s"}, st)
+	defer startups.Delete(startKey{b, "s"})
+	if !b.startupOwns("s", question) {
+		t.Fatal("the watch is starting, yet the poller reads its question")
+	}
+	if b.startupOwns("s", "❯ \n  ? for shortcuts\n") {
+		t.Fatal("the poller leaves an agent at its prompt alone")
+	}
+	st.set(startReady)
+	if b.startupOwns("s", question) {
+		t.Fatal("the watch is over, yet the poller leaves the question alone")
+	}
+}
+
 // A chat's agent asks whether to trust the folder pierd made for the chat:
 // with nothing in it, pierd answers yes itself, moving the cursor and
 // reading the screen as a person would, so the chat goes on to its first

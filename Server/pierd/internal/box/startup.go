@@ -274,6 +274,16 @@ func (b *Box) atStartupQuestion(ctx context.Context, sess Session) bool {
 	return asked
 }
 
+// startupOwns says a session's screen is its startup watch's to read: it
+// shows the agent's startup question while the watch still runs.
+func (b *Box) startupOwns(name, screen string) bool {
+	if b.startingState(name) == startReady {
+		return false
+	}
+	asked, _ := startupQuestion(screen)
+	return asked
+}
+
 // startupHeld says whether a held prompt must wait for the agent's start:
 // it is drawing, or asks its startup question.
 func (b *Box) startupHeld(ctx context.Context, name string) bool {

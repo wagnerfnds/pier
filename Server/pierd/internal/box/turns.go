@@ -1623,6 +1623,11 @@ func (b *Box) pollScreens(ctx context.Context) {
 		if err != nil {
 			continue
 		}
+		if b.startupOwns(name, screen) {
+			// Its startup question, read here first: its watch answers it,
+			// or says the agent waits, itself.
+			continue
+		}
 		same, state, fidelity, reconcile := b.Turns.screenSeen(name, screen)
 		data := map[string]any{"session": name, "path": sess.Dir, "source": "screen"}
 		publish := func(typ string) {
