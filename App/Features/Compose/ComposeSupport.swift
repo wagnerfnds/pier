@@ -88,12 +88,26 @@ enum ComposeErrorText {
     }
 }
 
-/// A photo picked for the prompt, already downscaled to JPEG.
+/// A photo picked for the prompt, already downscaled to JPEG, or a file (a PDF, a log) as it came, without a thumbnail.
 struct ComposePhoto: Identifiable {
     let id = UUID()
     let name: String
     let data: Data
-    let thumb: UIImage
+    let thumb: UIImage?
+
+    /// A file that was picked or dropped: an image goes as a photo (downscaled), a PDF or text as it is; the
+    /// reason when the box would refuse it (a failure).
+    static func file(_ raw: Data, name: String?, index: Int) -> Result<ComposePhoto, AttachmentCheck.Refusal> {
+        switch AttachmentCheck.kind(of: raw) {
+        case .failure(let r): return .failure(r)
+        case .success(.image):
+            guard let p = make(from: raw, index: index) else { return .failure(.unsupported) }
+            let stem = name.map { ($0 as NSString).deletingPathExtension }.flatMap { $0.isEmpty ? nil : $0 }
+            return .success(stem.map { ComposePhoto(name: AttachmentCheck.uploadName($0 + ".jpg", fallback: p.name), data: p.data, thumb: p.thumb) } ?? p)
+        case .success:
+            return .success(ComposePhoto(name: AttachmentCheck.uploadName(name, fallback: "arquivo-\(index).txt"), data: raw, thumb: nil))
+        }
+    }
 
     static func make(from raw: Data, index: Int) -> ComposePhoto? {
         guard let img = UIImage(data: raw) else { return nil }

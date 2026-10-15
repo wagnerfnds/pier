@@ -88,8 +88,8 @@ struct TalkImage: Equatable {
 
     /// Like Compose's photos: at most 2048 px on the long side, JPEG, with a small thumbnail for the chip.
     static func make(from raw: Data, name: String = "tela.jpg") -> TalkImage? {
-        guard let photo = ComposePhoto.make(from: raw, index: 1) else { return nil }
-        return TalkImage(name: name, data: photo.data, thumb: photo.thumb)
+        guard let photo = ComposePhoto.make(from: raw, index: 1), let thumb = photo.thumb else { return nil }
+        return TalkImage(name: name, data: photo.data, thumb: thumb)
     }
 }
 

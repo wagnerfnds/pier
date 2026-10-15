@@ -92,6 +92,7 @@ struct ComposerBar: View {
                 .frame(width: 30, height: 30)
                 .background(Theme.red, in: Circle())
             }
+            .buttonStyle(.plain)    // the Mac's bezel would make the field taller than one line
             .disabled(vm.interrupting)
             .accessibilityLabel("Interromper o agente")
             .transition(.scale.combined(with: .opacity))
@@ -103,6 +104,7 @@ struct ComposerBar: View {
                     .background(canSend ? Theme.accent : Theme.textFaint, in: Circle())
                     .contentTransition(.symbolEffect(.replace))
             }
+            .buttonStyle(.plain)
             .disabled(!canSend)
             // ⌘↩ sends from a hardware keyboard (Return alone writes a new line in the growing field).
             .keyboardShortcut(.return, modifiers: .command)

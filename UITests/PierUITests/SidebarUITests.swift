@@ -258,6 +258,14 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(element("composer-field").waitForExistence(timeout: 10), "the agent's row did not open its conversation")
         XCTAssertTrue(element("sidebar-session-sandbox-subtract-claude-6s1").exists || element("sidebar-worktree-sandbox/subtract").exists,
                       "the agent left its project in the tree")
+        XCTAssertTrue(element("session-open-sandbox-subtract-claude-6s1").exists, "the row opened another conversation")
+
+        // Another agent's row opens that agent's conversation, not the one already open (its screen kept its model).
+        waiting.tap()
+        XCTAssertTrue(element("session-open-sandbox-claude-w9q").waitForExistence(timeout: 10), "the second agent's row kept the first conversation")
+        XCTAssertFalse(element("session-open-sandbox-subtract-claude-6s1").exists)
+        running.tap()
+        XCTAssertTrue(element("session-open-acme-web-claude-a1b").waitForExistence(timeout: 10), "a third agent's row kept the conversation")
     }
 
     func testNewTaskAndChatFromTheSidebar() {

@@ -15,6 +15,7 @@ struct StartPane: View {
     @Environment(Router.self) private var router
     @Environment(LocalPrefs.self) private var prefs
     @FocusState private var focused: Bool
+    @State private var dropping = false
 
     private var conn: BoxConnection? { model.connection(for: ref.box) }
     private var name: String { prefs.displayName(box: ref.box, location: project.name) }
@@ -87,7 +88,15 @@ struct StartPane: View {
                         .padding(.horizontal, 15).padding(.top, 16).allowsHitTesting(false)
                 }
             }
+            if !compose.photos.isEmpty {
+                ComposeAttachmentStrip(compose: compose).padding(.horizontal, 12).padding(.top, 6)
+            }
             HStack(spacing: 8) {
+                ComposeAttachButton(compose: compose) {
+                    Image(systemName: "paperclip").font(.system(size: Density.small + 2, weight: .semibold)).foregroundStyle(Theme.textDim)
+                        .frame(width: 28, height: 28).background(Theme.cardRaised, in: Circle())
+                }
+                .help("Anexar foto ou arquivo (ou arraste para cá)")
                 agentMenu
                 targetMenu
                 Spacer(minLength: 8)
@@ -107,7 +116,9 @@ struct StartPane: View {
             .padding(.horizontal, 10).padding(.vertical, 8)
         }
         .background(Theme.bg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(focused ? Theme.accent.opacity(0.5) : Theme.stroke, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .strokeBorder(dropping ? Theme.accent : focused ? Theme.accent.opacity(0.5) : Theme.stroke, lineWidth: dropping ? 2 : 1))
+        .composeDropTarget(compose, isTargeted: $dropping)
     }
 
     private var agentMenu: some View {
@@ -251,6 +262,7 @@ struct StartPane: View {
         Task {
             guard let s = await compose.submit() else { return }
             compose.prompt = ""
+            compose.photos = []
             compose.title = ""
             compose.resetName()
             open(s)

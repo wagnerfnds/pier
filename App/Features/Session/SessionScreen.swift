@@ -44,6 +44,10 @@ struct SessionScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if DEBUG
+            // Which conversation the screen's model holds, for the UI tests (the sidebar shows the same titles).
+            Color.clear.frame(width: 1, height: 1).accessibilityElement().accessibilityIdentifier("session-open-\(vm.name)")
+            #endif
             if let notice = linkNotice {
                 LinkNoticeBar(text: notice.text, symbol: notice.symbol, busy: notice.busy)
                     .transition(.move(edge: .top).combined(with: .opacity))

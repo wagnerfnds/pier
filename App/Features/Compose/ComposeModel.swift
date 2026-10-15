@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 import PierKit
 
 @MainActor @Observable
@@ -197,6 +198,52 @@ final class ComposeModel {
             let n = photoCounter
             let photo = await Task.detached { ComposePhoto.make(from: raw, index: n) }.value
             if let photo { photos.append(photo) }
+        }
+    }
+
+    /// Files from the file picker (security-scoped URLs) or dropped from the Finder / Files.
+    func addFiles(_ urls: [URL]) async {
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            let raw = await Task.detached { try? Data(contentsOf: url) }.value
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            guard let raw else { continue }
+            await addFile(raw, name: url.lastPathComponent)
+        }
+    }
+
+    /// A dropped item or a file's bytes: an image goes as a photo, a PDF or a text file as it is, anything else is
+    /// refused here (the box would refuse it after the new worktree was made).
+    func addFile(_ raw: Data, name: String?) async {
+        photoCounter += 1
+        let n = photoCounter
+        switch await Task.detached(operation: { ComposePhoto.file(raw, name: name, index: n) }).value {
+        case .success(let p): photos.append(p); error = nil
+        case .failure(.tooLarge):
+            error = name.map { String(localized: "\($0) passa de 20 MB, o limite da box.") } ?? String(localized: "O arquivo passa de 20 MB, o limite da box.")
+        case .failure:
+            error = name.map { String(localized: "\($0) não pode ser anexado: só imagens, PDFs e arquivos de texto.") }
+                ?? String(localized: "Esse arquivo não pode ser anexado: só imagens, PDFs e arquivos de texto.")
+        }
+    }
+
+    /// Dropped items: files (from the Finder, Files or another app) by their bytes, images that are no file by their data.
+    func addDropped(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    Task { @MainActor in await self.addFiles([url]) }
+                }
+                continue
+            }
+            let type = [UTType.image, .pdf, .plainText, .data].first { provider.hasItemConformingToTypeIdentifier($0.identifier) }
+            guard let type else { continue }
+            let name = provider.suggestedName
+            _ = provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+                guard let data else { return }
+                Task { @MainActor in await self.addFile(data, name: name) }
+            }
         }
     }
 

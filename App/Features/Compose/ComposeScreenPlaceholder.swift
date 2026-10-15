@@ -12,7 +12,7 @@ struct ComposeScreenPlaceholder: View {
     @Environment(LocalPrefs.self) private var prefs
     @State private var vm: ComposeModel
     @State private var sheet: Sheet?
-    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var dropping = false
     @State private var savingPrompt = false
     @State private var newPromptTitle = ""
     @State private var customChoice: CustomChoice?
@@ -45,7 +45,7 @@ struct ComposeScreenPlaceholder: View {
                 if vm.chat { chatPlaceRow } else { projectRow }
                 agentRow
                 optionsCard
-                if !vm.photos.isEmpty && !vm.chat { photosRow }
+                if !vm.photos.isEmpty && !vm.chat { ComposeAttachmentStrip(compose: vm, size: 72) }
                 if let e = vm.error { errorCard(e) }
                 if inlineSubmit { inlineSubmitRow }
             }
@@ -111,10 +111,6 @@ struct ComposeScreenPlaceholder: View {
             vm.promptChanged()
             prefs.setComposeDraft(vm.prompt)
         }
-        .onChange(of: photoItems) { _, items in
-            guard !items.isEmpty else { return }
-            Task { await vm.addPhotos(items); photoItems = [] }
-        }
     }
 
     #if DEBUG
@@ -170,10 +166,9 @@ struct ComposeScreenPlaceholder: View {
             Divider().overlay(Theme.stroke)
             HStack(spacing: 16) {
                 if !vm.chat {
-                    PhotosPicker(selection: $photoItems, maxSelectionCount: 6, matching: .images) {
-                        Label("Foto", systemImage: "photo.on.rectangle.angled").font(.subheadline.weight(.medium))
+                    ComposeAttachButton(compose: vm) {
+                        Label("Anexar", systemImage: "paperclip").font(.subheadline.weight(.medium))
                     }
-                    .buttonStyle(.plain)
                 }
                 templatesMenu
                 Spacer()
@@ -193,7 +188,10 @@ struct ComposeScreenPlaceholder: View {
         }
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(dictation.isListening ? Theme.red.opacity(0.5) : promptFocused ? Theme.accent.opacity(0.5) : Theme.stroke, lineWidth: 1))
+            .strokeBorder(dropping ? Theme.accent : dictation.isListening ? Theme.red.opacity(0.5) : promptFocused ? Theme.accent.opacity(0.5) : Theme.stroke,
+                          lineWidth: dropping ? 2 : 1))
+        // A chat has no folder until it runs: it takes files from its own composer.
+        .composeDropTarget(vm, isTargeted: $dropping, enabled: !vm.chat)
     }
 
     // MARK: dictation
@@ -539,24 +537,6 @@ struct ComposeScreenPlaceholder: View {
             .foregroundStyle(Theme.accent)
             .padding(.horizontal, 12).padding(.vertical, 11)
             Divider().overlay(Theme.stroke).padding(.leading, 42)
-        }
-    }
-
-    private var photosRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(vm.photos) { p in
-                    Image(uiImage: p.thumb).resizable().scaledToFill()
-                        .frame(width: 72, height: 72).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(alignment: .topTrailing) {
-                            Button { vm.photos.removeAll { $0.id == p.id } } label: {
-                                Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.65))
-                            }
-                            .padding(3)
-                            .accessibilityLabel("Remover foto")
-                        }
-                }
-            }
         }
     }
 

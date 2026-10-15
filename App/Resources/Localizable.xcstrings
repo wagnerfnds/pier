@@ -145,6 +145,26 @@
         }
       }
     },
+    "%@ não pode ser anexado: só imagens, PDFs e arquivos de texto." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ can't be attached: only images, PDFs and text files."
+          }
+        }
+      }
+    },
+    "%@ passa de 20 MB, o limite da box." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is over 20 MB, the box's limit."
+          }
+        }
+      }
+    },
     "%@ pergunta na tela" : {
       "localizations" : {
         "en" : {
@@ -2245,12 +2265,32 @@
         }
       }
     },
+    "Anexar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attach"
+          }
+        }
+      }
+    },
     "Anexar foto" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Attach photo"
+          }
+        }
+      }
+    },
+    "Anexar foto ou arquivo (ou arraste para cá)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attach a photo or file (or drag it here)"
           }
         }
       }
@@ -2521,6 +2561,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Archive · %@"
+          }
+        }
+      }
+    },
+    "Arquivo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File"
           }
         }
       }
@@ -5307,6 +5357,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "That session has ended and is no longer on the box."
+          }
+        }
+      }
+    },
+    "Esse arquivo não pode ser anexado: só imagens, PDFs e arquivos de texto." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "That file can't be attached: only images, PDFs and text files."
           }
         }
       }
@@ -8833,6 +8893,16 @@
         }
       }
     },
+    "O arquivo passa de 20 MB, o limite da box." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The file is over 20 MB, the box's limit."
+          }
+        }
+      }
+    },
     "O Claude Code não foi encontrado na box." : {
       "localizations" : {
         "en" : {
@@ -11217,6 +11287,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remove the picture"
+          }
+        }
+      }
+    },
+    "Remover anexo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove attachment"
           }
         }
       }
