@@ -162,11 +162,16 @@ struct StartPane: View {
                 let here = worktree.main == true ? S("Checkout principal") : S("Nesta worktree")
                 if !compose.isNew { Label(here, systemImage: "checkmark") } else { Text(here) }
             }
+            if compose.isNew, compose.canSkipPrepare {
+                Divider()
+                Toggle(isOn: $compose.prepare) { Label("Preparar ambiente", systemImage: "hammer") }
+            }
         } label: {
             chip {
                 Image(systemName: compose.isNew ? "plus.square.on.square" : "arrow.triangle.branch")
                     .font(.system(size: Density.small, weight: .semibold)).foregroundStyle(Theme.textDim)
                 Text(compose.isNew ? S("Worktree nova") : worktree.main == true ? S("Checkout principal") : S("Nesta worktree"))
+                if compose.isNew, compose.canSkipPrepare, !compose.prepare { Text("sem ambiente").foregroundStyle(Theme.textFaint) }
             }
         }
         .plainMenu()

@@ -446,6 +446,7 @@ struct ComposeScreenPlaceholder: View {
                         if vm.isNew {
                             optionRow("arrow.turn.down.right", "A partir de", vm.effectiveBase.isEmpty ? "—" : vm.effectiveBase) { sheet = .base }
                             nameRow
+                            if vm.canSkipPrepare { prepareRow }
                         }
                     }
                     if let a = vm.agent {
@@ -516,6 +517,26 @@ struct ComposeScreenPlaceholder: View {
             .padding(.horizontal, 12).padding(.vertical, 10)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(kind == .model ? "compose-model" : "compose-effort")
+            Divider().overlay(Theme.stroke).padding(.leading, 42)
+        }
+    }
+
+    /// Setup script and autostart services as the worktree is made; off for a quick fix (Detalhes prepares it later).
+    private var prepareRow: some View {
+        VStack(spacing: 0) {
+            Toggle(isOn: $vm.prepare) {
+                HStack(spacing: 10) {
+                    Image(systemName: "hammer").foregroundStyle(Theme.textDim).frame(width: 20)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Preparar ambiente").font(.subheadline).foregroundStyle(Theme.textDim)
+                        Text(vm.prepare ? "Setup e serviços automáticos ao criar" : "Só o código; prepare depois em Detalhes")
+                            .font(.caption).foregroundStyle(Theme.textFaint)
+                    }
+                }
+            }
+            .tint(Theme.accent)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .accessibilityIdentifier("compose-prepare")
             Divider().overlay(Theme.stroke).padding(.leading, 42)
         }
     }

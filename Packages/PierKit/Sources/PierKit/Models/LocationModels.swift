@@ -341,13 +341,17 @@ public struct WorktreeRequest: Codable, Sendable, Hashable {
     public var base: String?
     public var pr: Int?
     public var ref: String?
+    /// false leaves the setup script and the autostart services for later (`prepare(location:worktree:)`, capability
+    /// `prepare`); nil prepares the worktree as it is made.
+    public var prepare: Bool?
 
-    public init(name: String, branch: String? = nil, base: String? = nil, pr: Int? = nil, ref: String? = nil) {
+    public init(name: String, branch: String? = nil, base: String? = nil, pr: Int? = nil, ref: String? = nil, prepare: Bool? = nil) {
         self.name = name
         self.branch = branch
         self.base = base
         self.pr = pr
         self.ref = ref
+        self.prepare = prepare
     }
 
     enum CodingKeys: String, CodingKey {
@@ -356,6 +360,7 @@ public struct WorktreeRequest: Codable, Sendable, Hashable {
         case base
         case pr
         case ref
+        case prepare
     }
 
     public init(from decoder: Decoder) throws {
@@ -365,5 +370,36 @@ public struct WorktreeRequest: Codable, Sendable, Hashable {
         self.base = try c.decodeIfPresent(String.self, forKey: .base)
         self.pr = try c.decodeIfPresent(Int.self, forKey: .pr)
         self.ref = try c.decodeIfPresent(String.self, forKey: .ref)
+        self.prepare = try c.decodeIfPresent(Bool.self, forKey: .prepare)
     }
+}
+
+/// How a worktree's preparation stands (`GET …/worktrees/{wt}/prepare`, docs/API.md §2.5): its setup script, then the
+/// services that start on their own.
+public struct PrepareStatus: Codable, Sendable, Hashable {
+    public enum State: String, Codable, Sendable { case running, ready, failed, skipped, unknown }
+
+    public let state: State
+    public let since: Date?
+    public let error: String?
+    /// The setup script that runs; nil or empty when there is none.
+    public let setup: String?
+    /// The services that start on their own.
+    public let services: [String]
+
+    public init(state: State, since: Date? = nil, error: String? = nil, setup: String? = nil, services: [String] = []) {
+        self.state = state; self.since = since; self.error = error; self.setup = setup; self.services = services
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        state = (try? c.decode(State.self, forKey: .state)) ?? .unknown
+        since = try c.decodeIfPresent(Date.self, forKey: .since)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        setup = try c.decodeIfPresent(String.self, forKey: .setup)
+        services = try c.decodeIfPresent([String].self, forKey: .services) ?? []
+    }
+
+    /// Something to run: a setup script or a service that starts on its own. Without either, preparing does nothing.
+    public var hasWork: Bool { !(setup ?? "").isEmpty || !services.isEmpty }
 }

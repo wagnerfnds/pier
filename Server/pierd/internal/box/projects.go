@@ -399,14 +399,11 @@ func (b *Box) runClone(from string, cl Clone, src repoSource, setup, adopt bool)
 				main = wt
 			}
 		}
-		if main.Path != "" {
-			if loc.Scripts.Setup != "" {
-				if err := b.lifecycle(from, "setup", loc, main.Path, main.Name, loc.Scripts.Setup, nil); err != nil {
-					fail(err)
-					return
-				}
+		if main.Path != "" && b.prep.start(prepKey(loc.Name, main.Name)) {
+			if err := b.prepareWorktree(from, loc, main); err != nil {
+				fail(err)
+				return
 			}
-			b.startAutostart(loc.Name, main.Name)
 		}
 	}
 	now := time.Now()

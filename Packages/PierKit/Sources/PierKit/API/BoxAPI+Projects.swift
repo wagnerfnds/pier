@@ -38,6 +38,17 @@ extension BoxAPI {
     public func worktreeServiceDetails(location: String, worktree: String) async throws -> [WorktreeServiceDetail] {
         try await get("/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/services")
     }
+
+    /// How the worktree's preparation (setup script, autostart services) stands. Capability `prepare`.
+    public func prepareStatus(location: String, worktree: String) async throws -> PrepareStatus {
+        try await get("/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/prepare")
+    }
+
+    /// Prepare the worktree now, in the background (again, for one already prepared): answers `running`; 409 while a
+    /// preparation of it still runs.
+    public func prepare(location: String, worktree: String) async throws -> PrepareStatus {
+        try decode(try await call(.post, "/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/prepare").data)
+    }
 }
 
 // The box's projects folder, its spaces and the projects' environments (capability `environments`, docs/API.md §2.9).

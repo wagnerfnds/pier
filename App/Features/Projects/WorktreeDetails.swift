@@ -2,6 +2,8 @@ import SwiftUI
 import PierKit
 
 /// "Detalhes" of a worktree: what runs there and how to see it.
+/// - **Preparação**: whether its setup script and autostart services ran (a worktree made without them, for a quick fix,
+///   is prepared from here; `…/prepare`, capability `prepare`);
 /// - **Visualização**: the dev servers listening in the worktree (`GET /v1/services`), each as a link to the box's
 ///   address and port, checked from this device (a box reached only through a relay has no page to open from here);
 /// - **Serviços**: the project's services in this worktree (`GET …/services`), with their command, to start, stop or restart;
@@ -25,7 +27,9 @@ final class WorktreeDetailsStore {
     private(set) var loaded = false
     private(set) var busy: Set<String> = []
     private(set) var links: [PublicLink] = []
+    private(set) var prepare: PrepareStatus?
     var error: String?
+    var prepareError: String?
 
     init(box: String, location: String, worktree: String) {
         self.box = box; self.location = location; self.worktree = worktree
@@ -40,6 +44,7 @@ final class WorktreeDetailsStore {
         if let s = await svc { services = s }
         if let a = await all { servers = Projects.devServers(a, location: location, worktree: wt) }
         if let s = await st, let mine = s.first(where: { $0.name == worktree }) { status = mine }
+        if conn.info?.has("prepare") == true, let p = try? await api.prepareStatus(location: location, worktree: worktree) { prepare = p }
         if conn.info?.has("shares") == true, let all = try? await api.publicLinks() {
             links = all.filter { $0.location == location && $0.worktree == worktree }
         }
@@ -70,6 +75,17 @@ final class WorktreeDetailsStore {
         guard let conn = model.connection(for: box) else { return }
         do { try await BoxAPI(transport: conn.raw).removePublicLink(name: l.name); links.removeAll { $0.name == l.name } }
         catch { self.error = ComposeErrorText.message(error) }
+    }
+
+    /// Runs the setup script and starts the autostart services, in the background on the box.
+    func runPrepare(model: AppModel) async {
+        guard let conn = model.connection(for: box) else { return }
+        busy.insert("prepare")
+        defer { busy.remove("prepare") }
+        do {
+            prepare = try await BoxAPI(transport: conn.raw).prepare(location: location, worktree: worktree)
+            prepareError = nil
+        } catch { prepareError = ComposeErrorText.message(error) }
     }
 
     func act(_ action: String, on service: String, model: AppModel) async {
@@ -121,6 +137,7 @@ struct WorktreeDetailsView: View {
 
     var body: some View {
         List {
+            if let p = store.prepare, p.hasWork { prepareSection(p) }
             preview
             servicesSection
             environment
@@ -140,8 +157,68 @@ struct WorktreeDetailsView: View {
         .task {
             for await h in model.hub.subscribe() where h.box == box {
                 let t = h.event.type
-                if t.hasPrefix("service.") || t.hasPrefix("worktree.setup") { await store.load(model: model) }
+                if t.hasPrefix("service.") || t.hasPrefix("worktree.setup") || t.hasPrefix("worktree.prepare") { await store.load(model: model) }
             }
+        }
+    }
+
+    // MARK: preparation
+
+    private func prepareSection(_ p: PrepareStatus) -> some View {
+        let running = p.state == .running || store.busy.contains("prepare")
+        return Section {
+            HStack(spacing: 8) {
+                if running { ProgressView().controlSize(.small) } else {
+                    Circle().fill(prepareColor(p.state)).frame(width: 8, height: 8)
+                }
+                Text(prepareTitle(p.state)).font(.body.weight(.semibold)).foregroundStyle(Theme.text)
+                if let since = p.since, !running {
+                    Text(since, format: .relative(presentation: .named)).font(.caption).foregroundStyle(Theme.textFaint)
+                }
+                Spacer(minLength: 4)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("prepare-state")
+            if let setup = p.setup, !setup.isEmpty { MonoText(setup, size: 11, color: Theme.textFaint).lineLimit(3).textSelection(.enabled) }
+            if !p.services.isEmpty {
+                Text("Depois sobem: \(p.services.joined(separator: ", "))").font(.caption).foregroundStyle(Theme.textDim)
+            }
+            if p.state == .failed, let e = p.error, !e.isEmpty {
+                Text(e).font(.mono(11)).foregroundStyle(Theme.red).lineLimit(8).textSelection(.enabled)
+            }
+            if let e = store.prepareError { Text(e).font(.caption).foregroundStyle(Theme.red) }
+            if !running {
+                Button { Task { await store.runPrepare(model: model) } } label: {
+                    Label(p.state == .ready || p.state == .failed ? "Preparar de novo" : "Preparar ambiente", systemImage: "hammer")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("prepare-run")
+            }
+        } header: {
+            Text("Preparação")
+        } footer: {
+            if p.state == .skipped { Text("Esta worktree foi criada só com o código. Prepare quando precisar rodar o projeto ou a visualização.") }
+        }
+        .listRowBackground(Theme.card)
+    }
+
+    private func prepareTitle(_ s: PrepareStatus.State) -> String {
+        switch s {
+        case .running: String(localized: "Preparando…")
+        case .ready: String(localized: "Ambiente pronto")
+        case .failed: String(localized: "O setup falhou")
+        case .skipped: String(localized: "Ambiente não preparado")
+        case .unknown: String(localized: "Sem registro desde que a box reiniciou")
+        }
+    }
+
+    private func prepareColor(_ s: PrepareStatus.State) -> Color {
+        switch s {
+        case .ready: Theme.green
+        case .failed: Theme.red
+        case .skipped: Theme.orange
+        case .running, .unknown: Theme.textFaint
         }
     }
 

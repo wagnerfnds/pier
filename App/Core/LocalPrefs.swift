@@ -32,6 +32,8 @@ final class LocalPrefs {
         var agent: String?
         var model: String?
         var effort: String?
+        /// A new worktree's environment (setup script, autostart services) is prepared as it is made; nil is yes.
+        var prepare: Bool? = nil
     }
     /// A saved prompt (template) for the composer.
     struct SavedPrompt: Codable, Identifiable, Hashable {

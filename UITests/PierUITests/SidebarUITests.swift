@@ -20,6 +20,15 @@ final class SidebarUITests: XCTestCase {
     private func text(containing s: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", s)).firstMatch
     }
+    private func waitUntil(_ seconds: TimeInterval, _ ok: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if ok() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
+        return ok()
+    }
+
     private func shot(_ name: String) {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
         if let dir = ProcessInfo.processInfo.environment["KBD_SHOTS"] {
@@ -135,6 +144,40 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(element("composer-field").waitForExistence(timeout: 15), "Start did not open the new agent's conversation")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "multiply")).firstMatch
                         .waitForExistence(timeout: 5), "the conversation does not start with the prompt")
+    }
+
+    /// A worktree made without its environment (sandbox/subtract in the mock) says so in Detalhes, and Preparar ambiente
+    /// runs it there: Preparando…, then Ambiente pronto. From the main checkout, Agentes can make the next one without it.
+    func testWorktreeIsPreparedLaterFromDetails() {
+        let worktree = element("sidebar-worktree-sandbox/subtract")
+        if !worktree.waitForExistence(timeout: 10) { element("sidebar-project-sandbox").tap() }
+        XCTAssertTrue(worktree.waitForExistence(timeout: 5))
+        worktree.tap()
+        element("workspace-tab-details").tap()
+        let state = element("prepare-state")
+        XCTAssertTrue(state.waitForExistence(timeout: 10), "Detalhes has no Preparação")
+        XCTAssertTrue(state.label.contains("não preparado"), "a worktree made without its environment reads \(state.label)")
+        shot("details-unprepared")
+        element("prepare-run").tap()
+        XCTAssertTrue(app.staticTexts["Preparando…"].waitForExistence(timeout: 5), "Preparar did not start")
+        // The Detalhes poll (6 s) reads it again.
+        XCTAssertTrue(waitUntil(15) { state.label.contains("Ambiente pronto") }, "the preparation never read ready: \(state.label)")
+        shot("details-prepared")
+
+        // The main checkout's box: "Worktree nova" offers to leave the environment for later, and its chip says so.
+        element("sidebar-worktree-sandbox/sandbox").tap()
+        element("workspace-tab-start").tap()
+        let target = element("start-target")
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        XCTAssertFalse(target.label.contains("sem ambiente"))
+        target.tap()
+        // In a menu a toggle is a checkmarked button.
+        let toggle = app.buttons["Preparar ambiente"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Worktree nova has no Preparar ambiente")
+        shot("start-target-menu")
+        toggle.tap()
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(5) { target.label.contains("sem ambiente") }, "the chip does not say the worktree goes without its environment")
     }
 
     func testNewSectionIsNamedInPlace() {

@@ -5,9 +5,9 @@ import PierKit
 enum TaskCreator {
     /// The `POST /v1/tasks` body Compose sends when there are no photos.
     static func request(location: String, worktree: String, base: String?, agent: String, prompt: String,
-                        model: String?, effort: String?, title: String?) -> TaskRequest {
+                        model: String?, effort: String?, title: String?, prepare: Bool? = nil) -> TaskRequest {
         TaskRequest(location: location, name: worktree, branch: worktree, base: base, agent: agent,
-                    prompt: prompt, model: model, effort: effort, title: title)
+                    prompt: prompt, model: model, effort: effort, title: title, prepare: prepare)
     }
 
     /// Presets usable at `location`: the project's own plus the box's.

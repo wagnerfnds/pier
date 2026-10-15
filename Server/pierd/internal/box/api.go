@@ -75,6 +75,8 @@ type Box struct {
 	envState envStates
 	// envLocks keeps one environment apply per location at a time.
 	envLocks sync.Map
+	// prep is how each worktree's preparation went (prepare.go).
+	prep prepStates
 	// Publisher, when set, is the relay the box's public links go through.
 	Publisher Publisher
 	// Exe is pierd's own binary, for the hooks and status line it puts in
@@ -145,6 +147,8 @@ func (b *Box) Mount(s *wire.Server) {
 	route("GET /v1/locations/{name}/worktrees/{worktree}/file", b.readFile)
 	route("PUT /v1/locations/{name}/worktrees/{worktree}/file", b.writeFile)
 	route("GET /v1/locations/{name}/worktrees/{worktree}/services", b.listWorktreeServices)
+	route("GET /v1/locations/{name}/worktrees/{worktree}/prepare", b.getPrepare)
+	route("POST /v1/locations/{name}/worktrees/{worktree}/prepare", b.postPrepare)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/services/{service}/{action}", b.serviceAction)
 	route("GET /v1/worktrees", b.listWorktreeStatuses)
 	route("GET /v1/services", b.handleServices)
@@ -342,8 +346,9 @@ func (b *Box) addWorktree(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// createWorktree makes a git worktree once the hooks allow it, then runs the
-// location's setup script in the background.
+// createWorktree makes a git worktree once the hooks allow it, then prepares
+// it in the background (setup script, autostart services), unless the request
+// said not to (prepare: false).
 func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest) (Worktree, error) {
 	if err := b.before(r, "worktree.create", map[string]any{
 		"location": loc.Name, "name": req.Name, "branch": req.Branch, "base": req.Base,
@@ -364,14 +369,12 @@ func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest)
 		created["repo_config"] = loc.RepoTrust
 	}
 	b.publish(r, "worktree.created", created)
-	// Services start once setup has made the worktree ready for them.
-	if loc.Scripts.Setup != "" {
-		go b.lifecycle(origin(r), "setup", loc, wt.Path, wt.Name, loc.Scripts.Setup, func() error {
-			go b.startAutostart(loc.Name, wt.Name)
-			return nil
-		})
-	} else {
-		go b.startAutostart(loc.Name, wt.Name)
+	if req.Prepare != nil && !*req.Prepare {
+		b.setPrepare(loc.Name, wt.Name, "skipped", nil)
+		return wt, nil
+	}
+	if b.prep.start(prepKey(loc.Name, wt.Name)) {
+		go b.prepareWorktree(origin(r), loc, wt)
 	}
 	return wt, nil
 }

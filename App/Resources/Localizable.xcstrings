@@ -2245,6 +2245,16 @@
         }
       }
     },
+    "Ambiente não preparado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Environment not prepared"
+          }
+        }
+      }
+    },
     "Ambiente pronto" : {
       "localizations" : {
         "en" : {
@@ -4225,6 +4235,16 @@
         }
       }
     },
+    "Depois sobem: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Then these start: %@"
+          }
+        }
+      }
+    },
     "Depois, para o iPhone: Ajustes → Levar para o iPhone." : {
       "localizations" : {
         "en" : {
@@ -5487,6 +5507,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This worktree is clean against %@."
+          }
+        }
+      }
+    },
+    "Esta worktree foi criada só com o código. Prepare quando precisar rodar o projeto ou a visualização." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This worktree was made with just the code. Prepare it when you need to run the project or its preview."
           }
         }
       }
@@ -9409,6 +9439,16 @@
         }
       }
     },
+    "O setup falhou" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setup failed"
+          }
+        }
+      }
+    },
     "O texto passa de 128 KB" : {
       "localizations" : {
         "en" : {
@@ -10627,6 +10667,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Preparing the environment…"
+          }
+        }
+      }
+    },
+    "Preparando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing…"
+          }
+        }
+      }
+    },
+    "Preparar ambiente" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepare environment"
+          }
+        }
+      }
+    },
+    "Preparar de novo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepare again"
+          }
+        }
+      }
+    },
+    "Preparação" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparation"
           }
         }
       }
@@ -11981,6 +12061,16 @@
         }
       }
     },
+    "sem ambiente" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no environment"
+          }
+        }
+      }
+    },
     "Sem comentário." : {
       "localizations" : {
         "en" : {
@@ -12097,6 +12187,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No conversation record"
+          }
+        }
+      }
+    },
+    "Sem registro desde que a box reiniciou" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing recorded since the box restarted"
           }
         }
       }
@@ -12301,6 +12401,16 @@
         }
       }
     },
+    "Setup e serviços automáticos ao criar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setup and automatic services when it's created"
+          }
+        }
+      }
+    },
     "Seus" : {
       "localizations" : {
         "en" : {
@@ -12467,6 +12577,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Only on GitHub; no worktree on the box is touched."
+          }
+        }
+      }
+    },
+    "Só o código; prepare depois em Detalhes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Just the code; prepare it later in Details"
           }
         }
       }

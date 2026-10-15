@@ -252,6 +252,8 @@ type TaskRequest struct {
 	Open string `json:"open,omitempty"`
 	// Title names the work; without one, the prompt's first line does.
 	Title string `json:"title,omitempty"`
+	// Prepare is the worktree's (WorktreeRequest.Prepare).
+	Prepare *bool `json:"prepare,omitempty"`
 }
 
 type Task struct {
@@ -293,7 +295,7 @@ func (b *Box) addTask(w http.ResponseWriter, r *http.Request) error {
 	if err := b.before(r, "task.create", data); err != nil {
 		return err
 	}
-	wt, err := b.createWorktree(r, loc, WorktreeRequest{Name: req.Name, Branch: req.Branch, Base: req.Base, PR: req.PR, Ref: req.Ref})
+	wt, err := b.createWorktree(r, loc, WorktreeRequest{Name: req.Name, Branch: req.Branch, Base: req.Base, PR: req.PR, Ref: req.Ref, Prepare: req.Prepare})
 	if err != nil {
 		return err
 	}

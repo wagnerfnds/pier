@@ -1,0 +1,1 @@
+{"state":"failed","since":"2026-10-15T09:15:02.774401266-03:00","error":"exit status 1 (log: /home/octocat/.local/state/pier/logs/setup-shop-login.log)\nnpm ERR! missing script: ci","setup":"npm ci","services":[]}

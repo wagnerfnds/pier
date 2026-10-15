@@ -1,0 +1,1 @@
+{"state":"skipped","since":"2026-10-15T09:12:04.518273641-03:00","setup":"npm ci && cp ../.env.local .env","services":["web","compose"]}

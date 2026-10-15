@@ -32,6 +32,8 @@ import Testing
             "turns.json": d([Turn].self), "turns_after.json": d([Turn].self),
             "wait_finished.json": d(WaitResult.self), "wait_waiting.json": d(WaitResult.self), "wait_question.json": d(WaitResult.self),
             "attachment_result.json": d(Attachment.self),
+            "prepare_skipped.json": d(PrepareStatus.self), "prepare_running.json": d(PrepareStatus.self),
+            "prepare_failed.json": d(PrepareStatus.self), "prepare_unknown.json": d(PrepareStatus.self),
             "transcript.json": d(TranscriptPage.self), "transcript_poll_empty.json": d(TranscriptPage.self),
             "transcript_before.json": d(TranscriptPage.self), "transcript_reset.json": d(TranscriptPage.self),
             "transcript_question.json": d(TranscriptPage.self), "transcript_answered.json": d(TranscriptPage.self),

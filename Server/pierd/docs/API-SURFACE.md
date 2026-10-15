@@ -57,6 +57,8 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `PUT /v1/locations/{name}/worktrees/{worktree}/file?path=` (`sha`, `create`, `force`; 409 `file_changed` / `file_exists`; gate `before:file.write` with `file`) | `files.go` `writeFile` | App `writeFile()`: `App/Features/Workspace` (EditorStore) |
 | `GET /v1/locations/{name}/worktrees/{worktree}/services` | `wtservices.go` `listWorktreeServices` | App `worktreeServices()`: Housekeeper; `worktreeServiceDetails()`: WorktreeDetails; `pierd service list` |
 | `POST /v1/locations/{name}/worktrees/{worktree}/services/{service}/{start\|stop\|restart}` | `wtservices.go` `serviceAction` | App `serviceAction()`: Housekeeper, WorktreeDetails; `pierd service start…` |
+| `GET /v1/locations/{name}/worktrees/{worktree}/prepare` | `prepare.go` `getPrepare` | App `prepareStatus()`: WorktreeDetails (Preparação) |
+| `POST /v1/locations/{name}/worktrees/{worktree}/prepare` (202; 409 while running; gate `before:worktree.prepare`) | `prepare.go` `postPrepare` | App `prepare()`: WorktreeDetails (Preparar ambiente) |
 | `GET /v1/worktrees[?location=]` | `worktreeops.go` `listWorktreeStatuses` | App `worktreeStatuses()`: EndSessionSheet, Housekeeper, Project/Worktree screens |
 | `GET /v1/services` | `services.go` `handleServices` | App `services()`: HomeStore, Housekeeper, WorktreeDetails; `pierd services` |
 | `GET /v1/review[?all=1]` | `review.go` `review` | App `review()`: ReviewStore, PullRequestStore/Screen/Sheets, SessionSignals; push engine |
@@ -111,6 +113,7 @@ Event types pierd publishes, and what the app does with them:
 | `transcript.changed` (while a client reads the transcript) | SessionViewModel refetches the transcript |
 | `task.created` | sessions and locations refresh |
 | `worktree.created`, `worktree.removed`, `worktree.{setup,archive}.{started,finished,failed}` | locations refresh; ReviewScreen reloads; local notification on `*.failed` |
+| `worktree.prepare.{started,finished,failed}` | WorktreeDetails reads the preparation again; no notification (a setup that failed already sent `worktree.setup.failed`) |
 | `location.added`, `location.removed`, `config.changed` | locations refresh |
 | `account.*` | HomeStore reads the limits again |
 | `env.changed`, `skills.changed`, `share.*`, `location.accounts` | none: the screens read the box again after their own changes |

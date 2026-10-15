@@ -411,7 +411,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
         case (.get, "info"):
             // pierd with the file routes.
             var info = Self.fixtureObject(MockFixtures.info)
-            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares"]
+            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare"]
                 // Terminals stream (`-mockTTY 0`: a box before them, its screen read every second).
                 + (UserDefaults.standard.string(forKey: "mockTTY") == "0" ? [] : ["tty"])
             return (200, Self.json(info))
@@ -485,6 +485,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
         let req = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? JSON) ?? [:]
         let prompt = (req["prompt"] as? String) ?? "New task"
         let location = (req["location"] as? String) ?? "sandbox"
+        if req["prepare"] as? Bool == false, let wt = req["name"] as? String { projects.noteUnprepared(location: location, worktree: wt) }
         seq += 1
         let name = "\(location)-claude-n\(seq)"
         let s = Self.session(name, location: location, dir: "/home/ubuntu/code/\(location)", state: "running", title: String(prompt.prefix(40)))

@@ -37,6 +37,9 @@ struct MockProjects {
     private var removed: Set<String> = []
     /// Services stopped from the app, by "location/worktree/service".
     private var stopped: Set<String> = []
+    /// Worktrees' preparation by "location/worktree": skipped (made with prepare: false; sandbox/subtract starts so),
+    /// or prepared at a time (it reads "running" for 2 s).
+    private var prepared: [String: Date?] = ["sandbox/subtract": nil]
 
     private static let cloning: TimeInterval = 1.2
     private static let settingUp: TimeInterval = 2.8
@@ -160,6 +163,11 @@ struct MockProjects {
         case (.get, 4, "locations") where p[3] == "disk": return disk(p[2])
         case (.delete, 3, "locations") where query["purge"] == "1": return purge(p[2], force: query["force"] == "1")
         case (.get, 6, "locations") where p[3] == "worktrees" && p[5] == "services": return (200, worktreeServices(p[2], p[4]))
+        case (.get, 6, "locations") where p[3] == "worktrees" && p[5] == "prepare": return (200, prepareJSON(p[2], p[4]))
+        case (.post, 6, "locations") where p[3] == "worktrees" && p[5] == "prepare":
+            if prepareState("\(p[2])/\(p[4])").state == "running" { return (409, Self.json(["error": "this worktree is already being prepared", "code": "conflict"])) }
+            prepared["\(p[2])/\(p[4])"] = .some(Date())
+            return (202, prepareJSON(p[2], p[4]))
         case (.post, 8, "locations") where p[3] == "worktrees" && p[5] == "services":
             let key = "\(p[2])/\(p[4])/\(p[6])"
             if p[7] == "stop" { stopped.insert(key) } else { stopped.remove(key) }
@@ -308,6 +316,22 @@ struct MockProjects {
         }
         removed.insert(location)
         return (200, Self.json(["removed": location, "freed": location == "sandbox" ? 734_003_200 : 182_452_224]))
+    }
+
+    /// A task or worktree made with prepare: false.
+    mutating func noteUnprepared(location: String, worktree: String) { prepared["\(location)/\(worktree)"] = .some(nil) }
+
+    private func prepareState(_ key: String) -> (state: String, at: Date?) {
+        guard let entry = prepared[key] else { return ("ready", Date().addingTimeInterval(-3600)) }
+        guard let at = entry else { return ("skipped", Date().addingTimeInterval(-600)) }
+        return (Date().timeIntervalSince(at) < 2 ? "running" : "ready", at)
+    }
+
+    private func prepareJSON(_ location: String, _ worktree: String) -> Data {
+        let (state, at) = prepareState("\(location)/\(worktree)")
+        var out: JSON = ["state": state, "setup": "npm ci && cp ../.env.local .env", "services": ["dev"]]
+        if let at { out["since"] = ISO8601DateFormatter().string(from: at) }
+        return Self.json(out)
     }
 
     private func worktreeServices(_ location: String, _ worktree: String) -> Data {

@@ -9,4 +9,7 @@ type WorktreeRequest struct {
 	// pull/<PR>/head) is fetched into Branch when origin has no such branch.
 	PR  int    `json:"pr,omitempty"`
 	Ref string `json:"ref,omitempty"`
+	// Prepare false leaves the setup script and the autostart services for
+	// later (POST .../worktrees/{wt}/prepare); absent or true runs them.
+	Prepare *bool `json:"prepare,omitempty"`
 }

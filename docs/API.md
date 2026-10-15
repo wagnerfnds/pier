@@ -51,7 +51,7 @@ notifications).
 | Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `unsaved_work` (409, 2.8), `space_not_empty`, `space_has_files` (409, 2.9), `docker_missing` (501), `gh_missing` (501), `gh_auth` (428), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
-| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env`, `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
+| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
 
 ### 0.3 Naming and addressing
 
@@ -176,8 +176,11 @@ recent commit first; a branch that exists locally and on origin appears once wit
   same-repository PR into a worktree: it fetches `origin/<head>` first (`PRCommands.fetchHead`), then creates the
   worktree.
 * `pr` / `ref`: fetch a pull request head (default ref `pull/<pr>/head`) into `branch` when origin has no such branch.
-* Answer: the `Worktree`. The location's setup script then runs in the background (`worktree.setup.started |
-  finished | failed`), and services marked `autostart` start after it.
+* `prepare` (capability `prepare`): `false` makes only the checkout, for a quick fix that needs no setup or dev server;
+  its preparation reads `skipped` until `POST .../prepare` (2.6.1). Absent or `true`: prepared as it is made.
+* Answer: the `Worktree`. The worktree is then prepared in the background (`worktree.prepare.started | finished |
+  failed`): the location's setup script runs (`worktree.setup.started | finished | failed`), and services marked
+  `autostart` start after it.
 * Errors: 400 invalid name, not a repository, or git's message; 403 `refused` (`before:worktree.create`); 404
   unknown location.
 
@@ -202,8 +205,31 @@ recent commit first; a branch that exists locally and on origin appears once wit
 | `POST /v1/locations/{loc}/worktrees/{wt}/attachments` | upload a file before an agent exists (4.9) |
 | `GET /v1/locations/{loc}/worktrees/{wt}/services` | `[{name, run, autostart?, state, unit, port?}]` |
 | `POST .../services/{service}/{start\|stop\|restart}` | run as systemd user units named `svc-<location>-<worktree>-<service>` |
+| `GET`/`POST /v1/locations/{loc}/worktrees/{wt}/prepare` | the worktree's preparation, and preparing it now (2.6.1) |
 | `POST /v1/locations {name, path}`, `DELETE /v1/locations/{name}` | add or forget a repository (`pierd location add\|rm`); `?purge=1` deletes it from the disk (2.8) |
 | `GET`/`PUT /v1/locations/{name}/config`, `POST`/`DELETE .../config/trust` | box-local config and repository-config trust (`pierd location config`); the app does not call them |
+
+#### 2.6.1 Preparing a worktree (capability `prepare`)
+
+Preparing is the setup script, then the services marked `autostart` (a dev server, the project's compose). A new
+worktree is prepared as it is made unless the request said `"prepare": false` (2.4, 3.3); the main checkout is
+prepared when a project is added.
+
+`GET .../worktrees/{wt}/prepare`:
+
+```json
+{"state": "skipped", "since": "2026-10-15T09:12:04.518273641-03:00", "setup": "npm ci", "services": ["web"]}
+```
+
+* `state`: `running`, `ready`, `failed` (`error` says why, with the setup log's path and its last lines), `skipped`
+  (made with `prepare: false` and not prepared since) or `unknown` (nothing recorded since pierd started: states are
+  kept in memory). Treat a state you do not know as `unknown`.
+* `setup`: the script that runs (absent when there is none); `services`: the autostart services. With neither,
+  preparing does nothing and the app shows no Preparação.
+
+`POST .../worktrees/{wt}/prepare` prepares it now, or again for one already prepared: `202` with the status
+(`running`), then `worktree.prepare.started | finished | failed {location, name, path}` (failures set `error`).
+Errors: 404 unknown worktree, 409 while a preparation of it still runs, 403 `refused` (`before:worktree.prepare`).
 
 ### 2.7 Files of a worktree (capability `files`)
 
@@ -495,7 +521,7 @@ overrides those lists on the box agent with that id. De-duplicate by `id`, repos
 | Field | Notes |
 | --- | --- |
 | `location`, `name` | required |
-| `branch?`, `base?`, `pr?`, `ref?` | as 2.4 |
+| `branch?`, `base?`, `pr?`, `ref?`, `prepare?` | as 2.4 |
 | `agent?` / `command?` | a preset id, or a command to run instead (then no `model` / `effort`). Neither: an empty shell |
 | `prompt?` | the first prompt, passed to the agent as **one argument**: at most 128 KB on Linux (413 beyond). For longer text, start short and `send` the rest |
 | `model?`, `effort?` | 3.1 |
@@ -916,7 +942,8 @@ exit_code}` (every client's exec, the app's own background commands included: ne
 
 **Worktrees and locations**: `worktree.created {location, name, path, branch}`, `worktree.removed`,
 `worktree.setup.{started,finished,failed}` and `worktree.archive.{started,finished,failed}` `{location, name,
-path, script, log}` (failures set the envelope `error`), `location.added`, `location.removed` (`purged`, `freed`
+path, script, log}` (failures set the envelope `error`), `worktree.prepare.{started,finished,failed}` `{location, name,
+path}` (2.6.1), `location.added`, `location.removed` (`purged`, `freed`
 after a removal from the disk), `clone.started|finished|failed` (2.8), `settings.changed`, `space.added|removed`,
 `environment.changed|started|ready|failed` (2.9), `account.added|changed|removed`, `location.accounts` (2.10),
 `env.changed`, `skills.changed` (2.11), `share.created|removed|expired` (2.12), `config.changed`,

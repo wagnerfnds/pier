@@ -93,7 +93,7 @@ func (b *Box) handleInfo(w http.ResponseWriter, r *http.Request) error {
 // GET/PUT …/locations/{name}/environment; tty: POST …/sessions/{name}/tty,
 // a terminal on a session (where the box can open a pseudo-terminal).
 func (b *Box) Capabilities() []string {
-	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env"}
+	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env", "prepare"}
 	if b.Turns != nil {
 		caps = append(caps, "turns", "queue", "ask", "controls")
 	}
