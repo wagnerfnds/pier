@@ -11,7 +11,9 @@
       "added": null,
       "removed": null,
       "reply": null,
-      "choices": null
+      "choices": null,
+      "options": null,
+      "steps": null
     },
     "dismissal-date": 1790000300
   }

@@ -75,6 +75,65 @@ struct ActivityPermissionButtons: View {
     }
 }
 
+/// A question's choices as buttons, in the row where Revisar sits when a turn ends: each answers it (`AnswerChoiceIntent`).
+/// All of them when they fit on one line, else the first two and "Mais", which opens the chat with the rest.
+struct ActivityChoiceButtons: View {
+    let attrs: SessionActivityAttributes
+    let options: [String]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row(options, more: false)
+            row(Array(options.prefix(2)), more: options.count > 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func row(_ shown: [String], more: Bool) -> some View {
+        HStack(spacing: 6) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { i, o in
+                Button(intent: AnswerChoiceIntent(box: attrs.box, session: attrs.session, choice: o)) {
+                    Text(o).font(.system(size: 13, weight: .semibold)).lineLimit(1).fixedSize()
+                        .foregroundStyle(i == 0 ? BTheme.onFill : BTheme.orange)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(i == 0 ? BTheme.orange : BTheme.orange.opacity(0.16), in: Capsule())
+                }
+            }
+            if more {
+                Link(destination: attrs.url) {
+                    Text("Mais").font(.system(size: 13, weight: .semibold)).fixedSize().foregroundStyle(BTheme.orange)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(BTheme.orange.opacity(0.16), in: Capsule())
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// A form with steps (several questions, or a multiple choice): how many questions, and Responder, which opens the chat
+/// at the form.
+struct ActivityFormLink: View {
+    let attrs: SessionActivityAttributes
+    let steps: Int
+    var body: some View {
+        HStack {
+            HStack(spacing: 5) {
+                Image(systemName: "list.bullet.rectangle").font(.system(size: 11, weight: .semibold))
+                Text(steps == 1 ? "1 pergunta" : "\(steps) perguntas").font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(BTheme.orange)
+            Spacer()
+            Link(destination: attrs.url) {
+                Label("Responder", systemImage: "arrowshape.turn.up.left.fill")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(BTheme.onFill)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(BTheme.orange, in: Capsule())
+            }
+        }
+    }
+}
+
 /// "Revisar": the Review screen of the session's worktree (`pier://review`), not the chat.
 struct ReviewLink: View {
     let attrs: SessionActivityAttributes
@@ -134,7 +193,7 @@ struct SessionLockScreenView: View {
 
     /// A row closes the banner: Permitir / Negar, how many choices a question offers, or the line counts and Revisar.
     private var hasActions: Bool {
-        (state.phase == .waiting && (state.hasMenu || (state.choices ?? 0) > 1)) || state.phase == .finished
+        (state.phase == .waiting && (state.hasMenu || (state.choices ?? 0) > 1 || state.steps != nil)) || state.phase == .finished
     }
 
     var body: some View {
@@ -160,6 +219,10 @@ struct SessionLockScreenView: View {
             DetailLine(state: state, lines: hasActions ? 2 : 3)
             if state.phase == .waiting && state.hasMenu {
                 ActivityPermissionButtons(attrs: attrs)
+            } else if state.phase == .waiting, let o = state.options, o.count > 1 {
+                ActivityChoiceButtons(attrs: attrs, options: o)
+            } else if state.phase == .waiting, let n = state.steps {
+                ActivityFormLink(attrs: attrs, steps: n)
             } else if state.phase == .waiting, let n = state.choices, n > 1 {
                 ChoicesHint(count: n)
             } else if state.phase == .finished {
@@ -243,10 +306,14 @@ struct IslandExpandedBottom: View {
     let state: ActivityContentState
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            DetailLine(state: state, lines: (state.phase == .waiting && state.hasMenu) || state.phase == .finished ? 2 : 3)
+            DetailLine(state: state, lines: (state.phase == .waiting && (state.hasMenu || state.options != nil || state.steps != nil)) || state.phase == .finished ? 2 : 3)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if state.phase == .waiting && state.hasMenu {
                 ActivityPermissionButtons(attrs: attrs)
+            } else if state.phase == .waiting, let o = state.options, o.count > 1 {
+                ActivityChoiceButtons(attrs: attrs, options: o)
+            } else if state.phase == .waiting, let n = state.steps {
+                ActivityFormLink(attrs: attrs, steps: n)
             } else if state.phase == .waiting, let n = state.choices, n > 1 {
                 ChoicesHint(count: n)
             } else if state.phase == .finished {
@@ -267,7 +334,9 @@ extension SessionActivityAttributes {
 extension ActivityContentState {
     static var sampleRunning: Self { .init(phase: .running, since: Date().addingTimeInterval(-754), step: "Rodando pnpm test…", ask: nil, hasMenu: false) }
     static var sampleWaiting: Self { .init(phase: .waiting, since: Date().addingTimeInterval(-42), step: nil, ask: "Bash  rm -rf node_modules && pnpm install", hasMenu: true) }
-    static var sampleQuestion: Self { .init(phase: .waiting, since: Date().addingTimeInterval(-20), step: nil, ask: "Which layout for the pricing page?", hasMenu: false, choices: 3) }
+    static var sampleQuestion: Self { .init(phase: .waiting, since: Date().addingTimeInterval(-20), step: nil, ask: "Which layout for the pricing page?", hasMenu: false, choices: 3,
+                                            options: ["Three tiers", "One plan", "A table"]) }
+    static var sampleForm: Self { .init(phase: .waiting, since: Date().addingTimeInterval(-20), step: nil, ask: "Which colour for the header?", hasMenu: false, steps: 2) }
     static var sampleFinished: Self { .init(phase: .finished, since: Date().addingTimeInterval(-60), step: nil, ask: nil, hasMenu: false, added: 128, removed: 34,
                                             reply: "Corrigi os retries do webhook: agora o backoff é exponencial e os testes de integração passam. Também removi o timeout fixo de 30 s, que derrubava as entregas lentas, e o log mostra cada tentativa com o tempo de espera.") }
 }

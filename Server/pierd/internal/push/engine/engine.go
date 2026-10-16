@@ -415,7 +415,12 @@ func (e *Engine) announceWaiting(name string, since time.Time) {
 	var options []string
 	optionsKind := ""
 	if !hasMenu {
-		options, optionsKind = e.waitingOptions(ctx, name, permission)
+		if opts := s.Ask.SingleChoice(); len(opts) >= 2 {
+			// The form the hook sent with the wait: the question's own options, no screen to read.
+			options, optionsKind = clipOptions(opts), "question"
+		} else if s.Ask.Steps() == 0 {
+			options, optionsKind = e.waitingOptions(ctx, name, permission)
+		}
 		if len(options) > 0 {
 			if _, ok := e.fresh(ctx, name, "waiting", since); !ok {
 				return
@@ -432,6 +437,10 @@ func (e *Engine) announceWaiting(name string, since time.Time) {
 	cs := e.contentState(s, "waiting", hasMenu, nil, nil, text.Clip(ask, 200), "")
 	if n := len(options); n > 1 {
 		cs.Choices = &n
+		cs.Options = options
+	}
+	if n := s.Ask.Steps(); n > 0 {
+		cs.Steps = &n
 	}
 	log := e.log.With("session", name, "category", category, "hasMenu", hasMenu, "options", len(options))
 	if stale {

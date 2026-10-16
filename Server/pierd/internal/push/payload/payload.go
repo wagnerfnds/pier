@@ -108,8 +108,12 @@ type ContentState struct {
 	HasMenu bool    `json:"hasMenu"`
 	Added   *int    `json:"added"`
 	Removed *int    `json:"removed"`
-	Reply   *string `json:"reply"` // the agent's last reply, a few lines (finished)
+	Reply   *string `json:"reply"`   // the agent's last reply, a few lines (finished)
 	Choices *int    `json:"choices"` // how many choices a waiting question offers, when they could be read (the island shows it)
+	// Options are those choices' words (at most 4), the Live Activity's buttons; Steps is how many questions a form asks
+	// when it has more than one step (or a multiple choice): it is answered in the chat, not from the activity.
+	Options []string `json:"options"`
+	Steps   *int     `json:"steps"`
 }
 
 // Attributes mirrors SessionActivityAttributes (only used to start an activity by push).

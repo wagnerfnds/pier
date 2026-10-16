@@ -297,6 +297,67 @@ func TestWaitingQuestionActivityHasTheQuestionAndHowManyChoices(t *testing.T) {
 	}
 }
 
+// The activity carries the choices' words (its buttons), from the form the hook sent with the wait: Claude Code has not
+// written the question to its transcript yet, and its screen is not read.
+func TestWaitingQuestionActivityCarriesTheFormsOptions(t *testing.T) {
+	r := newRig(t, dev("c1", "en"))
+	r.st.PutActivity(state.Activity{Client: "c1", Box: "casa", Session: "sandbox-subtract-claude-6s1", Token: "00aa11bb", Env: "development"})
+	r.box.screen = "just some output\n"
+	r.box.set(sess("running", time.Now().Add(-time.Minute)))
+	r.start()
+	s := sess("waiting", time.Now())
+	s.Ask = &boxapi.Ask{Tool: "AskUserQuestion", Input: "Which colour?"}
+	json.Unmarshal([]byte(`{"questions":[{"question":"Which colour?","options":[{"label":"Red"},{"label":"Blue"}]}]}`), s.Ask)
+	r.change(s)
+	waitFor(t, "activity update", func() bool { return len(r.snd.byType("liveactivity")) == 1 })
+	var p struct {
+		APS struct {
+			CS struct {
+				Choices *int
+				Options []string
+				Steps   *int
+			} `json:"content-state"`
+		}
+	}
+	json.Unmarshal(r.snd.byType("liveactivity")[0].Payload, &p)
+	if p.APS.CS.Choices == nil || *p.APS.CS.Choices != 2 || !reflect.DeepEqual(p.APS.CS.Options, []string{"Red", "Blue"}) || p.APS.CS.Steps != nil {
+		t.Fatalf("%+v", p.APS.CS)
+	}
+	if o := r.firstAlertOptions(t); !reflect.DeepEqual(o.Options, []string{"Red", "Blue"}) || o.OptionsKind != "question" {
+		t.Fatalf("alert %+v", o)
+	}
+}
+
+// A form with steps (two questions, or a multiple choice) has no buttons to answer it with: the activity says how many
+// questions it asks, and the alert offers none (a pick would answer the first question alone).
+func TestWaitingFormWithStepsOffersNoButtons(t *testing.T) {
+	r := newRig(t, dev("c1", "en"))
+	r.st.PutActivity(state.Activity{Client: "c1", Box: "casa", Session: "sandbox-subtract-claude-6s1", Token: "00aa11bb", Env: "development"})
+	r.box.screen = "\u276f 1. Red\n  2. Blue\n  3. Type something.\nEnter to select\n"
+	r.box.set(sess("running", time.Now().Add(-time.Minute)))
+	r.start()
+	s := sess("waiting", time.Now())
+	s.Ask = &boxapi.Ask{Tool: "AskUserQuestion", Input: "Which colour?"}
+	json.Unmarshal([]byte(`{"questions":[{"question":"Which colour?","options":[{"label":"Red"},{"label":"Blue"}]},{"question":"Toppings?","multi":true,"options":[{"label":"Cheese"},{"label":"Basil"}]}]}`), s.Ask)
+	r.change(s)
+	waitFor(t, "activity update", func() bool { return len(r.snd.byType("liveactivity")) == 1 })
+	var p struct {
+		APS struct {
+			CS struct {
+				Options []string
+				Steps   *int
+			} `json:"content-state"`
+		}
+	}
+	json.Unmarshal(r.snd.byType("liveactivity")[0].Payload, &p)
+	if p.APS.CS.Steps == nil || *p.APS.CS.Steps != 2 || p.APS.CS.Options != nil {
+		t.Fatalf("%+v", p.APS.CS)
+	}
+	if o := r.firstAlertOptions(t); len(o.Options) != 0 {
+		t.Fatalf("alert offers %v for a form with steps", o.Options)
+	}
+}
+
 func TestWaitingQuestionReadsTheChoicesFromTheScreen(t *testing.T) {
 	// Claude Code writes the question to its transcript only once answered: while it waits, the choices are on screen,
 	// numbered, followed by its own "Type something." / "Chat about this" rows.

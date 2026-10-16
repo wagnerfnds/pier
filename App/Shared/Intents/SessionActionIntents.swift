@@ -34,13 +34,14 @@ enum PermissionAnswer: Sendable {
 }
 
 enum SessionIntentError: Error, CustomLocalizedStringResourceConvertible {
-    case notPaired, unreachable, noMenu
+    case notPaired, unreachable, noMenu, noQuestion
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .notPaired: "Nenhuma box pareada."
         case .unreachable: "Não foi possível alcançar a box."
         case .noMenu: "O agente não está mais pedindo permissão."
+        case .noQuestion: "A pergunta mudou ou já foi respondida."
         }
     }
 }
@@ -75,6 +76,51 @@ struct DenyPermissionIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         _ = try await PermissionAnswer.send(.deny, box: box, session: session)
+        return .result()
+    }
+}
+
+/// Answers a waiting question with one of its choices, by its words: the question's own form when the box has it (the
+/// hook's `ask.questions`, `POST .../answer`), else the numbered row on screen that reads so (a plan approval, a menu).
+enum ChoiceAnswer {
+    static func send(_ label: String, box: String, session: String) async throws {
+        guard let access = BoxAccess.load(), let client = access.client(box: box) else { throw SessionIntentError.notPaired }
+        let s: Session?
+        do { s = try await client.sessions().first { $0.name == session } } catch { throw SessionIntentError.unreachable }
+        guard let s, s.needsYou else { throw SessionIntentError.noQuestion }
+        if let q = s.ask?.questionItem?.questions, q.count == 1, q[0].multi != true, q[0].options.contains(where: { $0.label == label }) {
+            do {
+                _ = try await client.answerQuestions(session: session, tool: "AskUserQuestion", answers: [.pick(label)])
+                await SessionActivityBridge.answered(box: box, session: session)
+                return
+            } catch {
+                // The box could not drive the form: the row on screen, below.
+            }
+        }
+        let screen: String
+        do { screen = try await client.screen(session: session, history: 0) } catch { throw SessionIntentError.unreachable }
+        guard let c = MenuParser.choices(in: screen).first(where: { $0.label == label || $0.label.hasPrefix(label) }) else {
+            throw SessionIntentError.noQuestion
+        }
+        do { _ = try await client.send(session: session, .key(c.key)) } catch { throw SessionIntentError.unreachable }
+        await SessionActivityBridge.answered(box: box, session: session)
+    }
+}
+
+/// One of a question's choices, as a Live Activity button (the Dynamic Island, the Lock Screen).
+struct AnswerChoiceIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Responder"
+    static let description = IntentDescription("Responde a pergunta do agente com uma das opções.")
+
+    @Parameter(title: "Box") var box: String
+    @Parameter(title: "Sessão") var session: String
+    @Parameter(title: "Opção") var choice: String
+
+    init() {}
+    init(box: String, session: String, choice: String) { self.box = box; self.session = session; self.choice = choice }
+
+    func perform() async throws -> some IntentResult {
+        try await ChoiceAnswer.send(choice, box: box, session: session)
         return .result()
     }
 }

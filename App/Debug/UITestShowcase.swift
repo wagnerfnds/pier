@@ -973,10 +973,13 @@ struct ActivitySamples {
     var waiting: Sample
     var question: Sample
     var finished: Sample
+    /// A form with steps (several questions): answered in the chat (Responder).
+    var form: Sample? = nil
 
     static var standard: ActivitySamples {
         let a = SessionActivityAttributes.sample
-        return .init(running: (a, .sampleRunning), waiting: (a, .sampleWaiting), question: (a, .sampleQuestion), finished: (a, .sampleFinished))
+        return .init(running: (a, .sampleRunning), waiting: (a, .sampleWaiting), question: (a, .sampleQuestion), finished: (a, .sampleFinished),
+                     form: (a, .sampleForm))
     }
 
     static var showcase: ActivitySamples {

@@ -65,7 +65,7 @@ struct WidgetGalleryView: View {
 
     private var activity: some View {
         VStack(spacing: 14) {
-            ForEach(Array([samples.running, samples.waiting, samples.finished].enumerated()), id: \.offset) { _, s in
+            ForEach(Array(([samples.running, samples.waiting, samples.question] + [samples.form].compactMap { $0 } + [samples.finished]).enumerated()), id: \.offset) { _, s in
                 // As the Lock Screen draws it: at most 160 pt tall, what overflows cut off at the banner's edges.
                 SessionLockScreenView(attrs: s.attrs, state: s.state)
                     .frame(width: 369)
@@ -86,7 +86,7 @@ struct WidgetGalleryView: View {
                 }
                 .frame(width: 190, height: 37).background(.black, in: Capsule())
             }
-            ForEach(Array([samples.waiting, samples.question, samples.finished].enumerated()), id: \.offset) { _, s in
+            ForEach(Array(([samples.waiting, samples.question] + [samples.form].compactMap { $0 } + [samples.finished]).enumerated()), id: \.offset) { _, s in
                 VStack(spacing: 8) {
                     HStack(alignment: .center, spacing: 10) {
                         IslandExpandedLeading(attrs: s.attrs)

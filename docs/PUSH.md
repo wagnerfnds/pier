@@ -189,7 +189,8 @@ priority 10 (5 for silent progress).
 ```json
 { "aps": { "timestamp": 1790000000, "event": "update",
     "content-state": { "phase": "waiting", "since": 1790000000, "step": null, "ask": "Bash  rm -rf build",
-                       "hasMenu": true, "added": null, "removed": null, "reply": null, "choices": null },
+                       "hasMenu": true, "added": null, "removed": null, "reply": null, "choices": null,
+                       "options": null, "steps": null },
     "alert": { "title": "Fix login", "body": "Needs you" } } }
 ```
 
@@ -203,10 +204,16 @@ plain `JSONDecoder()` whose default date strategy reads seconds since 2001).
 * `since`: a number, **seconds since 1970**, fractions allowed. The app also accepts a number < 1e9 as seconds since
   2001 (legacy, `activity_date_epoch: "reference"`) and an RFC 3339 string. pierd sends Unix seconds with millisecond
   precision.
-* Required: `phase`, `since`. Optional (null or absent): `step`, `ask`, `added`, `removed`, `reply`, `choices`;
-  `hasMenu` defaults to `false`. pierd always sends all nine keys, nulls included.
+* Required: `phase`, `since`. Optional (null or absent): `step`, `ask`, `added`, `removed`, `reply`, `choices`,
+  `options`, `steps`; `hasMenu` defaults to `false`. pierd always sends all eleven keys, nulls included.
 * `choices`: how many choices a waiting question offers when pierd read them (the alert's `options`, 4.3); the
   Dynamic Island shows the count.
+* `options`: those choices' words (≤ 4, each ≤ 60 characters): the Lock Screen and the expanded Dynamic Island show
+  them as buttons, each answering the question (`AnswerChoiceIntent`: the form through `POST .../answer`, else the
+  row's digit on screen). Read first from `Session.ask.questions` (one single-choice question), else as for 4.3.
+* `steps`: how many questions an open form asks when it is more than one pick (several questions, or a multiple
+  choice). No `options` then (a pick would answer the first question alone): the activity says how many questions and
+  offers Responder, which opens the chat at the form.
 * `reply`: the agent's last reply of the turn (or its recap), Markdown marks stripped, whitespace folded, ≤ 280
   characters, sent with `finished`; the lock-screen card shows it. Zero `added` / `removed` are not shown.
 * End: `"event": "end"` with the final `content-state` and `"dismissal-date": <Unix seconds>`.

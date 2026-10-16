@@ -196,7 +196,10 @@ final class MockBox: PierTransport, @unchecked Sendable {
         if UserDefaults.standard.bool(forKey: "uiTestAsk") {
             var ask = Self.session(Self.askSession, location: "sandbox", dir: "/home/ubuntu/code/sandbox", state: "waiting",
                                    title: "Build the pricing page",
-                                   ask: ["tool": "AskUserQuestion", "input": "Which layout for the pricing page?", "message": "Claude has a question"])
+                                   ask: ["tool": "AskUserQuestion", "input": "Which layout for the pricing page?", "message": "Claude has a question",
+                                         // The form, as pierd sends it with the wait (from the hook).
+                                         "questions": [["question": "Which layout for the pricing page?", "header": "Layout",
+                                                        "options": Self.askChoices.map { ["label": $0] }]]])
             ask["state_since"] = Self.iso(Date().addingTimeInterval(-30))   // asked after the permission: listed after it
             sessions.append(ask)
             transcripts[Self.askSession] = [

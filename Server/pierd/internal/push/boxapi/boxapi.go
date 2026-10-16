@@ -19,6 +19,40 @@ type Ask struct {
 	Input   string `json:"input,omitempty"`
 	Why     string `json:"why,omitempty"`
 	Message string `json:"message,omitempty"`
+	// Questions is an open AskUserQuestion's whole form (Claude Code records it only once answered).
+	Questions []Question `json:"questions,omitempty"`
+}
+
+// Question is one question of an open form, as much of it as a push needs.
+type Question struct {
+	Question string `json:"question"`
+	Multi    bool   `json:"multi,omitempty"`
+	Options  []struct {
+		Label string `json:"label"`
+	} `json:"options"`
+}
+
+// SingleChoice is the options of a form of one single-choice question, nil for any other.
+func (a *Ask) SingleChoice() []string {
+	if a == nil || len(a.Questions) != 1 || a.Questions[0].Multi {
+		return nil
+	}
+	var out []string
+	for _, o := range a.Questions[0].Options {
+		if o.Label != "" {
+			out = append(out, o.Label)
+		}
+	}
+	return out
+}
+
+// Steps is how many questions a form asks when it is more than one pick (several questions, or a multiple choice), 0
+// for a single choice or no form.
+func (a *Ask) Steps() int {
+	if a == nil || len(a.Questions) == 0 || (len(a.Questions) == 1 && !a.Questions[0].Multi) {
+		return 0
+	}
+	return len(a.Questions)
 }
 
 // Summary is "Bash  rm -rf build"; a question is its words alone ("Which colour?"), the tool's name means nothing to

@@ -58,12 +58,18 @@ struct SessionActivityAttributes: Codable {
         var reply: String?
         /// How many choices the question offers (waiting), when they could be read; the island shows the count.
         var choices: Int?
+        /// Those choices' words (at most 4): the activity's buttons, each answering the question.
+        var options: [String]?
+        /// How many questions a form with steps asks (several questions, or a multiple choice): answered in the chat.
+        var steps: Int?
 
-        enum CodingKeys: String, CodingKey { case phase, since, step, ask, hasMenu, added, removed, reply, choices }
+        enum CodingKeys: String, CodingKey { case phase, since, step, ask, hasMenu, added, removed, reply, choices, options, steps }
 
-        init(phase: ActivityPhase, since: Date, step: String? = nil, ask: String? = nil, hasMenu: Bool, added: Int? = nil, removed: Int? = nil, reply: String? = nil, choices: Int? = nil) {
+        init(phase: ActivityPhase, since: Date, step: String? = nil, ask: String? = nil, hasMenu: Bool, added: Int? = nil, removed: Int? = nil, reply: String? = nil,
+             choices: Int? = nil, options: [String]? = nil, steps: Int? = nil) {
             self.phase = phase; self.since = since; self.step = step; self.ask = ask
             self.hasMenu = hasMenu; self.added = added; self.removed = removed; self.reply = reply; self.choices = choices
+            self.options = options; self.steps = steps
         }
 
         /// Hand-written so the wire format is stable and server friendly (docs/PUSH.md "iOS expectations"):
@@ -79,6 +85,8 @@ struct SessionActivityAttributes: Codable {
             removed = try c.decodeIfPresent(Int.self, forKey: .removed)
             reply = try c.decodeIfPresent(String.self, forKey: .reply)
             choices = try c.decodeIfPresent(Int.self, forKey: .choices)
+            options = (try? c.decodeIfPresent([String].self, forKey: .options)).flatMap { $0 }
+            steps = try? c.decodeIfPresent(Int.self, forKey: .steps)
         }
 
         func encode(to encoder: Encoder) throws {
@@ -92,6 +100,8 @@ struct SessionActivityAttributes: Codable {
             try c.encodeIfPresent(removed, forKey: .removed)
             try c.encodeIfPresent(reply, forKey: .reply)
             try c.encodeIfPresent(choices, forKey: .choices)
+            try c.encodeIfPresent(options, forKey: .options)
+            try c.encodeIfPresent(steps, forKey: .steps)
         }
     }
 
@@ -116,10 +126,23 @@ extension SessionActivityAttributes.ContentState {
         let ask = phase == .waiting ? s.ask?.glance : nil
         let since = s.stateSince ?? previous?.since ?? s.created
         var c = Self(phase: phase, since: since, step: nil, ask: ask, hasMenu: false, added: nil, removed: nil)
+        // The form the hook sent with the wait: one single choice is a row of buttons, a form with steps is answered in
+        // the chat.
+        if phase == .waiting, let qs = s.ask?.questionItem?.questions {
+            if QuestionSteps.needed(for: qs) {
+                c.steps = qs.count
+            } else if let labels = qs.first?.options.map(\.label), labels.count > 1 {
+                c.options = Array(labels.prefix(4)); c.choices = labels.count
+            }
+        }
         if let p = previous {
             c.step = phase == .running || phase == .starting ? p.step : nil
             c.hasMenu = phase == .waiting && p.since == since ? p.hasMenu : false
-            c.choices = phase == .waiting && p.since == since ? p.choices : nil
+            if c.options == nil && c.steps == nil {
+                c.choices = phase == .waiting && p.since == since ? p.choices : nil
+                c.options = phase == .waiting && p.since == since ? p.options : nil
+                c.steps = phase == .waiting && p.since == since ? p.steps : nil
+            }
             if phase.isFinal && p.since == since { c.added = p.added; c.removed = p.removed; c.reply = p.reply }
         }
         return c

@@ -27,4 +27,30 @@ final class LiveActivityShots: XCTestCase {
         sleep(1)
         app.activate()
     }
+
+    /// A question waiting: its choices as buttons in the row (`-uiTestAsk`); a form with steps: how many questions and
+    /// Responder (`-uiTestAskForm`).
+    func testQuestionAndFormOnTheLockScreen() throws {
+        guard let d = ProcessInfo.processInfo.environment["ACTIVITY_SHOTS"], !d.isEmpty else { throw XCTSkip("ACTIVITY_SHOTS not set") }
+        let dir = URL(fileURLWithPath: d)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for (name, flag, session) in [("form", "-uiTestAskForm", "sandbox-form-claude-q2"), ("question", "-uiTestAsk", "sandbox-ask-claude-q1")] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-uiTestMock", "1", flag, "1", "-debugActivitySession", session, "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
+            app.launch()
+            sleep(12)
+            XCUIDevice.shared.press(.home)
+            sleep(1)
+            let lock = NSSelectorFromString("pressLockButton")
+            guard XCUIDevice.shared.responds(to: lock) else { throw XCTSkip("this simulator cannot lock") }
+            XCUIDevice.shared.perform(lock)
+            sleep(2)
+            XCUIDevice.shared.perform(lock)
+            sleep(3)
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: dir.appendingPathComponent("lock-\(name).png"))
+            XCUIApplication(bundleIdentifier: "com.apple.springboard").swipeUp()
+            sleep(1)
+            app.terminate()
+        }
+    }
 }

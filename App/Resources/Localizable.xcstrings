@@ -15172,6 +15172,56 @@
           }
         }
       }
+    },
+    "1 pergunta" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 question"
+          }
+        }
+      }
+    },
+    "%lld perguntas" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld questions"
+          }
+        }
+      }
+    },
+    "A pergunta mudou ou já foi respondida." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The question changed or was already answered."
+          }
+        }
+      }
+    },
+    "Responde a pergunta do agente com uma das opções." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Answers the agent's question with one of its choices."
+          }
+        }
+      }
+    },
+    "Opção" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choice"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
