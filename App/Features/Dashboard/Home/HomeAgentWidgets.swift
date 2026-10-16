@@ -64,9 +64,8 @@ struct NeedsYouWidget: View {
     }
 
     static func ask(_ item: BoxSession) -> String? {
-        guard let a = item.session.ask else { return nil }
-        let s = [a.tool, a.input ?? a.message ?? a.why].compactMap { $0 }.joined(separator: "  ")
-        return s.isEmpty ? nil : s
+        // A question reads as its own words ("Which colour?"), a permission as the tool and what it runs (`Ask.glance`).
+        item.session.ask?.glance
     }
 }
 

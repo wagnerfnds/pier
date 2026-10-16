@@ -63,6 +63,14 @@ final class QuestionFormUITests: XCTestCase {
         shot("chat-answered")
     }
 
+    /// The Home's "Precisa de você" names the question in its own words, never the tool ("AskUserQuestion  Which…").
+    func testTheHomeShowsTheQuestionNotTheTool() {
+        launch([])
+        XCTAssertTrue(text(containing: "Which colour for the header?").waitForExistence(timeout: 20), "the question is not on the Home")
+        XCTAssertFalse(text(containing: "AskUserQuestion").exists, "the tool's name is on the Home")
+        shot("home-question")
+    }
+
     /// The Inbox card has rows and number keys, not a form: one question at a time ("1 de 2"), a single choice moves on,
     /// a multiple choice ticks its rows (✓) and Enviar sends every answer.
     func testTheInboxStepsThroughTheForm() {

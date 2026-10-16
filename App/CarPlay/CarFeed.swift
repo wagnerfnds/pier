@@ -74,6 +74,8 @@ enum CarFeed {
             let what = [a.tool, a.input].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ": ")
             return what.isEmpty ? String(localized: "Pede uma permissão.") : String(localized: "Quer permissão para \(what)")
         }
+        // The question in its own words; the hook's message ("Claude needs your permission") only when there is none.
+        if let q = a.input?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty { return CarDigest.spoken(q, limit: 300) }
         if let m = a.message?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty { return CarDigest.spoken(m, limit: 300) }
         return String(localized: "Tem uma pergunta para você.")
     }
