@@ -164,6 +164,7 @@ enum SessionActivityBridge {
             var s = a.content.state
             guard s.phase == .waiting else { continue }
             s.phase = .running; s.since = Date(); s.ask = nil; s.hasMenu = false; s.step = nil
+            s.options = nil; s.steps = nil; s.choices = nil
             await a.update(ActivityContent(state: s, staleDate: nil))
         }
         #endif

@@ -184,7 +184,14 @@ final class LiveActivityManager {
 
     private func runSync(refreshStep: Bool) async {
         guard let model else { return }
-        let sources = model.boxes.map { LiveActivitySync.Source(box: $0.name, client: $0.client, sessions: $0.hasLoadedSessions ? $0.sessions : nil) }
+        // Woken in the background (a push started an activity, a refresh), the boxes' lists are not loaded yet: read them
+        // now instead of leaving the activities as they are. A card answered meanwhile stayed at "Precisa de você" when
+        // its own update push was not applied, until the app was opened.
+        var sources: [LiveActivitySync.Source] = []
+        for c in model.boxes {
+            let sessions = c.hasLoadedSessions ? c.sessions : try? await c.client.sessions()
+            sources.append(LiveActivitySync.Source(box: c.name, client: c.client, sessions: sessions))
+        }
         await LiveActivitySync.sync(sources, knownBoxes: Set(model.boxes.map(\.name)), refreshStep: refreshStep)
         refreshTracked()
     }
