@@ -172,11 +172,12 @@ var (
 	startupBlank    = 3 * time.Second
 	startupWatch    = 20 * time.Second
 	startupSettle   = 8 * time.Second
-	// pierd's answer in a chat's own folder can take a while to show: an
-	// agent starting cold keeps its question drawn for seconds after the
-	// Enter, or misses a key sent while it still sets up. After trustRetry
-	// with the question still there the answer is given again (at most
-	// trustRetries times), and the person is told only after trustGrace.
+	// pierd's answer in a chat's own folder can fail or take a while to
+	// show: an agent starting cold misses a key, redraws its menu late, or
+	// keeps the question drawn for seconds after the Enter. While the
+	// question stays, pierd answers again every trustRetry (at most
+	// trustRetries more times), and the person is told only once none of
+	// its answers took trustGrace after the last.
 	trustRetry   = 4 * time.Second
 	trustRetries = 2
 	trustGrace   = 15 * time.Second
@@ -320,8 +321,8 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 		}
 	}()
 	began := time.Now()
-	var answered, trusted time.Time
-	told, retries := false, 0
+	var answered, tried time.Time
+	told, tries := false, 0
 	// A chat's own folder: pierd answers its question (trustOwnFolder).
 	own := sess.Location == "" && isChatDir(sess.Dir)
 	last, same := "", 0
@@ -342,20 +343,16 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 		}
 		if asked, notify := startupQuestion(screen); asked {
 			st.set(startAsking)
-			if own && trusted.IsZero() {
-				if own = chatDirBare(sess.Dir) && b.trustOwnFolder(ctx, sess.Name, screen); own {
-					trusted = time.Now()
-				}
-			} else if own && retries < trustRetries && time.Since(trusted) > trustRetry {
-				// Still asking a while after the answer: give it again.
-				retries++
-				if b.trustOwnFolder(ctx, sess.Name, screen) {
-					trusted = time.Now()
+			if own && tries <= trustRetries && (tries == 0 || time.Since(tried) > trustRetry) {
+				if own = chatDirBare(sess.Dir); own {
+					tries++
+					b.trustOwnFolder(ctx, sess.Name, screen)
+					tried = time.Now()
 				}
 			}
-			// The person is told when pierd did not answer, or its answers
-			// did not take.
-			if notify && !told && (trusted.IsZero() || retries >= trustRetries && time.Since(trusted) > trustGrace) {
+			// The person is told when pierd does not answer (a folder with
+			// files in it), or none of its answers took.
+			if notify && !told && (!own || tries > trustRetries && time.Since(tried) > trustGrace) {
 				told = true
 				// From the screen: its hooks don't run until it is trusted.
 				b.Events.Publish(events.Event{Type: adapters.Waiting, Box: b.Name, Origin: from, Data: map[string]any{

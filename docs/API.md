@@ -567,10 +567,11 @@ an idea through, plan what does not exist yet.
 * The agent's start-up question about that folder (Claude Code's "Quick safety check", Codex's "Do you trust the
   contents of this directory?") pierd answers itself: it made the folder and nothing is in it yet. It moves the menu's
   cursor to the row that says yes, reading the screen after each key, and confirms only once the cursor is there; no
-  `agent.waiting`, no push, and the first prompt runs at once. An agent starting cold can keep the question drawn for
-  seconds after the answer, or miss it: still asked 4 s later, pierd answers again (twice at most), and says the agent
-  waits only if the question is still there 15 s after its last answer. A menu it cannot read, or a folder that by
-  then holds more than the app's attachments, is asked about as a project's folder is (5.3).
+  `agent.waiting`, no push, and the first prompt runs at once. An agent starting cold can miss a key, redraw its menu
+  late or keep the question drawn for seconds after the answer: while the question stays, pierd answers again every
+  4 s (twice at most), and says the agent waits only if it is still there 15 s after the last answer (a menu it never
+  manages to read included). A folder that by then holds more than the app's attachments is asked about at once, as a
+  project's folder is (5.3).
 * Answer: the `Session` (4.1), with `location` empty and `chat: true`. Event `session.started {..., chat: true}`.
   It is an agent like any other: `PIER_SESSION`, the turn ledger, transcripts, push and Live Activities (their place
   reads "Chat" / "Conversa") all work as for a task's session. There is no worktree: no review, diff, services or

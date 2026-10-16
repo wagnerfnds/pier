@@ -130,8 +130,8 @@ func TestAStartupQuestionIsItsWatchsToRead(t *testing.T) {
 // something was already put in is asked about, as a project's folder is.
 func TestAChatTrustsItsOwnFolder(t *testing.T) {
 	for _, c := range []struct {
-		name                     string
-		litter, spin, slow, drop bool
+		name                           string
+		litter, spin, slow, drop, lose bool
 	}{
 		{name: "its own empty folder"},
 		{name: "working at once", spin: true},
@@ -139,6 +139,7 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 		// Claude Code starting cold: its question stays drawn for seconds after the Enter, or the first Enter is lost.
 		{name: "slow to take the answer", slow: true},
 		{name: "missing the first Enter", drop: true},
+		{name: "missing the first arrow key", lose: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
@@ -159,6 +160,9 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 			}
 			if c.drop {
 				script += "export DROP=1\n"
+			}
+			if c.lose {
+				script += "export LOSE=1\n"
 			}
 			script += "exec " + shellQuote(fake) + " \"$@\"\n"
 			if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
@@ -245,14 +249,14 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 // (out/trusted), and reads prompts a line at a time (an empty one does
 // nothing); with SPIN set, while a spinner runs on, as it does working on
 // that prompt. SLOW keeps the question drawn that many seconds after it is
-// answered; DROP loses the first Enter.
+// answered; DROP loses the first Enter, LOSE the first arrow key.
 func trustingAgent(t *testing.T, out string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "claude")
 	script := `#!/bin/sh
 out='` + out + `'
 stty raw -echo
-yes=0 dropped=0
+yes=0 dropped=0 lost=0
 menu() {
 	printf '\033[2J\033[H Accessing workspace:\r\n\r\n Quick safety check: Is this a project you created or one you trust?\r\n\r\n'
 	if [ $yes = 1 ]; then printf '   No, exit\r\n ❯ Yes, I trust this folder\r\n'; else printf ' ❯ No, exit\r\n   Yes, I trust this folder\r\n'; fi
@@ -264,6 +268,7 @@ while :; do
 	c=$(dd bs=1 count=1 2>/dev/null)
 	if [ "$c" = "$esc" ]; then
 		s=$(dd bs=1 count=2 2>/dev/null)
+		if [ -n "$LOSE" ] && [ $lost = 0 ]; then lost=1; continue; fi
 		case "$s" in
 		"[B") yes=1; menu; continue ;;
 		"[A") yes=0; menu; continue ;;
