@@ -90,6 +90,32 @@ final class MockBox: PierTransport, @unchecked Sendable {
       Enter to select · ↑↓ to move
     """
     // --- end answer from the notification ---
+    // --- `-uiTestAskForm 1`: an agent asking two questions at once (the second a multiple choice), the way Claude Code
+    // asks them: the form only in the session's ask (from its hook), not in the transcript, its tabs on screen. ---
+    static let formSession = "sandbox-form-claude-q2"
+    static var formQuestions: [JSON] { [
+        ["question": "Which colour for the header?", "header": "Colour",
+         "options": [["label": "Red", "description": "Warm and loud"], ["label": "Blue", "description": "Calm"]]],
+        ["question": "Which sections go on the page?", "header": "Sections", "multi": true,
+         "options": [["label": "Pricing"], ["label": "FAQ"], ["label": "Team"]]],
+    ] }
+    static let formScreen = """
+    ❯ Build the landing page
+    ────────────────────────────────────────────────────────────────────────
+    ←  ☐ Colour  ☐ Sections  ✔ Submit  →
+
+    Which colour for the header?
+
+    ❯ 1. Red
+         Warm and loud
+      2. Blue
+         Calm
+      3. Type something.
+    ────────────────────────────────────────────────────────────────────────
+      4. Chat about this
+
+    Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+    """
     private var mcpAnswered = false
     /// `-uiTestChatLab 1`: the conversation built to strain the chat screen (UITestMockChatLab.swift).
     private var chatLab = MockChatLab()
@@ -158,6 +184,15 @@ final class MockBox: PierTransport, @unchecked Sendable {
         }
         // `-uiTestEmpty 1`: a box with nothing running (the Mac's edge tab with no agent, empty Home and Inbox).
         if UserDefaults.standard.bool(forKey: "uiTestEmpty") { sessions = []; transcripts = [:] }
+        if UserDefaults.standard.bool(forKey: "uiTestAskForm") {
+            var form = Self.session(Self.formSession, location: "sandbox", dir: "/home/ubuntu/code/sandbox", state: "waiting",
+                                    title: "Build the landing page",
+                                    ask: ["tool": "AskUserQuestion", "input": "Which colour for the header?", "message": "Claude needs your permission",
+                                          "questions": Self.formQuestions])
+            form["state_since"] = Self.iso(Date().addingTimeInterval(-20))
+            sessions.append(form)
+            transcripts[Self.formSession] = [item("user", text: "Build the landing page")]
+        }
         if UserDefaults.standard.bool(forKey: "uiTestAsk") {
             var ask = Self.session(Self.askSession, location: "sandbox", dir: "/home/ubuntu/code/sandbox", state: "waiting",
                                    title: "Build the pricing page",
@@ -661,6 +696,22 @@ final class MockBox: PierTransport, @unchecked Sendable {
             if Int(text) == Self.askChoices.count + 1, req["enter"] as? Bool == false { askTyping = true; return (200, Self.json(["sent": true])) }
             guard let n = Int(text), (1...Self.askChoices.count).contains(n) else { return (409, Data(#"{"error":"Claude is waiting for a choice"}"#.utf8)) }
             return answerAsk(Self.askChoices[n - 1])
+        case (.get, "screen") where name == Self.formSession && (sessions[si]["agent_state"] as? String) == "waiting":
+            return (200, Self.json(["screen": Self.formScreen]))
+        case (.post, "answer") where name == Self.formSession:
+            // pierd answers a form the transcript does not hold yet with the tool's own name, from the session's ask.
+            let answers = (req["answers"] as? [JSON]) ?? []
+            let picks = answers.map { ($0["picks"] as? [String]) ?? [] }
+            guard req["tool"] as? String == "AskUserQuestion", picks.count == 2, picks[0].count == 1, !picks[1].isEmpty,
+                  (sessions[si]["agent_state"] as? String) == "waiting" else {
+                return (409, Data(#"{"error":"Claude's form has no such answer: finish in Claude's screen"}"#.utf8))
+            }
+            let shown = picks.map { $0.joined(separator: ", ") }
+            var q = item("question")
+            q["done"] = true; q["tool"] = "toolu_form1"; q["questions"] = Self.formQuestions; q["answers"] = shown
+            transcripts[name, default: []].append(q)
+            scheduleReply(name, text: "Header in \(shown[0]), with \(shown[1]). Building it now.", after: 1.0)
+            return (200, Self.json(["answered": shown]))
         case (.post, "answer") where name == Self.askSession:
             let picks = ((req["answers"] as? [JSON])?.first?["picks"] as? [String]) ?? []
             // The person's own words, typed into "Type something" as pierd does (box/answer.go).

@@ -21,7 +21,7 @@ struct NeedsYouCard: View {
                 HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Enviando resposta…").font(.subheadline).foregroundStyle(Theme.textDim) }
                     .padding(.vertical, 4)
             } else if session.needsYouKind == .question, let q = openQuestion {
-                QuestionForm(vm: vm, item: q).id(q.id)
+                QuestionForm(vm: vm, item: q).id("\(q.id)@\(session.stateSince?.timeIntervalSince1970 ?? 0)")
             } else if let perm = MenuParser.permissionChoices(choices) {
                 PermissionButtons(vm: vm, choices: perm, all: choices)
             } else if !choices.isEmpty {

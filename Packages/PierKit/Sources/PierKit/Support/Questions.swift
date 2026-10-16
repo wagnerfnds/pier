@@ -27,6 +27,14 @@ extension Ask {
         return [tool, input].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
     }
 
+    /// The open question as a transcript item, from the form the hook sent (`questions`): Claude Code records the call
+    /// only once it is answered, so while it waits this is the form. Answered through `POST .../answer` with the tool's
+    /// own name (`AskUserQuestion`), which the box matches to the wait's form.
+    public var questionItem: TranscriptItem? {
+        guard tool == "AskUserQuestion", let qs = questions, !qs.isEmpty, qs.allSatisfy({ !$0.options.isEmpty }) else { return nil }
+        return TranscriptItem(kind: "question", id: "ask-question", tool: "AskUserQuestion", questions: qs)
+    }
+
     /// The one line a glance shows (Live Activity, widgets): `summary`, with the agent's message or reason when the
     /// hook gave no input. nil when there is nothing to say.
     public var glance: String? {
@@ -100,5 +108,56 @@ public enum QuestionHelpers {
     /// The open `question` item of a transcript, if any.
     public static func openQuestion(in items: [TranscriptItem]) -> TranscriptItem? {
         items.last(where: { $0.kind == "question" && $0.done != true && $0.answers == nil })
+    }
+}
+
+/// A question form answered one question at a time, where there is no form to show, only rows picked by number (the
+/// Inbox's cards, the Mac panel): a single choice answers its question and moves on; a multiple choice ticks rows and
+/// moves on with `next()`. Complete, `answers` is what `POST .../answer` takes, one entry per question, in order.
+public struct QuestionSteps: Sendable, Hashable {
+    public let questions: [Question]
+    public private(set) var answers: [QuestionAnswer] = []
+    /// The current multiple choice's ticked labels, in the order of its options.
+    public private(set) var ticked: [String] = []
+
+    public init(questions: [Question]) { self.questions = questions }
+
+    /// Needs stepping: more than one question, or a multiple choice (one single choice is answered by its row alone).
+    public static func needed(for questions: [Question]) -> Bool {
+        questions.count > 1 || questions.contains { $0.multi == true }
+    }
+
+    public var index: Int { answers.count }
+    public var current: Question? { questions.indices.contains(index) ? questions[index] : nil }
+    public var isComplete: Bool { !questions.isEmpty && answers.count == questions.count }
+    public var isLast: Bool { index == questions.count - 1 }
+
+    /// A row of the current question: answers a single choice (and moves on), ticks or unticks a multiple choice's.
+    /// False when the label is not one of its options.
+    @discardableResult
+    public mutating func choose(_ label: String) -> Bool {
+        guard let q = current, q.options.contains(where: { $0.label == label }) else { return false }
+        if q.multi == true {
+            let set = ticked.contains(label) ? Set(ticked).subtracting([label]) : Set(ticked).union([label])
+            ticked = q.options.map(\.label).filter(set.contains)
+        } else {
+            answers.append(.pick(label))
+        }
+        return true
+    }
+
+    /// A multiple choice's ticks are its answer; moves on. False with nothing ticked (or not at a multiple choice).
+    @discardableResult
+    public mutating func next() -> Bool {
+        guard current?.multi == true, !ticked.isEmpty else { return false }
+        answers.append(.picks(ticked))
+        ticked = []
+        return true
+    }
+
+    /// Takes back the last answer (an undone send): its question is current again, a multiple choice with its ticks.
+    public mutating func back() {
+        guard let last = answers.popLast() else { return }
+        ticked = questions[answers.count].multi == true ? (last.picks ?? []) : []
     }
 }

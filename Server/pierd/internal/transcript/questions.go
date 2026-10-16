@@ -37,6 +37,11 @@ const (
 	maxQLabel    = 200
 )
 
+// ReadQuestions reads an AskUserQuestion's questions from its tool_input
+// ("questions"), capped: what a hook sends while the form is still open,
+// before Claude Code writes the call to its record.
+func ReadQuestions(raw any) []Question { return readQuestions(raw) }
+
 // readQuestions reads a call's questions, capped.
 func readQuestions(raw any) []Question {
 	qs, _ := raw.([]any)

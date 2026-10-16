@@ -1,13 +1,15 @@
 import Foundation
 import PierKit
 
-/// Builds a single-question form from the agent's screen when the transcript has no `question` item yet
-/// (Claude only writes it after the answer). Handles one question with numbered options; forms with steps return nil.
+/// The open question's form when the transcript has no `question` item yet (Claude only writes it after the answer):
+/// the one the hook sent with the wait (`Ask.questionItem`, every question of it), else one built from the agent's
+/// screen (a single question with numbered options; forms with steps return nil).
 enum ScreenQuestion {
     private static let option = try! NSRegularExpression(pattern: #"^\s*(?:[❯›>]\s*)?(\d)[.)]\s+(\S.*)$"#)
     private static let skip = ["type something", "chat about this", "other"]
 
     static func make(screen: String, ask: Ask?) -> TranscriptItem? {
+        if let item = ask?.questionItem { return item }
         guard ask?.tool == "AskUserQuestion" || ask?.tool == "request_user_input", !MenuParser.questionForm(in: screen) else { return nil }
         let screen = MenuParser.stripPanel(screen)
         var opts: [(String, String)] = []   // label, description

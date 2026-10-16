@@ -604,7 +604,7 @@ an idea through, plan what does not exist yet.
 | `preset`, `turn`, `state_seq`, `fidelity` | `fidelity`: `hooks` (exact) \| `partial` \| `screen` (inferred) |
 | `title` | first prompt line (≤ 48 characters) or a rename; empty until there is one |
 | `queued` | prompts held until the agent is idle (4.5) |
-| `ask` | only while `waiting`, when the hooks said what for: `{tool?, input?, why?, message?}`, each ≤ 300 characters, never file contents |
+| `ask` | only while `waiting`, when the hooks said what for: `{tool?, input?, why?, message?, questions?}`, each string ≤ 300 characters, never file contents; `questions` (AskUserQuestion only) is the whole open form, shaped like a transcript question item's (5.4) |
 | `scope`, `usage` | the systemd scope the program runs in, and what it uses (`memory`, `memory_high?`, `cpu_s`, `cpu_percent?`, `processes?`), on boxes where sessions get one |
 | `chat` | `true` for a chat (3.5): an agent with no location, in its own folder under `~/pier/chats` |
 
@@ -726,7 +726,7 @@ worktree form: `POST /v1/locations/{loc}/worktrees/{wt}/attachments`.
    followed by their screen are detected from the terminal.
 2. What is asked goes in `ask`: `{tool, input, why?, message?}`, with `input` a one-line summary (Bash: the command;
    Edit/Write/Read: the path relative to the session folder; WebFetch: the URL; Grep/Glob: the pattern;
-   AskUserQuestion: the first question). Never file contents. `ask` is not in the event: read it from
+   AskUserQuestion: the first question, plus `questions`, the whole form). Never file contents. `ask` is not in the event: read it from
    `Session.ask` (while waiting) or `Turn.waits[].ask`.
 3. The session turns `agent_state: "waiting"`; `agent.waiting` is published.
 
@@ -776,11 +776,12 @@ Always show `ask.tool` + `ask.input` (+ `why`), e.g. `Bash  rm -rf build`.
 
 * The structured question is a transcript item `kind: "question"` (6.2): `questions: [{question, header?, multi?,
   options: [{label, description?}], id?}]`; once answered, `done: true` and `answers: ["Blue"]` (`error: true` when
-  dismissed).
+  dismissed). Claude Code writes the call to its record only once it is answered: while it waits, the form is
+  `Session.ask.questions` (from its `PermissionRequest` hook), answered with `"tool": "AskUserQuestion"`.
 * Claude Code: `POST /v1/sessions/{name}/answer` (capability `answer`):
 
   ```json
-  { "tool": "<item.tool>", "answers": [ { "picks": ["Option label"], "other": "my own words" } ] }
+  { "tool": "<item.tool, or AskUserQuestion for Session.ask.questions>", "answers": [ { "picks": ["Option label"], "other": "my own words" } ] }
   ```
 
   One entry per question, in order; `picks` are option labels (exactly one unless `multi`), `other` one line of free

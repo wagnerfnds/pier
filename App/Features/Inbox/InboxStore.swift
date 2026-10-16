@@ -20,6 +20,11 @@ struct InboxOption: Identifiable {
         case cursor(index: Int, label: String)
         /// A single-choice question (AskUserQuestion): the structured answer, digits as the fallback.
         case pick(question: TranscriptItem, label: String)
+        /// A row of a form answered a question at a time (`QuestionSteps`): an option of the current question, or nil for
+        /// a multiple choice's "Continuar". Nothing goes out until the last question is answered.
+        case step(form: TranscriptItem, label: String?)
+        /// The whole form's answers, once every question has one.
+        case answers(form: TranscriptItem, answers: [QuestionAnswer])
     }
     let number: Int
     let title: String
@@ -52,6 +57,8 @@ final class InboxStore {
     private(set) var handled: [String: Date] = [:]
     /// Cards with an answer on its way.
     private(set) var busy: Set<String> = []
+    /// Forms answered a question at a time on a card ("box/session@since" -> the answers so far).
+    private(set) var steps: [String: QuestionSteps] = [:]
     @ObservationIgnored private var vms: [String: SessionViewModel] = [:]
     /// Boxes to re-read sessions from for a moment after an answer or a reply (box -> until when), so the card that left
     /// comes back as soon as the agent is done even when an event is late.
@@ -134,9 +141,12 @@ final class InboxStore {
 
     /// The answers for a waiting agent, read from its screen like the needs-you card does: a single-choice question, a
     /// numbered menu (permission or not), or an unnumbered cursor menu. Empty when nothing is parsable (open the session).
-    static func options(for s: Session, screen: String?) -> [InboxOption] {
-        guard let screen, !screen.isEmpty else { return [] }
+    static func options(for s: Session, id: String, screen: String?) -> [InboxOption] {
         let ask = s.ask
+        if s.needsYouKind == .question, let form = ask?.questionItem, QuestionSteps.needed(for: form.questions ?? []) {
+            return stepOptions(form: form, steps: shared.steps[stepsKey(id: id, session: s)])
+        }
+        guard let screen, !screen.isEmpty else { return [] }
         var out: [InboxOption] = []
         if s.needsYouKind == .question, ask?.isPlanApproval != true, let q = ScreenQuestion.make(screen: screen, ask: ask),
            let question = q.questions?.first, q.questions?.count == 1, question.multi != true {
@@ -171,11 +181,43 @@ final class InboxStore {
         let labels = out.map { o -> String in
             switch o.answer {
             case .key(_, let l), .cursor(_, let l), .pick(_, let l): l
+            case .step(_, let l): l ?? ""
+            case .answers: ""
             }
         }
         let context = [ask?.why, ask?.message].compactMap { $0 }.joined(separator: "\n")
         if let r = InboxRules.recommended(labels: labels, context: context) { out[r].recommended = true }
         return Array(out.prefix(9))
+    }
+
+    static func stepsKey(id: String, session s: Session) -> String {
+        "\(id)@\((s.stateSince ?? s.created).timeIntervalSince1970)"
+    }
+
+    /// The question a card shows: a form's current one when it is answered a question at a time, else the ask's words.
+    static func questionText(for s: Session, id: String) -> String? {
+        guard let form = s.ask?.questionItem, let qs = form.questions, QuestionSteps.needed(for: qs) else { return s.ask?.input }
+        let st = shared.steps[stepsKey(id: id, session: s)] ?? QuestionSteps(questions: qs)
+        guard let q = st.current ?? qs.last else { return s.ask?.input }
+        return qs.count > 1 ? S("\(q.question) (\(st.index + 1) de \(qs.count))") : q.question
+    }
+
+    /// The rows of a form's current question: its options (ticked with ✓ in a multiple choice), then "Continuar" (or
+    /// "Enviar" on the last question) for a multiple choice.
+    private static func stepOptions(form: TranscriptItem, steps: QuestionSteps?) -> [InboxOption] {
+        let st = steps ?? QuestionSteps(questions: form.questions ?? [])
+        guard let q = st.current else { return [] }
+        let multi = q.multi == true
+        var out = q.options.prefix(8).enumerated().map { i, o in
+            InboxOption(number: i + 1, title: (multi && st.ticked.contains(o.label) ? "✓ " : "") + InboxRules.cleanLabel(o.label),
+                        detail: o.description, role: .plain, answer: .step(form: form, label: o.label))
+        }
+        if multi {
+            out.append(InboxOption(number: out.count + 1, title: st.isLast ? S("Enviar") : S("Continuar"),
+                                   detail: st.ticked.isEmpty ? S("Marque uma ou mais opções") : nil, role: .plain,
+                                   answer: .step(form: form, label: nil)))
+        }
+        return out
     }
 
     // MARK: acting
@@ -188,6 +230,19 @@ final class InboxStore {
     /// waits the undo window.
     func perform(_ action: InboxAction, on i: InboxItem, model: AppModel, typed: Bool = false) async -> PendingActions.Token? {
         guard vm(i, model: model) != nil, !busy.contains(i.id) else { return nil }
+        var action = action
+        // A row of a form answered a question at a time: the step is taken here, and only the last one goes out.
+        var stepped: String?
+        if case .option(let o) = action, case .step(let form, let pick) = o.answer {
+            let key = Self.stepsKey(id: i.id, session: i.item.session)
+            var st = steps[key] ?? QuestionSteps(questions: form.questions ?? [])
+            guard pick.map({ st.choose($0) }) ?? st.next() else { return nil }
+            steps[key] = st
+            guard st.isComplete else { Haptic.selection(); return nil }
+            let summary = st.answers.map(QuestionHelpers.summary).joined(separator: " · ")
+            action = .option(InboxOption(number: o.number, title: summary, detail: nil, role: .plain, answer: .answers(form: form, answers: st.answers)))
+            stepped = key
+        }
         let label: String
         switch action {
         case .option(let o): label = o.title
@@ -199,6 +254,7 @@ final class InboxStore {
             if !(await self.execute(action, on: i, model: model)) { withAnimation(.snappy) { self.handled[i.id] = nil } }
         }, onUndo: { [weak self] in
             withAnimation(.snappy) { self?.handled[i.id] = nil }
+            if let stepped { self?.steps[stepped]?.back() }
         })
     }
 
@@ -238,6 +294,13 @@ final class InboxStore {
     /// Reads the screen again and answers only when the option is still there, the way the session screen answers it.
     private func answer(_ o: InboxOption, vm: SessionViewModel, model: AppModel) async -> Bool {
         let name = vm.name
+        if case .answers(let form, let answers) = o.answer {
+            // The form came with the wait (`Ask.questions`): answered only while it is still that wait.
+            await vm.conn?.refreshSessions()
+            guard vm.session.needsYou, vm.session.ask?.questionItem?.questions == form.questions else { return changed(model) }
+            await vm.answerQuestion(item: form, answers: answers)
+            return vm.actionError == nil
+        }
         let fresh: String
         do { fresh = try await vm.client.screen(session: name, history: 0) } catch {
             model.showToast(SessionActions.describe(error), symbol: "exclamationmark.triangle")
@@ -258,6 +321,8 @@ final class InboxStore {
             guard let question = ScreenQuestion.make(screen: fresh, ask: vm.session.ask),
                   question.questions?.first?.options.contains(where: { $0.label == label }) == true else { return changed(model) }
             await vm.answerQuestion(item: question, answers: [QuestionAnswer(picks: [label])])
+        case .step, .answers:
+            return false   // taken in `perform`, sent above
         }
         return vm.actionError == nil
     }

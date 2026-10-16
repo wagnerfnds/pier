@@ -29,6 +29,13 @@ func claudeAsk(in Payload) map[string]any {
 	if s := inputSummary(tool, input, in.Str("cwd")); s != "" {
 		ask["input"] = s
 	}
+	// A question's whole form, as the agent asked it: Claude Code writes
+	// the call to its record only once it is answered, so this is all the
+	// chat has to show the form and the box to answer it. The box reads
+	// and caps it (transcript.ReadQuestions).
+	if qs, ok := input["questions"].([]any); ok && tool == "AskUserQuestion" && len(qs) > 0 {
+		ask["questions"] = qs
+	}
 	// Bash says why it runs a command; that is the agent's reason.
 	if why, _ := input["description"].(string); why != "" && tool == "Bash" {
 		ask["why"] = clip(why)

@@ -128,6 +128,12 @@ import Testing
         let q: [Session] = try Fixture.decode("sessions_question.json")
         #expect(q.first?.ask?.tool == "AskUserQuestion")
         #expect(q.first?.needsYouKind == .question)
+        // The open form rides on the ask (Claude Code records the call only once answered): every question of it.
+        let item = try #require(q.first?.ask?.questionItem)
+        #expect(item.kind == "question" && item.tool == "AskUserQuestion" && item.questions?.count == 2)
+        #expect(item.questions?[0].options.map(\.label) == ["Red", "Blue"] && item.questions?[0].options[0].description == "Warm")
+        #expect(item.questions?[1].multi == true && item.questions?[1].header == "Toppings")
+        #expect(Ask(tool: "Bash", input: "ls").questionItem == nil)
 
         let mixed: [Session] = try Fixture.decode("sessions_mixed.json")
         let shell = try #require(mixed.first { $0.name == "bk-shell" })

@@ -55,13 +55,22 @@ func (b *Box) answerSession(w http.ResponseWriter, r *http.Request) error {
 		return badRequest("say which question to answer (tool)")
 	}
 	sess, path, err := b.claudeRecord(r)
-	if err != nil {
-		return err
-	}
+	// The form the hook sent with the wait: Claude Code writes the call to
+	// its record only once it is answered, so an open question is there,
+	// not in the conversation. "tool" is then the tool's own name.
+	var asked []transcript.Question
 	if b.Turns != nil {
-		if st, ok := b.Turns.State(sess.Name); ok && st.State != "waiting" {
-			return httpError{http.StatusConflict, "Claude isn't waiting for an answer"}
+		if st, ok := b.Turns.State(sess.Name); ok {
+			if st.State != "waiting" {
+				return httpError{http.StatusConflict, "Claude isn't waiting for an answer"}
+			}
+			if st.Ask != nil && st.Ask.Tool == "AskUserQuestion" && req.Tool == st.Ask.Tool {
+				asked = st.Ask.Questions
+			}
 		}
+	}
+	if err != nil && (len(asked) == 0 || sess.Name == "") {
+		return err
 	}
 	mu, _ := answering.LoadOrStore(sess.Name, &sync.Mutex{})
 	if !mu.(*sync.Mutex).TryLock() {
@@ -69,22 +78,26 @@ func (b *Box) answerSession(w http.ResponseWriter, r *http.Request) error {
 	}
 	defer mu.(*sync.Mutex).Unlock()
 
-	res, err := reader().Read("claude", path, sess.Dir, 0)
+	qs := asked
+	if len(qs) == 0 {
+		res, err := reader().Read("claude", path, sess.Dir, 0)
+		if err != nil {
+			return err
+		}
+		it, open := transcript.OpenQuestion(res, req.Tool)
+		switch {
+		case it.Kind == "":
+			return httpError{http.StatusNotFound, "that question isn't in Claude's conversation"}
+		case !open:
+			return httpError{http.StatusConflict, "those questions were already answered"}
+		}
+		qs = it.Questions
+	}
+	shown, err := checkAnswers(qs, req.Answers)
 	if err != nil {
 		return err
 	}
-	it, open := transcript.OpenQuestion(res, req.Tool)
-	switch {
-	case it.Kind == "":
-		return httpError{http.StatusNotFound, "that question isn't in Claude's conversation"}
-	case !open:
-		return httpError{http.StatusConflict, "those questions were already answered"}
-	}
-	shown, err := checkAnswers(it.Questions, req.Answers)
-	if err != nil {
-		return err
-	}
-	if err := driveAnswers(r.Context(), tmuxTerm{s: b.Sessions, target: "=" + sess.Name + ":"}, it.Questions, req.Answers); err != nil {
+	if err := driveAnswers(r.Context(), tmuxTerm{s: b.Sessions, target: "=" + sess.Name + ":"}, qs, req.Answers); err != nil {
 		return err
 	}
 	writeJSON(w, AnswerResult{Answered: shown})

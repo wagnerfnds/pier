@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func TestAPermissionRequestIsKeptOnTheWaitAndNeverPublished(t *testing.T) {
 
 	want := Ask{Tool: "Bash", Input: "pnpm test --filter checkout", Why: "Run the checkout tests", Message: "Claude needs your permission to use Bash"}
 	st, _ := turns.State("s")
-	if st.State != "waiting" || st.Ask == nil || *st.Ask != want {
+	if st.State != "waiting" || st.Ask == nil || !reflect.DeepEqual(*st.Ask, want) {
 		t.Fatalf("state = %+v ask=%+v", st, st.Ask)
 	}
 	for _, e := range seen {
@@ -68,6 +69,38 @@ func TestAPermissionRequestIsKeptOnTheWaitAndNeverPublished(t *testing.T) {
 	turns.NoteAsk(map[string]any{"session": "s"}, map[string]any{"tool": "Bash", "input": "rm -rf /"})
 	if got, _ := turns.Get("s#1"); got.Waits[0].Ask.Input != want.Input {
 		t.Fatalf("a late ask changed the wait: %+v", got.Waits[0].Ask)
+	}
+}
+
+// An AskUserQuestion's whole form rides on the wait: Claude Code writes the
+// call to its record only once it is answered, so the session's ask is all
+// the app has to show the form, and the box to answer it.
+func TestAQuestionsFormIsKeptOnTheWait(t *testing.T) {
+	turns := &Turns{}
+	_, bus := servedBox(t, func(b *Box) { b.Turns = turns })
+	turns.Attach(bus)
+	bus.Publish(events.Event{Type: "session.started", Data: map[string]any{"name": "s", "path": "/w", "agent": "claude"}})
+	hook(bus, "agent.ready", "s", "/w", "claude")
+	hook(bus, "agent.started", "s", "/w", "claude", "signal", "prompt")
+	e, _ := integrations.Translate("claude", "PermissionRequest", []byte(`{"cwd":"/w","tool_name":"AskUserQuestion","tool_use_id":"t1","tool_input":{"questions":[
+		{"question":"Qual tema?","header":"Tema","multiSelect":false,"options":[{"label":"Tecnologia","description":"Apps"},{"label":"Livros"}]},
+		{"question":"Quais formatos?","header":"Formato","multiSelect":true,"options":[{"label":"Curtas"},{"label":"Listas"}]}]}}`))
+	e.Data["session"] = "s"
+	ask := e.Data["ask"]
+	delete(e.Data, "ask")
+	bus.Publish(events.Event{Type: e.Type, Origin: "claude", Data: e.Data})
+	turns.NoteAsk(e.Data, ask)
+	st, _ := turns.State("s")
+	if st.Ask == nil || st.Ask.Input != "Qual tema?" || len(st.Ask.Questions) != 2 {
+		t.Fatalf("ask = %+v", st.Ask)
+	}
+	q := st.Ask.Questions[1]
+	if !q.Multi || q.Header != "Formato" || len(q.Options) != 2 || q.Options[1].Label != "Listas" || st.Ask.Questions[0].Options[0].Description != "Apps" {
+		t.Fatalf("questions = %+v", st.Ask.Questions)
+	}
+	b, _ := json.Marshal(st)
+	if !strings.Contains(string(b), `"questions":[{"question":"Qual tema?","header":"Tema","options":[{"label":"Tecnologia","description":"Apps"}`) {
+		t.Fatalf("wire = %s", b)
 	}
 }
 

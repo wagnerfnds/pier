@@ -5,6 +5,10 @@
     "ask" : {
       "input" : "Which colour?",
       "message" : "Claude needs your permission",
+      "questions" : [
+        { "question" : "Which colour?", "header" : "Colour", "options" : [ { "label" : "Red", "description" : "Warm" }, { "label" : "Blue" } ] },
+        { "question" : "Which toppings?", "header" : "Toppings", "multi" : true, "options" : [ { "label" : "Cheese" }, { "label" : "Olives" } ] }
+      ],
       "tool" : "AskUserQuestion"
     },
     "attached" : 0,

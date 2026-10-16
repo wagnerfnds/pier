@@ -72,7 +72,9 @@ final class SessionViewModel {
     @ObservationIgnored private var reviewCheck: (key: String, at: Date)?
 
     // Needs-you bookkeeping
-    var answeredFor: Date?          // `stateSince` of the waiting episode already answered
+    /// `stateSince` of the waiting episode already answered (the card hides meanwhile).
+    var answeredFor: Date? { didSet { answeredAt = answeredFor == nil ? nil : Date() } }
+    @ObservationIgnored private var answeredAt: Date?
     var answering = false
 
     @ObservationIgnored private var kickFlag = false
@@ -377,6 +379,9 @@ final class SessionViewModel {
         let s = session
         // A new wait (another permission, another question) must not be answered against the previous one's screen.
         if s.needsYou, s.stateSince != waitSince { waitSince = s.stateSince; screen = ""; screenLoaded = false }
+        // Answered, and still the same wait seconds later: the answer did not end it (a key that only moved the agent's
+        // form to its next question, an answer the agent never took). The card comes back, read from the screen as it is now.
+        if s.needsYou, answeredFor == s.stateSince, let at = answeredAt, Date().timeIntervalSince(at) > 6 { answeredFor = nil }
         // The transcript follows the box's events (`transcript.changed`, `agent.*`); the timer only backs them up: every 3 s
         // while the agent works, every ~7.5 s otherwise. The reply being written follows its own clock (`followDraft`).
         let backup = s.agentState == .running ? tickCount % 2 == 0 : tickCount % 5 == 0

@@ -157,10 +157,10 @@ enum MacSurfaceSettings {
         if let ch = signals.changes["\(d.box)/\(s.location ?? "")"], ch.added + ch.removed > 0 { out["change"] = "+\(ch.added) −\(ch.removed)" }
         if s.needsYou {
             let wording = PermissionWording.headline(agent: s.agentShortName, tool: s.ask?.tool)
-            out["question"] = s.needsYouKind == .question ? (s.ask?.input ?? S("\(s.agentShortName) tem uma pergunta")) : wording.text
+            out["question"] = s.needsYouKind == .question ? (InboxStore.questionText(for: s, id: id) ?? S("\(s.agentShortName) tem uma pergunta")) : wording.text
             if s.needsYouKind != .question, let input = s.ask?.input, !input.isEmpty { out[wording.mono ? "command" : "detail"] = input }
             if s.needsYouKind != .question, let why = s.ask?.why, !why.isEmpty { out["why"] = why }
-            out["options"] = InboxStore.options(for: s, screen: signals.screens[id]).map { o -> [String: Any] in
+            out["options"] = InboxStore.options(for: s, id: id, screen: signals.screens[id]).map { o -> [String: Any] in
                 var r: [String: Any] = ["number": o.number, "title": o.title, "recommended": o.recommended]
                 if let detail = o.detail { r["detail"] = detail }
                 r["role"] = switch o.role { case .allow: "allow"; case .always: "always"; case .deny: "deny"; case .plain: "plain" }
@@ -564,12 +564,12 @@ enum MacSurfaceSettings {
         if i.kind == .needsYou {
             c["word"] = AgentDots.stateWord(.needsYou)
             let wording = PermissionWording.headline(agent: s.agentShortName, tool: s.ask?.tool)
-            let question = s.needsYouKind == .question ? (s.ask?.input ?? S("\(s.agentShortName) tem uma pergunta")) : wording.text
+            let question = s.needsYouKind == .question ? (InboxStore.questionText(for: s, id: i.id) ?? S("\(s.agentShortName) tem uma pergunta")) : wording.text
             c["question"] = question
             // What the agent wants to run or edit, under the headline; a command reads better in monospace.
             if s.needsYouKind != .question, let input = s.ask?.input, !input.isEmpty { c[wording.mono ? "command" : "detail"] = input }
             if s.needsYouKind != .question, let why = s.ask?.why, !why.isEmpty { c["why"] = why }
-            let options = InboxStore.options(for: s, screen: signals.screens[i.id])
+            let options = InboxStore.options(for: s, id: i.id, screen: signals.screens[i.id])
             c["options"] = options.map { o -> [String: Any] in
                 var d: [String: Any] = ["number": o.number, "title": o.title, "recommended": o.recommended]
                 if let detail = o.detail { d["detail"] = detail }
@@ -658,7 +658,7 @@ enum MacSurfaceSettings {
         let label: String
         switch i.kind {
         case .needsYou:
-            guard let o = InboxStore.options(for: i.item.session, screen: signals.screens[id]).first(where: { $0.number == n }) else { return }
+            guard let o = InboxStore.options(for: i.item.session, id: id, screen: signals.screens[id]).first(where: { $0.number == n }) else { return }
             action = .option(o); label = o.title
         case .finished:
             guard let since = i.item.session.stateSince, case .ready(let replies)? = steps.phase(NextSteps.Key(box: i.item.box, session: i.item.session.name, since: since)),

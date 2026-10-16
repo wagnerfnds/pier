@@ -17,6 +17,7 @@ import (
 	"pier/pierd/internal/events"
 	"pier/pierd/internal/integrations/adapters"
 	"pier/pierd/internal/statefile"
+	"pier/pierd/internal/transcript"
 )
 
 // The turn ledger: what every agent session is doing, turn by turn, kept
@@ -73,6 +74,9 @@ type Ask struct {
 	Input   string `json:"input,omitempty"`
 	Why     string `json:"why,omitempty"`
 	Message string `json:"message,omitempty"`
+	// Questions is an AskUserQuestion's whole form while it is open
+	// (Claude Code records the call only once answered).
+	Questions []transcript.Question `json:"questions,omitempty"`
 }
 
 // SessionState is what an agent session is doing now.
@@ -1103,7 +1107,10 @@ func (t *Turns) NoteAsk(data map[string]any, raw any) {
 		return
 	}
 	ask := Ask{Tool: askStr(m, "tool"), Input: askStr(m, "input"), Why: askStr(m, "why"), Message: askStr(m, "message")}
-	if ask == (Ask{}) {
+	if ask.Tool == "AskUserQuestion" {
+		ask.Questions = transcript.ReadQuestions(m["questions"])
+	}
+	if ask.Tool == "" && ask.Input == "" && ask.Why == "" && ask.Message == "" {
 		return
 	}
 	t.mu.Lock()

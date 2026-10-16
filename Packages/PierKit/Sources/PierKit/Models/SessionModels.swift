@@ -7,12 +7,15 @@ public struct Ask: Codable, Sendable, Hashable {
     public let input: String?
     public let why: String?
     public let message: String?
+    /// An `AskUserQuestion`'s whole form while it is open: Claude Code writes the call to its record only once answered.
+    public let questions: [Question]?
 
-    public init(tool: String? = nil, input: String? = nil, why: String? = nil, message: String? = nil) {
+    public init(tool: String? = nil, input: String? = nil, why: String? = nil, message: String? = nil, questions: [Question]? = nil) {
         self.tool = tool
         self.input = input
         self.why = why
         self.message = message
+        self.questions = questions
     }
 
     enum CodingKeys: String, CodingKey {
@@ -20,6 +23,7 @@ public struct Ask: Codable, Sendable, Hashable {
         case input
         case why
         case message
+        case questions
     }
 
     public init(from decoder: Decoder) throws {
@@ -28,6 +32,7 @@ public struct Ask: Codable, Sendable, Hashable {
         self.input = try c.decodeIfPresent(String.self, forKey: .input)
         self.why = try c.decodeIfPresent(String.self, forKey: .why)
         self.message = try c.decodeIfPresent(String.self, forKey: .message)
+        self.questions = try? c.decodeIfPresent([Question].self, forKey: .questions)
     }
 }
 

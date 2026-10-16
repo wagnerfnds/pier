@@ -15082,6 +15082,26 @@
           }
         }
       }
+    },
+    "%@ (%lld de %lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (%2$lld of %3$lld)"
+          }
+        }
+      }
+    },
+    "Marque uma ou mais opções" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tick one or more options"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

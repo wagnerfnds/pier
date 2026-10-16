@@ -31,6 +31,13 @@ func TestPermissionRequestAsk(t *testing.T) {
 	if a := ask(`{"cwd":"/w","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Hi or bye?","options":[{"label":"hi"},{"label":"bye"}]}]}}`); a["input"] != "Hi or bye?" {
 		t.Errorf("AskUserQuestion ask = %v", a)
 	}
+	// The whole form goes with it: Claude Code records the call only once it is answered.
+	if qs, _ := ask(`{"cwd":"/w","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"A?","options":[{"label":"x"}]},{"question":"B?","multiSelect":true,"options":[{"label":"y"}]}]}}`)["questions"].([]any); len(qs) != 2 {
+		t.Errorf("AskUserQuestion questions = %v", qs)
+	}
+	if a := ask(`{"cwd":"/w","tool_name":"Bash","tool_input":{"command":"ls","questions":[{"question":"A?"}]}}`); a["questions"] != nil {
+		t.Errorf("questions on a Bash ask = %v", a)
+	}
 	a := ask(`{"cwd":"/w","tool_name":"Write","tool_input":{"file_path":"/w/src/a.ts","content":"SECRET-CONTENT"}}`)
 	if a["tool"] != "Write" || a["input"] != "src/a.ts" {
 		t.Errorf("Write ask = %v", a)

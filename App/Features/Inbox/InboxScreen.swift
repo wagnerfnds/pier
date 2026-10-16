@@ -301,7 +301,7 @@ struct InboxScreen: View {
         focused = i.id
         switch i.kind {
         case .needsYou:
-            guard let o = InboxStore.options(for: i.item.session, screen: signals.screens[i.id]).first(where: { $0.number == n }) else { return }
+            guard let o = InboxStore.options(for: i.item.session, id: i.id, screen: signals.screens[i.id]).first(where: { $0.number == n }) else { return }
             act(.option(o), i)
         case .finished:
             guard let since = i.item.session.stateSince,
@@ -506,7 +506,7 @@ private struct InboxNeedsYouCard: View {
     private var s: Session { entry.item.session }
 
     var body: some View {
-        let options = InboxStore.options(for: s, screen: screen)
+        let options = InboxStore.options(for: s, id: entry.id, screen: screen)
         let wording = PermissionWording.headline(agent: s.agentShortName, tool: s.ask?.tool)
         InboxCardShell(tint: Theme.orange) {
             VStack(alignment: .leading, spacing: 11) {
@@ -516,7 +516,7 @@ private struct InboxNeedsYouCard: View {
                     Text(s.needsYouKind == .question ? S("\(s.agentShortName) tem uma pergunta") : wording.text)
                         .font(.footnote.weight(.semibold)).foregroundStyle(Theme.orange)
                 }
-                if let input = s.ask?.input, !input.isEmpty {
+                if let input = s.needsYouKind == .question ? InboxStore.questionText(for: s, id: entry.id) : s.ask?.input, !input.isEmpty {
                     if wording.mono && s.needsYouKind != .question {
                         Text(input).font(.mono(12.5)).foregroundStyle(Theme.text).lineLimit(4)
                             .padding(.horizontal, 10).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
