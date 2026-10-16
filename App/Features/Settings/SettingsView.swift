@@ -1,4 +1,5 @@
 import SwiftUI
+import Intents
 import UserNotifications
 import PierKit
 
@@ -124,6 +125,27 @@ struct SettingsView: View {
                     Button("Permitir notificações") { Task { await model.notifications.requestAuthorization() } }
                         .listRowBackground(Theme.card)
                 }
+                #if !targetEnvironment(macCatalyst)
+                // Siri reads the agents' messages and takes the car's spoken replies only once allowed.
+                switch model.notifications.siri {
+                case .authorized:
+                    Label("Siri e CarPlay: permitidos", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).listRowBackground(Theme.card)
+                case .denied, .restricted:
+                    Button("Permitir o Siri em Ajustes do iOS") {
+                        if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                    }
+                    .accessibilityIdentifier("settings-siri")
+                    .listRowBackground(Theme.card)
+                default:
+                    Button("Permitir o Siri (respostas por voz no carro)") {
+                        Task {
+                            model.notifications.siri = await withCheckedContinuation { c in INPreferences.requestSiriAuthorization { c.resume(returning: $0) } }
+                        }
+                    }
+                    .accessibilityIdentifier("settings-siri")
+                    .listRowBackground(Theme.card)
+                }
+                #endif
                 #if targetEnvironment(macCatalyst)
                 Toggle("Abrir o Pier quando o Mac ligar", isOn: Binding(get: { openAtLogin }, set: { on in
                     if LoginItem.set(on) { openAtLogin = LoginItem.isOn }

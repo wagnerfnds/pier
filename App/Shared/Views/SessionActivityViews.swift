@@ -238,6 +238,34 @@ struct SessionLockScreenView: View {
     }
 }
 
+// MARK: small (the car's dashboard, the Watch)
+
+/// A glance from the car: which agent, where it is (Precisa de você, Trabalhando…), and what it asks, does or said.
+/// Tapping it opens the session on the phone; the car's own Pier screen answers.
+struct SmallActivityView: View {
+    let attrs: SessionActivityAttributes
+    let state: ActivityContentState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                SharedAgentGlyph(agent: attrs.agent, size: 18)
+                Text(attrs.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(BTheme.text).lineLimit(1)
+                Spacer(minLength: 2)
+                Image(systemName: state.phase.symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(state.phase.color)
+            }
+            Text(state.phase.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(state.phase.color).lineLimit(1)
+            DetailLine(state: state, lines: 2)
+            if state.phase == .waiting, let o = state.options, o.count > 1 {
+                Text(o.prefix(3).joined(separator: " · ")).font(.system(size: 11, weight: .medium)).foregroundStyle(BTheme.textDim).lineLimit(1)
+            } else if state.phase == .waiting, let n = state.steps {
+                Text(n == 1 ? "1 pergunta" : "\(n) perguntas").font(.system(size: 11, weight: .medium)).foregroundStyle(BTheme.textDim)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
 // MARK: Dynamic Island
 
 struct IslandCompactLeading: View {

@@ -29,7 +29,7 @@ struct PierWidgetsBundlePush: WidgetBundle {
     var body: some Widget {
         StatusWidgetPushEnabled()
         #if !targetEnvironment(macCatalyst)
-        SessionLiveActivity()
+        SessionLiveActivityWithSmall()
         #endif
     }
 }

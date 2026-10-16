@@ -407,6 +407,8 @@ final class AppModel {
         switch phase {
         case .active, .inactive:
             if let url = PendingDeepLink.take() { router.handle(url: url) }
+            // Siri's question needs the app in the foreground: `.inactive` comes first and would lose it.
+            if phase == .active { Task { await notifications.askSiriIfNeeded() } }
             guard !isActive else { return }
             isActive = true
             reconnectAll()

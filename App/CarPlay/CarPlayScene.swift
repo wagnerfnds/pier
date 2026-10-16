@@ -153,12 +153,19 @@ final class CarPlayController {
 
     // MARK: answering
 
-    /// A waiting agent's answers, read from its box now: Permitir / Negar for a permission menu, else its question's
-    /// choices; and "Responder por voz" (Siri takes the words).
+    /// A waiting agent's answers, read from its box now: Permitir / Negar for a permission menu; its question's choices
+    /// (the form the hook sent, a question at a time when it has several); "Responder por voz" (Siri takes the words);
+    /// and the last of the conversation, so the person knows what it is about.
     private func openAnswers(_ row: CarDigest.Row) async {
+        interface?.pushTemplate(await answerTemplate(row), animated: true, completion: nil)
+    }
+
+    /// The screen `openAnswers` shows (the self-test reads it without a car).
+    func answerTemplate(_ row: CarDigest.Row) async -> CPListTemplate {
         let s = row.session
         var items: [CPListTemplateItem] = []
         let permission = Ask.classify(s.ask) == .permission
+        let form = s.ask?.questionItem?.questions
         if permission {
             items.append(answerItem(String(localized: "Permitir"), "checkmark.circle.fill", .systemGreen, row: row) {
                 await SessionActions.answerPermission(box: row.box, session: s.name, .allow)
@@ -166,6 +173,15 @@ final class CarPlayController {
             items.append(answerItem(String(localized: "Negar"), "xmark.circle.fill", .systemRed, row: row) {
                 await SessionActions.answerPermission(box: row.box, session: s.name, .deny)
             })
+        } else if let form, QuestionSteps.needed(for: form) {
+            // A form with steps: its first question now, the next ones as each is answered.
+            return stepTemplate(QuestionSteps(questions: form), row: row)
+        } else if let labels = form?.first?.options.map(\.label), labels.count > 1 {
+            for (i, label) in labels.prefix(8).enumerated() {
+                items.append(answerItem("\(i + 1). \(label)", "\(min(i + 1, 50)).circle.fill", .systemBlue, row: row) {
+                    await SessionActions.answerChoice(box: row.box, session: s.name, label: label)
+                })
+            }
         } else if let client = try? HeadlessBoxes.box(row.box).client,
                   let options = await ChoiceOptions.fetch(client: client, session: s) {
             for (i, label) in options.enumerated() {
@@ -174,16 +190,103 @@ final class CarPlayController {
                 })
             }
         }
-        let voice = CPMessageListItem(conversationIdentifier: row.id, text: String(localized: "Responder por voz"),
-                                      leadingConfiguration: CPMessageListItemLeadingConfiguration(
-                                        leadingItem: .none, leadingImage: Self.symbol("mic.fill", .systemBlue), unread: false),
-                                      trailingConfiguration: CPMessageListItemTrailingConfiguration(trailingItem: .none, trailingImage: nil),
-                                      detailText: String(localized: "Diga a resposta para o Siri"), trailingText: nil)
         // A permission takes only Permitir / Negar (`SessionActions.reply` would refuse the words anyway).
-        if !permission { items.append(voice) }
-        let section = CPListSection(items: items, header: CarFeed.ask(s), sectionIndexTitle: nil)
-        let template = CPListTemplate(title: CarDigest.title(s), sections: [section])
-        interface?.pushTemplate(template, animated: true, completion: nil)
+        if !permission { items.append(voiceItem(row)) }
+        var sections = [CPListSection(items: items, header: CarFeed.ask(s), sectionIndexTitle: nil)]
+        if let talk = await conversation(row) { sections.append(talk) }
+        return CPListTemplate(title: CarDigest.title(s), sections: sections)
+    }
+
+    /// One question of a form with steps: a single choice answers it and moves on; a multiple choice ticks its rows and
+    /// moves on with Continuar. The last answer sends the whole form (`SessionActions.answerForm`).
+    private func pushStep(_ steps: QuestionSteps, row: CarDigest.Row) {
+        interface?.pushTemplate(stepTemplate(steps, row: row), animated: true, completion: nil)
+    }
+
+    func stepTemplate(_ steps: QuestionSteps, row: CarDigest.Row) -> CPListTemplate {
+        let q = steps.current ?? Question(question: "")
+        let multi = q.multi == true
+        var items: [CPListTemplateItem] = []
+        var state = steps
+        for (i, o) in q.options.prefix(8).enumerated() {
+            let ticked = state.ticked.contains(o.label)
+            let item = CPListItem(text: "\(i + 1). \(o.label)", detailText: o.description,
+                                  image: Self.symbol(multi ? (ticked ? "checkmark.circle.fill" : "circle") : "\(i + 1).circle.fill",
+                                                     multi && !ticked ? .systemGray : .systemBlue))
+            item.handler = { [weak self] _, done in
+                Task { @MainActor in
+                    guard let self else { done(); return }
+                    state.choose(o.label)
+                    done()
+                    if multi {
+                        // The same question, its ticks redrawn.
+                        self.interface?.popTemplate(animated: false, completion: nil)
+                        self.pushStep(state, row: row)
+                    } else {
+                        await self.advance(state, row: row)
+                    }
+                }
+            }
+            items.append(item)
+        }
+        if multi {
+            let next = CPListItem(text: steps.isLast ? String(localized: "Enviar") : String(localized: "Continuar"),
+                                  detailText: steps.ticked.isEmpty ? String(localized: "Marque uma ou mais opções") : steps.ticked.joined(separator: ", "),
+                                  image: Self.symbol("arrow.right.circle.fill", .systemOrange))
+            next.handler = { [weak self] _, done in
+                Task { @MainActor in
+                    guard let self else { done(); return }
+                    guard state.next() else { done(); return }
+                    done()
+                    await self.advance(state, row: row)
+                }
+            }
+            items.append(next)
+        }
+        let header = steps.questions.count > 1 ? "\(q.question) (\(steps.index + 1)/\(steps.questions.count))" : q.question
+        return CPListTemplate(title: CarDigest.title(row.session), sections: [CPListSection(items: items, header: header, sectionIndexTitle: nil)])
+    }
+
+    /// After an answer: the next question, or the whole form sent and back to the list.
+    private func advance(_ state: QuestionSteps, row: CarDigest.Row) async {
+        guard state.isComplete else { pushStep(state, row: row); return }
+        let result = await SessionActions.answerForm(box: row.box, session: row.session.name, questions: state.questions, answers: state.answers)
+        switch result {
+        case .success:
+            interface?.popToRootTemplate(animated: true, completion: nil)
+            shown = []
+            await refresh()
+        case .failure(let f):
+            alert(f.message)
+        }
+    }
+
+    private func voiceItem(_ row: CarDigest.Row) -> CPMessageListItem {
+        CPMessageListItem(conversationIdentifier: row.id, text: String(localized: "Responder por voz"),
+                          leadingConfiguration: CPMessageListItemLeadingConfiguration(
+                            leadingItem: .none, leadingImage: Self.symbol("mic.fill", .systemBlue), unread: false),
+                          trailingConfiguration: CPMessageListItemTrailingConfiguration(trailingItem: .none, trailingImage: nil),
+                          detailText: String(localized: "Diga a resposta para o Siri"), trailingText: nil)
+    }
+
+    /// The last few messages of the conversation (the person's and the agent's), a line each: what the question is
+    /// about, at a glance.
+    private func conversation(_ row: CarDigest.Row) async -> CPListSection? {
+        guard let client = try? HeadlessBoxes.box(row.box).client else { return nil }
+        let name = row.session.name
+        let page: TranscriptPage? = await BoxAccess.withTimeout(.seconds(4)) { try await client.transcriptBefore(session: name, before: 0, limit: 30) } ?? nil
+        let said = (page?.items ?? []).filter { ($0.kind == "user" || $0.kind == "text") && !($0.text ?? "").isEmpty }.suffix(4)
+        guard !said.isEmpty else { return nil }
+        let agent = CarDigest.agentName(row.session)
+        let items = said.map { it -> CPListItem in
+            let mine = it.kind == "user"
+            let text = CarDigest.spoken(it.text ?? "", limit: 160, codePlaceholder: String(localized: "(código)"))
+            let item = CPListItem(text: text, detailText: mine ? String(localized: "Você") : agent,
+                                  image: mine ? Self.symbol("person.crop.circle.fill", .systemGray) : Self.avatar(row))
+            item.handler = { _, done in done() }
+            return item
+        }
+        return CPListSection(items: Array(items), header: String(localized: "Conversa"), sectionIndexTitle: nil)
     }
 
     /// A row that answers the agent, then goes back to the list (or says why it could not).

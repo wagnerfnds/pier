@@ -22,6 +22,10 @@ enum NotificationAction {
 @MainActor @Observable
 final class Notifications: NSObject, UNUserNotificationCenterDelegate {
     var status: UNAuthorizationStatus = .notDetermined
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    /// Whether Siri may work with Pier (`askSiriIfNeeded`), shown in Ajustes.
+    var siri: INSiriAuthorizationStatus = INPreferences.siriAuthorizationStatus()
+    #endif
     /// True when the foreground UI already announces this box's transitions (set by the model).
     @ObservationIgnored var isCovered: (@MainActor (String) -> Bool)?
     @ObservationIgnored var onOpen: ((String, String) -> Void)?   // (box, session)
@@ -90,10 +94,17 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
 
     func refreshStatus() async {
         status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        await askSiriIfNeeded()
+    }
+
+    /// Siri works with an app only once the person allowed it (the car's spoken replies, the messages read aloud). iOS
+    /// shows that question only to an app in the foreground: asked from there, once, whatever the notifications'.
+    func askSiriIfNeeded() async {
         #if os(iOS) && !targetEnvironment(macCatalyst)
-        // Someone who allowed notifications before Siri was asked for: asked once now (the agents' messages, by voice).
-        if status == .authorized, INPreferences.siriAuthorizationStatus() == .notDetermined {
-            INPreferences.requestSiriAuthorization { _ in }
+        siri = INPreferences.siriAuthorizationStatus()
+        guard siri == .notDetermined, UIApplication.shared.applicationState == .active, status != .notDetermined else { return }
+        siri = await withCheckedContinuation { (c: CheckedContinuation<INSiriAuthorizationStatus, Never>) in
+            INPreferences.requestSiriAuthorization { c.resume(returning: $0) }
         }
         #endif
     }

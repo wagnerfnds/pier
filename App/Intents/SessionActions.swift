@@ -49,6 +49,13 @@ enum SessionActions {
             guard let s = try? await client.sessions().first(where: { $0.name == session }) else { continue }
             guard s.needsYou else { return .failure(.menuChanged) }
             do {
+                // The form the hook sent with the wait (Claude Code records the question only once answered).
+                if let qs = s.ask?.questionItem?.questions, qs.count == 1, qs[0].multi != true,
+                   let pick = qs[0].options.first(where: { same($0.label) })?.label,
+                   (try? await client.answerQuestions(session: session, tool: "AskUserQuestion", answers: [.pick(pick)])) != nil {
+                    await SessionActivityBridge.answered(box: box, session: session)
+                    return .success(())
+                }
                 if Ask.classify(s.ask) == .question, let page = try? await client.transcript(session: session, since: 0, gen: nil),
                    let q = QuestionHelpers.openQuestion(in: page.items), let qs = q.questions, qs.count == 1, qs[0].multi != true,
                    let pick = qs[0].options.first(where: { same($0.label) })?.label {
@@ -115,6 +122,17 @@ enum SessionActions {
             if Ask.classify(s.ask) == .permission {
                 return .failure(.failed(String(localized: "Esse agente espera Permitir ou Negar: responda pelos botões.")))
             }
+            // The open form: one question takes the words as its own-words answer; a form with steps is answered from
+            // its choices (one answer for several questions would be a guess).
+            if let qs = s.ask?.questionItem?.questions {
+                guard qs.count == 1 else {
+                    return .failure(.failed(String(localized: "Essa pergunta tem várias partes: responda pelas opções na tela.")))
+                }
+                if (try? await client.answerQuestions(session: session, tool: "AskUserQuestion", answers: [.other(t)])) != nil {
+                    await SessionActivityBridge.answered(box: box, session: session)
+                    return .success(())
+                }
+            }
             if let page = try? await client.transcript(session: session, since: 0, gen: nil),
                let q = QuestionHelpers.openQuestion(in: page.items), let qs = q.questions, qs.count == 1, qs[0].multi != true,
                (try? await client.answerQuestions(session: session, tool: q.tool ?? "AskUserQuestion", answers: [QuestionAnswer(other: t)])) != nil {
@@ -130,6 +148,21 @@ enum SessionActions {
             _ = try await client.send(session: session, SendRequest(text: key, enter: false, when: .now, force: true))
             try? await Task.sleep(for: .milliseconds(400))   // the row opens its text field
             _ = try await client.send(session: session, SendRequest(text: t, enter: true, when: .now, force: true))
+            await SessionActivityBridge.answered(box: box, session: session)
+            return .success(())
+        } catch {
+            return .failure(.failed(describe(error)))
+        }
+    }
+
+    /// A whole open form's answers (the car steps through it a question at a time): sent only while it is still that
+    /// form, through the box (`POST .../answer` with the tool's name).
+    static func answerForm(box: String, session: String, questions: [Question], answers: [QuestionAnswer]) async -> Result<Void, Failure> {
+        do {
+            let client = try HeadlessBoxes.box(box).client
+            guard let s = try await client.sessions().first(where: { $0.name == session }), s.needsYou,
+                  s.ask?.questionItem?.questions == questions else { return .failure(.menuChanged) }
+            _ = try await client.answerQuestions(session: session, tool: "AskUserQuestion", answers: answers)
             await SessionActivityBridge.answered(box: box, session: session)
             return .success(())
         } catch {

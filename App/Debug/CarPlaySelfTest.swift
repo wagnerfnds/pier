@@ -35,6 +35,22 @@ enum CarPlaySelfTest {
                 }
                 say("section \(sec.header ?? "") \(items)")
             }
+            // What a waiting agent opens: its answers (a form a question at a time), the voice reply, the conversation.
+            let car = CarPlayController(interface: nil)
+            func show(_ t: CPListTemplate, _ name: String) {
+                for sec in t.sections {
+                    let items = sec.items.map { ($0 as? CPListItem)?.text ?? ($0 as? CPMessageListItem)?.text ?? "?" }
+                    say("\(name) [\(sec.header ?? "")] \(items)")
+                }
+            }
+            for row in rows where row.kind == .needsYou {
+                show(await car.answerTemplate(row), "answers \(CarDigest.title(row.session))")
+                if let qs = row.session.ask?.questionItem?.questions, QuestionSteps.needed(for: qs), let first = qs.first?.options.first?.label {
+                    var st = QuestionSteps(questions: qs)
+                    st.choose(first)
+                    show(car.stepTemplate(st, row: row), "step2 \(CarDigest.title(row.session))")
+                }
+            }
 
             let handler = MessageIntentHandler()
             let search = INSearchForMessagesIntent(recipients: nil, senders: nil, searchTerms: nil, attributes: .unread,

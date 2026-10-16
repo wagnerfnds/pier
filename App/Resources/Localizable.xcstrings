@@ -15232,6 +15232,56 @@
           }
         }
       }
+    },
+    "Você" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You"
+          }
+        }
+      }
+    },
+    "Essa pergunta tem várias partes: responda pelas opções na tela." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This question has several parts: answer with the choices on screen."
+          }
+        }
+      }
+    },
+    "Permitir o Siri (respostas por voz no carro)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Siri (spoken replies in the car)"
+          }
+        }
+      }
+    },
+    "Permitir o Siri em Ajustes do iOS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Siri in iOS Settings"
+          }
+        }
+      }
+    },
+    "Siri e CarPlay: permitidos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siri and CarPlay: allowed"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
