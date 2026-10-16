@@ -131,6 +131,35 @@ final class RealBoxUITests: XCTestCase {
         shot("real-push-answered", app)
     }
 
+    /// A real open question with several steps answered from the Inbox card, a question at a time (skipped unless
+    /// `TEST_RUNNER_REAL_INBOX` names the waiting session and `TEST_RUNNER_REAL_STEPS` lists the rows to tap, `|`-separated,
+    /// "Enviar" included): the card moves on after each single choice, ticks a multiple choice, and only Enviar sends.
+    func testRealInboxStepsThroughTheForm() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let session = env["REAL_INBOX"], !session.isEmpty, let steps = env["REAL_STEPS"]?.split(separator: "|").map(String.init),
+              !steps.isEmpty else { throw XCTSkip("REAL_INBOX / REAL_STEPS not set") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-startTab", "inbox", "-undoSeconds", "0", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
+        app.launch()
+        // The waiting card only: once answered, the turn that ends brings the same session back as a finished card.
+        let card = app.descendants(matching: .any).matching(identifier: "inbox-card-needs-\(session)").firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 40), "the question is not in the Inbox")
+        let shot = { (name: String) in let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; self.add(a) }
+        XCTAssertTrue(card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "(1 de ")).firstMatch.waitForExistence(timeout: 20),
+                      "the card does not step through the form")
+        shot("real-inbox-step1")
+        for (i, step) in steps.enumerated() {
+            let row = card.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'inbox-option-' AND label ENDSWITH %@", step)).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "row '\(step)' is not on the card (step \(i + 1))")
+            var tries = 0
+            while !row.isHittable, tries < 4 { app.swipeUp(); tries += 1 }
+            row.tap()
+            sleep(1)
+        }
+        shot("real-inbox-sent")
+        XCTAssertTrue(card.waitForNonExistence(timeout: 30), "the answered question stayed in the Inbox")
+    }
+
     /// A real shell through pierd's terminal stream (skipped unless `TEST_RUNNER_REAL_TERMINAL` names a shell session on
     /// the paired box, as `<box>/<session>`): a line typed runs, ⌃C from the keyboard stops `sleep`, and the shell answers
     /// the next line. The screen is the terminal's accessibility value.
