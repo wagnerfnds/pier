@@ -15,6 +15,7 @@ extension View {
             .navigationDestination(for: ProjectEnvironmentRoute.self) { ProjectEnvironmentScreen(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: WorktreeDetailsRoute.self) { WorktreeDetailsScreen(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: PullRequestRoute.self) { PullRequestScreen(route: $0).toolbar(.hidden, for: .tabBar) }
+            .navigationDestination(for: ProjectPRsRoute.self) { ProjectPRsScreen(route: $0).toolbar(.hidden, for: .tabBar) }
             // The workspace one screen at a time (the iPhone; CompactWorkspace.swift).
             .navigationDestination(for: FilesRoute.self) { CompactFolderScreen(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: FileEditorRoute.self) { CompactFileScreen(route: $0).toolbar(.hidden, for: .tabBar) }

@@ -152,6 +152,57 @@ public enum HomeCommands {
         "gh api graphql -f query=\(quote(prQuery)) --jq '{viewer: .data.viewer.login, review: .data.review.nodes, mine: .data.mine.nodes, reviewCount: .data.review.issueCount, mineCount: .data.mine.issueCount}' \(marker)prs"
     }
 
+    // MARK: the projects' pull requests (anyone's, open): one aliased `repository` per repo, in batches run in parallel
+
+    static let slugPattern = #"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"#
+    static let projectBatch = 8
+
+    /// The open pull requests of `repos` (`owner/name` slugs; anything else is skipped), the `perRepo` most recently
+    /// updated of each, whoever opened them. Each batch prints one line of GraphQL JSON: a repo that no longer exists makes
+    /// `gh` exit 1 but still prints the others' `data`, so every line is read whatever the exit code.
+    public static func projectPullRequests(repos: [String], perRepo: Int) -> String? {
+        let ok = Array(NSOrderedSet(array: repos.filter { $0.range(of: slugPattern, options: .regularExpression) != nil })) as? [String] ?? []
+        guard !ok.isEmpty else { return nil }
+        let n = max(1, min(perRepo, 50))
+        let queries = stride(from: 0, to: ok.count, by: projectBatch).map { start -> String in
+            let fields = ok[start..<min(start + projectBatch, ok.count)].enumerated().map { i, slug in
+                let parts = slug.split(separator: "/")
+                return "r\(i): repository(owner: \"\(parts[0])\", name: \"\(parts[1])\") { pullRequests(states: OPEN, first: \(n), orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { \(prFields) } } }"
+            }
+            return "query { " + fields.joined(separator: " ") + " }"
+        }
+        let list = queries.map(quote).joined(separator: " ")
+        return """
+        d=$(mktemp -d); i=0; for q in \(list); do i=$((i+1)); ( gh api graphql -f query="$q" 2>"$d/$i.err" | tr -d '\\n' > "$d/$i.json"; echo >> "$d/$i.json" ) & done; wait; cat "$d"/*.json 2>/dev/null; for f in "$d"/*.err; do [ -s "$f" ] && { printf '#ERR '; head -c 300 "$f" | tr '\\n' ' '; echo; }; done; rm -rf "$d" \(marker)project-prs
+        """
+    }
+
+    /// Every pull request the batches answered, most recently updated first. Throws (with what `gh` said) only when no
+    /// batch answered at all.
+    public static func parseProjectPullRequests(output: String) throws -> [HomePR] {
+        struct Raw: Decodable {
+            struct Repo: Decodable { struct PRs: Decodable { let nodes: [RawPR]? }; let pullRequests: PRs? }
+            let data: [String: Repo?]?
+        }
+        var out: [HomePR] = []
+        var answered = false
+        var errors: [String] = []
+        for line in output.split(whereSeparator: \.isNewline) {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("#ERR") { errors.append(String(t.dropFirst(4)).trimmingCharacters(in: .whitespaces)); continue }
+            guard t.hasPrefix("{"), let data = t.data(using: .utf8), let r = try? JSONDecoder().decode(Raw.self, from: data), let repos = r.data else { continue }
+            answered = true
+            for case let repo? in repos.values { out += (repo.pullRequests?.nodes ?? []).map(\.homePR) }
+        }
+        if !answered {
+            let text = errors.joined(separator: "\n")
+            throw classify(exitCode: text.contains("command not found") ? 127 : 1, output: text.isEmpty ? "unexpected gh output" : text)
+        }
+        var seen = Set<String>()
+        return out.filter { seen.insert($0.url).inserted }
+            .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+    }
+
     // MARK: CI (one shell, one `gh run list` per repo in parallel, reduced to the latest failing run per branch+workflow)
 
     static let ciJQ = #"[.[]|select(.status=="completed")]|group_by([.headBranch,.workflowName])|map(max_by(.createdAt))|map(select(.conclusion|IN("failure","timed_out","startup_failure")))|tojson"#
@@ -210,36 +261,10 @@ public enum HomeCommands {
     public static func parsePullRequests(exitCode: Int, output: String) throws -> HomePRs {
         guard exitCode == 0 else { throw classify(exitCode: exitCode, output: output) }
         guard let data = jsonLines(output).first else { throw HomeError(problem: .other, message: "unexpected gh output") }
-        struct Raw: Decodable {
-            struct PR: Decodable {
-                let number: Int; let title: String; let url: String; let isDraft: Bool?
-                let updatedAt: String?; let additions: Int?; let deletions: Int?; let reviewDecision: String?
-                struct Repo: Decodable { let nameWithOwner: String }
-                struct Author: Decodable { let login: String }
-                let repository: Repo?; let author: Author?
-                struct Commits: Decodable {
-                    struct Node: Decodable { struct C: Decodable { struct R: Decodable { let state: String }; let statusCheckRollup: R? }; let commit: C }
-                    let nodes: [Node]
-                }
-                let commits: Commits?
-            }
-            let viewer: String?; let review: [PR]?; let mine: [PR]?; let reviewCount: Int?; let mineCount: Int?
-        }
+        struct Raw: Decodable { let viewer: String?; let review: [RawPR]?; let mine: [RawPR]?; let reviewCount: Int?; let mineCount: Int? }
         let raw: Raw
         do { raw = try JSONDecoder().decode(Raw.self, from: data) } catch { throw HomeError(problem: .other, message: "unexpected gh output") }
-        func map(_ p: Raw.PR) -> HomePR {
-            let state = p.commits?.nodes.first?.commit.statusCheckRollup?.state
-            let checks: CheckRollup = switch state {
-            case nil: .none
-            case "SUCCESS": .pass
-            case "FAILURE", "ERROR": .fail
-            default: .pending
-            }
-            return HomePR(number: p.number, title: p.title, url: p.url, repo: p.repository?.nameWithOwner ?? "", author: p.author?.login,
-                          isDraft: p.isDraft ?? false, updatedAt: iso(p.updatedAt), additions: p.additions ?? 0, deletions: p.deletions ?? 0,
-                          reviewDecision: (p.reviewDecision?.isEmpty == false) ? p.reviewDecision : nil, checks: checks)
-        }
-        let review = (raw.review ?? []).map(map), mine = (raw.mine ?? []).map(map)
+        let review = (raw.review ?? []).map(\.homePR), mine = (raw.mine ?? []).map(\.homePR)
         return HomePRs(viewer: raw.viewer ?? "", review: review, mine: mine, reviewCount: raw.reviewCount ?? review.count, mineCount: raw.mineCount ?? mine.count)
     }
 
@@ -299,5 +324,31 @@ public enum HomeCommands {
             projects.indices.contains(i) ? .init(name: projects[i].name, commits: c) : nil
         }.sorted { $0.commits != $1.commits ? $0.commits > $1.commits : $0.name < $1.name }
         return GitActivity(days: days.values.sorted { $0.day < $1.day }, byProject: by)
+    }
+}
+
+/// A pull request as the GraphQL queries above read it (`HomeCommands.prFields`).
+struct RawPR: Decodable {
+    let number: Int; let title: String; let url: String; let isDraft: Bool?
+    let updatedAt: String?; let additions: Int?; let deletions: Int?; let reviewDecision: String?
+    struct Repo: Decodable { let nameWithOwner: String }
+    struct Author: Decodable { let login: String }
+    let repository: Repo?; let author: Author?
+    struct Commits: Decodable {
+        struct Node: Decodable { struct C: Decodable { struct R: Decodable { let state: String }; let statusCheckRollup: R? }; let commit: C }
+        let nodes: [Node]
+    }
+    let commits: Commits?
+
+    var homePR: HomePR {
+        let checks: CheckRollup = switch commits?.nodes.first?.commit.statusCheckRollup?.state {
+        case nil: .none
+        case "SUCCESS": .pass
+        case "FAILURE", "ERROR": .fail
+        default: .pending
+        }
+        return HomePR(number: number, title: title, url: url, repo: repository?.nameWithOwner ?? "", author: author?.login,
+                      isDraft: isDraft ?? false, updatedAt: HomeCommands.iso(updatedAt), additions: additions ?? 0, deletions: deletions ?? 0,
+                      reviewDecision: (reviewDecision?.isEmpty == false) ? reviewDecision : nil, checks: checks)
     }
 }

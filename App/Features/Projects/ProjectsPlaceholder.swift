@@ -21,7 +21,11 @@ struct ProjectsRoot: View {
     @State private var showGitHub = false
     @State private var showCloneLink = false
     @State private var removingProject: ProjectEntry?
+    /// Projects (and worktrees) opened in the list, as in the sidebar: "box/location", "box/location/worktree".
+    @State private var expanded: Set<String> = []
+    @State private var expandedActive = false
     private let clones = ClonesStore.shared
+    private let signals = SessionSignals.shared
 
     private var editing: Bool { editMode == .active }
     private var canAddProjects: Bool { !projectBoxes(model).isEmpty }
@@ -183,8 +187,12 @@ struct ProjectsRoot: View {
                         hiddenSection(g)
                     } else {
                         Section {
-                            ForEach(g.entries) { row($0, in: g) }
-                                .onMove { from, to in prefs.moveProjects(in: g.section, shown: g.entries.map(\.key), from: from, to: to) }
+                            if editing {
+                                ForEach(g.entries) { row($0, in: g) }
+                                    .onMove { from, to in prefs.moveProjects(in: g.section, shown: g.entries.map(\.key), from: from, to: to) }
+                            } else if isOpen(g) {
+                                ForEach(g.entries) { tree($0, in: g) }
+                            }
                             if g.entries.isEmpty && editing {
                                 Text("Seção vazia. Use “Mover para…” em um projeto.").font(.footnote).foregroundStyle(Theme.textFaint)
                                     .listRowBackground(Theme.card)
@@ -202,6 +210,74 @@ struct ProjectsRoot: View {
         }
         .listStyle(.insetGrouped)
         .environment(\.editMode, $editMode)
+        .onAppear { expandActive(entries) }
+        .onChange(of: entries.count) { expandActive(entries) }
+    }
+
+    // MARK: the tree (as in the sidebar)
+
+    /// A section folds like the sidebar's, and stays folded on both (`LocalPrefs.sidebarExpanded`).
+    private func isOpen(_ g: ProjectGroup) -> Bool { prefs.isSidebarExpanded(g.id) }
+
+    private func toggle(_ key: String) {
+        withAnimation(.snappy(duration: 0.2)) { if expanded.contains(key) { expanded.remove(key) } else { expanded.insert(key) } }
+    }
+
+    /// The first time the list has projects: open those where an agent needs the person or is working, as the sidebar does.
+    private func expandActive(_ entries: [ProjectEntry]) {
+        guard !expandedActive, !entries.isEmpty else { return }
+        expandedActive = true
+        for e in entries {
+            let c = model.connection(for: e.box)?.agentCounts(location: e.location.name) ?? [:]
+            if (c[.needsYou] ?? 0) + (c[.working] ?? 0) > 0 { expanded.insert(e.key) }
+        }
+    }
+
+    /// A project with its worktrees under it when opened, and each worktree's agents under that, as in the sidebar.
+    @ViewBuilder private func tree(_ e: ProjectEntry, in g: ProjectGroup) -> some View {
+        let worktrees = e.location.worktrees ?? []
+        let open = expanded.contains(e.key)
+        row(e, in: g, disclosure: worktrees.isEmpty ? nil : open)
+        if open {
+            let conn = model.connection(for: e.box)
+            ForEach(worktrees) { wt in
+                let ref = e.location.ref(wt)
+                let sessions = (conn?.sessions ?? []).filter {
+                    $0.location == ref && SidebarRules.isListed($0, archived: prefs.isClosed(box: e.box, session: $0),
+                                                                background: signals.background["\(e.box)/\($0.name)"] != nil)
+                }.sorted { $0.created > $1.created }
+                NavigationLink(value: WorktreeRoute(box: e.box, location: e.location.name, worktree: wt.name)) {
+                    HStack(spacing: 8) {
+                        Image(systemName: wt.main == true ? "arrow.triangle.branch" : "point.topleft.down.to.point.bottomright.curvepath")
+                            .font(.footnote).foregroundStyle(Theme.textDim).frame(width: 20)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(wt.name).font(.subheadline).foregroundStyle(Theme.text).lineLimit(1)
+                            if let b = wt.branch, b != wt.name {
+                                Text(b).font(.caption).foregroundStyle(Theme.textFaint).lineLimit(1).truncationMode(.middle)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        StateDots(counts: conn?.agentCounts(ref: ref) ?? [:])
+                    }
+                    .padding(.leading, 30)
+                }
+                .listRowBackground(Theme.card)
+                .accessibilityIdentifier("projects-worktree-\(e.location.name)/\(wt.name)")
+                ForEach(sessions) { s in
+                    NavigationLink(value: SessionRoute(box: e.box, session: s)) {
+                        HStack(spacing: 8) {
+                            AgentGlyph(agent: DisplayNames.agent(of: s), size: 18)
+                            Text(DisplayNames.sessionName(s, among: conn?.sessions ?? [])).font(.subheadline).foregroundStyle(Theme.text).lineLimit(1)
+                            Spacer(minLength: 4)
+                            if let st = DashState(s) { StateDot(state: st) }
+                        }
+                        .padding(.leading, 58)
+                    }
+                    .listRowBackground(Theme.card)
+                    .accessibilityIdentifier("projects-session-\(s.name)")
+                }
+            }
+        }
     }
 
     #if DEBUG
@@ -239,6 +315,9 @@ struct ProjectsRoot: View {
 
     @ViewBuilder private func sectionHeader(_ g: ProjectGroup) -> some View {
         HStack {
+            if !editing {
+                Image(systemName: isOpen(g) ? "chevron.down" : "chevron.right").font(.caption2.weight(.bold))
+            }
             Text(g.title)
             if !g.entries.isEmpty { Text("\(g.entries.count)").foregroundStyle(Theme.textFaint) }
             Spacer()
@@ -256,6 +335,10 @@ struct ProjectsRoot: View {
             }
         }
         .textCase(nil).font(.footnote.weight(.semibold)).foregroundStyle(Theme.textDim)
+        .contentShape(Rectangle())
+        .onTapGesture { if !editing { withAnimation(.snappy(duration: 0.2)) { prefs.setSidebarExpanded(g.id, !isOpen(g)) } } }
+        .accessibilityAddTraits(editing ? [] : .isButton)
+        .accessibilityIdentifier("projects-section-\(g.title)")
     }
 
     /// By hand (dragging in "Organizar"), by name or by recent activity.
@@ -290,11 +373,25 @@ struct ProjectsRoot: View {
         }
     }
 
-    @ViewBuilder private func row(_ e: ProjectEntry, in group: ProjectGroup? = nil) -> some View {
+    /// `disclosure`: the project's worktrees are shown (true), can be (false), or it has none (nil).
+    @ViewBuilder private func row(_ e: ProjectEntry, in group: ProjectGroup? = nil, disclosure: Bool? = nil) -> some View {
         let rowView = ProjectRow(entry: e, showBox: multiBox)
         Group {
             if editing {
                 HStack { rowView; projectMenu(e) }
+            } else if let open = disclosure {
+                HStack(spacing: 6) {
+                    // Its own tap, apart from the row's (which opens the project).
+                    Button { toggle(e.key) } label: {
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Theme.textDim)
+                            .rotationEffect(.degrees(open ? 90 : 0))
+                            .frame(width: 22, height: 36).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(open ? "Recolher worktrees" : "Mostrar worktrees")
+                    .accessibilityIdentifier("projects-disclosure-\(e.location.name)")
+                    NavigationLink(value: e.route) { rowView }
+                }
             } else {
                 NavigationLink(value: e.route) { rowView }
             }

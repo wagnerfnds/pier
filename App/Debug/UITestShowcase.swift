@@ -723,6 +723,30 @@ enum UITestShowcase {
                 "reviewCount": 1, "mineCount": 1]
     }
 
+    /// The projects' pull requests (`HomeCommands.projectPullRequests`): two of other people's in each repo the command
+    /// asks about, one line of GraphQL data per batch, as `gh` prints it.
+    static func projectPRsOutput(command: String) -> String {
+        let rx = try! NSRegularExpression(pattern: #"repository\(owner: \\?"([^"\\]+)\\?", name: \\?"([^"\\]+)\\?"\)"#)
+        let ns = command as NSString
+        let repos = rx.matches(in: command, range: NSRange(location: 0, length: ns.length)).map { "\(ns.substring(with: $0.range(at: 1)))/\(ns.substring(with: $0.range(at: 2)))" }
+        let people = ["mara", "dev-luiz", "ana-qa"]
+        let titles = [t("Retry the webhook deliveries", "Reenviar as entregas de webhook"), t("Faster search on the admin", "Busca mais rápida no admin"),
+                      t("Bump the SDK to 4.2", "Atualizar o SDK para 4.2")]
+        var nodes: [String: Any] = [:]
+        for (i, repo) in repos.enumerated() {
+            let prs: [JSON] = (0..<2).map { k in
+                let n = 300 + i * 10 + k
+                return ["number": n, "title": titles[(i + k) % titles.count], "url": "https://github.com/\(repo)/pull/\(n)", "isDraft": k == 1 && i % 2 == 1,
+                        "updatedAt": iso(ago: TimeInterval(600 * (i * 2 + k + 1))), "additions": 40 + i, "deletions": 7, "reviewDecision": "REVIEW_REQUIRED",
+                        "repository": ["nameWithOwner": repo], "author": ["login": people[(i + k) % people.count]],
+                        "commits": ["nodes": [["commit": ["statusCheckRollup": ["state": k == 0 ? "SUCCESS" : "PENDING"]]]]]]
+            }
+            nodes["r\(i)"] = ["pullRequests": ["nodes": prs]]
+        }
+        let d = try! JSONSerialization.data(withJSONObject: ["data": nodes])
+        return String(decoding: d, as: UTF8.self) + "\n"
+    }
+
     static var prTitle: String { t("Paginate the invoices list", "Paginar a lista de faturas") }
 
     static var prBody: String { portuguese ? prBodyPT : prBodyEN }

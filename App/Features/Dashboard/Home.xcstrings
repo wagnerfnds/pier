@@ -908,6 +908,36 @@
           }
         }
       }
+    },
+    "PRs dos projetos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Project PRs"
+          }
+        }
+      }
+    },
+    "Os abertos nos projetos das suas boxes, de qualquer pessoa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open ones in your boxes' projects, by anyone"
+          }
+        }
+      }
+    },
+    "Os abertos nos projetos das suas boxes, de qualquer pessoa, aparecem aqui." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open pull requests in your boxes' projects, by anyone, show up here."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

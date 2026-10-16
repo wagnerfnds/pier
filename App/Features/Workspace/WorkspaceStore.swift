@@ -3,7 +3,7 @@ import PierKit
 
 /// The tabs of a project's workspace; the first, Agentes, starts an agent there (StartPane.swift).
 enum WorkspaceTab: String, CaseIterable, Identifiable {
-    case start, files, changes, history, overview, details
+    case start, files, changes, history, pullRequests, overview, details
     var id: String { rawValue }
     var title: LocalizedStringKey {
         switch self {
@@ -11,6 +11,7 @@ enum WorkspaceTab: String, CaseIterable, Identifiable {
         case .files: "Arquivos"
         case .changes: "Alterações"
         case .history: "Histórico"
+        case .pullRequests: "Pull requests"
         case .overview: "Visão geral"
         case .details: "Detalhes"
         }
@@ -21,6 +22,7 @@ enum WorkspaceTab: String, CaseIterable, Identifiable {
         case .files: "doc.text"
         case .changes: "plusminus"
         case .history: "clock.arrow.circlepath"
+        case .pullRequests: "arrow.triangle.pull"
         case .overview: "info.circle"
         case .details: "server.rack"
         }

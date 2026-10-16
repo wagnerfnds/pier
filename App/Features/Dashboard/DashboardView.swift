@@ -107,6 +107,7 @@ struct DashboardView: View {
         case .working: WorkingWidget(home: home)
         case .finished: FinishedWidget(home: home)
         case .prs: PullRequestsWidget(home: home)
+        case .projectPRs: ProjectPullRequestsWidget(home: home)
         case .ci: CIFailuresWidget(home: home)
         case .git: GitActivityWidget(home: home)
         case .services: ServicesWidget(home: home)

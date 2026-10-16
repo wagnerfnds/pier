@@ -80,6 +80,10 @@ final class ProjectsUITests: XCTestCase {
         try launch()
         let project = app.staticTexts["sandbox"].firstMatch
         XCTAssertTrue(project.waitForExistence(timeout: 10))
+        // The list opens a project with agents at work into its worktrees (as the sidebar does): close it, so the
+        // worktree found below is the project screen's, not the list's (which stays under it in the stack).
+        if element("projects-worktree-sandbox/subtract").exists { element("projects-disclosure-sandbox").tap() }
+        XCTAssertTrue(element("projects-worktree-sandbox/subtract").waitForNonExistence(timeout: 5))
         project.tap()
         let worktree = app.staticTexts["subtract"].firstMatch
         XCTAssertTrue(worktree.waitForExistence(timeout: 10))

@@ -4,7 +4,7 @@ import PierKit
 
 // Widgets whose data is computed on the box: Pull requests, CI failures, Git activity, and Running services.
 
-private struct GhProblemView: View {
+struct GhProblemView: View {
     let error: HomeError
     var body: some View {
         let h = ghHint(error)
@@ -65,34 +65,91 @@ struct PullRequestsWidget: View {
             // The PR screen (gh on the box); a repo slug that is not plain opens the browser instead.
             if PRCommands.isSlug(pr.repo) { router.push(PullRequestRoute(repo: pr.repo, number: pr.number, title: pr.title)) }
             else if let u = URL(string: pr.url) { openURL(u) }
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: pr.isDraft ? "arrow.triangle.pull" : "arrow.triangle.pull")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(pr.isDraft ? Theme.gray : Theme.green)
-                    .frame(width: 18).padding(.top, 2)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(pr.title).font(.subheadline).foregroundStyle(Theme.text).lineLimit(2).multilineTextAlignment(.leading)
-                    HStack(spacing: 6) {
-                        Text(verbatim: "\(pr.repoName)#\(pr.number)").font(.mono(11)).foregroundStyle(Theme.textDim)
-                        if queue, let a = pr.author { Text(verbatim: "@\(a)").font(.caption).foregroundStyle(Theme.textFaint) }
-                        else if pr.additions + pr.deletions > 0 { DiffStat(add: pr.additions, del: pr.deletions) }
-                    }
-                    .lineLimit(1)
-                }
-                Spacer(minLength: 6)
-                VStack(alignment: .trailing, spacing: 3) {
-                    checks(pr.checks)
-                    status(pr, queue: queue)
-                }
-            }
-            .contentShape(Rectangle())
-        }
+        } label: { PRRowLabel(pr: pr, queue: queue) }
         .buttonStyle(.plain)
         .accessibilityIdentifier("pr-row-\(pr.number)")
-        .contextMenu {
-            Button { if let u = URL(string: pr.url) { openURL(u) } } label: { Label { HText("Abrir no GitHub") } icon: { Image(systemName: "safari") } }
+        .contextMenu { PRRowLabel.menu(pr, openURL: openURL) }
+    }
+}
+
+// MARK: Pull requests of the projects (anyone's)
+
+/// The open pull requests of every project on the boxes, whoever opened them, newest first: what is being sent to the
+/// projects, to follow, review or bring into a worktree from its screen.
+struct ProjectPullRequestsWidget: View {
+    @Environment(\.openURL) private var openURL
+    @Environment(Router.self) private var router
+    let home: HomeStore
+    @State private var expanded = false
+
+    var body: some View {
+        let r = home.projectPRs
+        HomeCard(kind: .projectPRs, count: r.value?.count, urgent: false,
+                 updatedAt: r.updatedAt, loading: home.loading.contains(.projectPRs) && r.value == nil, failed: r.error != nil) {
+            if let v = r.value {
+                if v.isEmpty {
+                    HomeEmpty(symbol: "arrow.triangle.pull", title: "Nenhum pull request aberto", hint: HL("Os abertos nos projetos das suas boxes, de qualquer pessoa, aparecem aqui."))
+                } else {
+                    let limit = expanded ? 15 : 5
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(v.prefix(limit)) { e in
+                            Button {
+                                if PRCommands.isSlug(e.pr.repo) { router.push(PullRequestRoute(box: e.box, repo: e.pr.repo, number: e.pr.number, title: e.pr.title)) }
+                                else if let u = URL(string: e.pr.url) { openURL(u) }
+                            } label: { PRRowLabel(pr: e.pr, queue: true) }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("project-pr-row-\(e.pr.repoName)-\(e.pr.number)")
+                            .contextMenu { PRRowLabel.menu(e.pr, openURL: openURL) }
+                        }
+                        if v.count > limit {
+                            Button { withAnimation(.snappy) { expanded = true } } label: {
+                                HText("+\(v.count - limit) mais").font(.caption.weight(.medium)).foregroundStyle(Theme.accent)
+                            }
+                        }
+                        if let e = r.error { StaleNote(message: ghHint(e).hint) }
+                    }
+                }
+            } else if let e = r.error {
+                GhProblemView(error: e)
+            } else {
+                HomeSkeleton(rows: 3)
+            }
         }
+    }
+}
+
+/// A pull request as a row: title, repo#number, its author (`queue`: someone else's to look at) or its line counts,
+/// checks and review state. Shared by the Home's widgets and a project's Pull requests.
+struct PRRowLabel: View {
+    let pr: HomePR
+    var queue: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "arrow.triangle.pull")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(pr.isDraft ? Theme.gray : Theme.green)
+                .frame(width: 18).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(pr.title).font(.subheadline).foregroundStyle(Theme.text).lineLimit(2).multilineTextAlignment(.leading)
+                HStack(spacing: 6) {
+                    Text(verbatim: "\(pr.repoName)#\(pr.number)").font(.mono(11)).foregroundStyle(Theme.textDim)
+                    if queue, let a = pr.author { Text(verbatim: "@\(a)").font(.caption).foregroundStyle(Theme.textFaint) }
+                    else if pr.additions + pr.deletions > 0 { DiffStat(add: pr.additions, del: pr.deletions) }
+                }
+                .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            VStack(alignment: .trailing, spacing: 3) {
+                checks(pr.checks)
+                status
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder static func menu(_ pr: HomePR, openURL: OpenURLAction) -> some View {
+        Button { if let u = URL(string: pr.url) { openURL(u) } } label: { Label { HText("Abrir no GitHub") } icon: { Image(systemName: "safari") } }
     }
 
     @ViewBuilder private func checks(_ c: CheckRollup) -> some View {
@@ -104,7 +161,7 @@ struct PullRequestsWidget: View {
         }
     }
 
-    @ViewBuilder private func status(_ pr: HomePR, queue: Bool) -> some View {
+    @ViewBuilder private var status: some View {
         Group {
             if pr.isDraft { HText("Rascunho") }
             else if queue { Text(Age.short(pr.updatedAt)) }

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The Home widgets.
 enum HomeWidgetKind: String, CaseIterable, Codable, Identifiable {
-    case needsYou, working, finished, prs, ci, git, services, areas, limits
+    case needsYou, working, finished, prs, projectPRs, ci, git, services, areas, limits
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum HomeWidgetKind: String, CaseIterable, Codable, Identifiable {
         case .working: "Trabalhando agora"
         case .finished: "Sua vez"
         case .prs: "Pull requests"
+        case .projectPRs: "PRs dos projetos"
         case .ci: "Falhas de CI"
         case .git: "Atividade git"
         case .services: "Serviços rodando"
@@ -25,6 +26,7 @@ enum HomeWidgetKind: String, CaseIterable, Codable, Identifiable {
         case .working: "Cada agente trabalhando e o passo em que está"
         case .finished: "Turnos concluídos esperando você continuar; as sessões arquivadas ou encerradas ficam recolhidas"
         case .prs: "Aguardando sua revisão e os seus, com os checks"
+        case .projectPRs: "Os abertos nos projetos das suas boxes, de qualquer pessoa"
         case .ci: "Execuções que falharam nas branches das suas worktrees"
         case .git: "Commits e linhas por dia nas últimas duas semanas"
         case .services: "Servidores de desenvolvimento nas suas worktrees"
@@ -38,6 +40,7 @@ enum HomeWidgetKind: String, CaseIterable, Codable, Identifiable {
         case .working: "waveform.path.ecg"
         case .finished: "checkmark.circle"
         case .prs: "arrow.triangle.pull"
+        case .projectPRs: "person.2"
         case .ci: "xmark.octagon"
         case .git: "chart.bar.xaxis"
         case .services: "dot.radiowaves.left.and.right"
@@ -46,7 +49,7 @@ enum HomeWidgetKind: String, CaseIterable, Codable, Identifiable {
         }
     }
     /// Read on the box with gh/git (cached, refreshed every few minutes) rather than live from sessions.
-    var isRemote: Bool { self == .prs || self == .ci || self == .git || self == .limits }
+    var isRemote: Bool { self == .prs || self == .projectPRs || self == .ci || self == .git || self == .limits }
 }
 
 /// Order and visibility of the widgets, kept on the phone (UserDefaults).
@@ -55,7 +58,7 @@ final class HomeLayout {
     struct Saved: Codable { var order: [HomeWidgetKind]; var hidden: Set<HomeWidgetKind> }
 
     private static let key = "home.layout.v1"
-    static let defaultOrder: [HomeWidgetKind] = [.needsYou, .working, .finished, .limits, .prs, .ci, .git, .services, .areas]
+    static let defaultOrder: [HomeWidgetKind] = [.needsYou, .working, .finished, .limits, .prs, .projectPRs, .ci, .git, .services, .areas]
 
     private(set) var order: [HomeWidgetKind]
     private(set) var hidden: Set<HomeWidgetKind>
@@ -66,8 +69,12 @@ final class HomeLayout {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         if let d = defaults.data(forKey: Self.key), let s = try? JSONDecoder().decode(Saved.self, from: d) {
-            // A widget a later version adds shows up at the end.
-            order = s.order + Self.defaultOrder.filter { !s.order.contains($0) }
+            // A widget a later version adds shows up after the one it follows by default (at the end if that one is gone).
+            var order = s.order
+            for (i, k) in Self.defaultOrder.enumerated() where !order.contains(k) {
+                if i > 0, let after = order.firstIndex(of: Self.defaultOrder[i - 1]) { order.insert(k, at: after + 1) } else { order.append(k) }
+            }
+            self.order = order
             hidden = s.hidden
         } else {
             order = Self.defaultOrder

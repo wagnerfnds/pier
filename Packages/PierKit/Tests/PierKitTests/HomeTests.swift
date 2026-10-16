@@ -24,6 +24,37 @@ final class HomeTests: XCTestCase {
         }
     }
 
+    /// The projects' pull requests: anyone's, batched, read from every batch's line even when `gh` failed on a repo that
+    /// is gone (it prints the other repos' data and exits 1), newest first and without repeats.
+    func testProjectPullRequests() throws {
+        let slugs = (1...10).map { "o/r\($0)" } + ["o/r1", "not a slug", "o/x;rm -rf ~"]
+        let cmd = try XCTUnwrap(HomeCommands.projectPullRequests(repos: slugs, perRepo: 4))
+        XCTAssertEqual(cmd.components(separatedBy: "query { ").count - 1, 2, "ten repos, two batches of eight at most")
+        XCTAssertEqual(cmd.components(separatedBy: "repository(owner: ").count - 1, 10, "a repeated slug is asked once")
+        XCTAssertFalse(cmd.contains("rm -rf ~"), "a bad slug never reaches the shell")
+        XCTAssertTrue(cmd.contains("first: 4") && cmd.hasSuffix("# pier-home:project-prs"))
+        XCTAssertNil(HomeCommands.projectPullRequests(repos: ["nope"], perRepo: 4))
+
+        func pr(_ n: Int, _ repo: String, _ author: String, _ at: String, _ state: String?) -> String {
+            let rollup = state.map { #"{"state":"\#($0)"}"# } ?? "null"
+            return #"{"number":\#(n),"title":"T\#(n)","url":"https://github.com/\#(repo)/pull/\#(n)","isDraft":false,"updatedAt":"\#(at)","additions":1,"deletions":2,"reviewDecision":null,"repository":{"nameWithOwner":"\#(repo)"},"author":{"login":"\#(author)"},"commits":{"nodes":[{"commit":{"statusCheckRollup":\#(rollup)}}]}}"#
+        }
+        let out = """
+        noise from the login shell
+        {"data":{"r0":{"pullRequests":{"nodes":[\(pr(5, "o/a", "ana", "2026-10-15T10:00:00Z", "SUCCESS"))]}},"r1":null},"errors":[{"type":"NOT_FOUND"}]}
+        {"data":{"r0":{"pullRequests":{"nodes":[\(pr(9, "o/b", "bob", "2026-10-16T10:00:00Z", nil)),\(pr(5, "o/a", "ana", "2026-10-15T10:00:00Z", "SUCCESS"))]}}}}
+        #ERR gh: Could not resolve to a Repository with the name 'o/gone'.
+        """
+        let prs = try HomeCommands.parseProjectPullRequests(output: out)
+        XCTAssertEqual(prs.map(\.number), [9, 5])
+        XCTAssertEqual(prs.map(\.author), ["bob", "ana"])
+        XCTAssertEqual(prs[1].checks, .pass)
+        XCTAssertEqual(try HomeCommands.parseProjectPullRequests(output: #"{"data":{"r0":{"pullRequests":{"nodes":[]}}}}"#), [])
+        XCTAssertThrowsError(try HomeCommands.parseProjectPullRequests(output: "#ERR To get started with GitHub CLI, please run:  gh auth login")) {
+            XCTAssertEqual(($0 as? HomeError)?.problem, .noAuth)
+        }
+    }
+
     func testParseCI() throws {
         let out = """
         {"repo":"o/r","runs":[{"databaseId":5,"workflowName":"ci","displayTitle":"t","headBranch":"main","createdAt":"2026-10-07T10:00:00Z","url":"https://x/5"}]}

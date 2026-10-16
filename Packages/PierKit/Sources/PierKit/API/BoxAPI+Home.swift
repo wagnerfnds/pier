@@ -10,6 +10,13 @@ extension PierBoxClient {
         return try HomeCommands.parsePullRequests(exitCode: r.exitCode, output: r.output)
     }
 
+    /// The open pull requests of the given repos (`owner/name` slugs), anyone's, the `perRepo` latest of each, newest first.
+    public func projectPullRequests(location: String, repos: [String], perRepo: Int) async throws -> [HomePR] {
+        guard let cmd = HomeCommands.projectPullRequests(repos: repos, perRepo: perRepo) else { return [] }
+        let r = try await exec(location: location, command: cmd, timeout: "60s")
+        return try HomeCommands.parseProjectPullRequests(output: r.output)
+    }
+
     /// The latest failing run per branch and workflow, for each repo (`owner/name` slugs), in one shell.
     public func homeCIFailures(location: String, repos: [String]) async throws -> [CIFailure] {
         guard let cmd = HomeCommands.ciFailures(repos: repos) else { return [] }

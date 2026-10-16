@@ -37,6 +37,12 @@ struct ProjectScreenPlaceholder: View {
                         }
                         .accessibilityIdentifier("project-environment")
                     }
+                    if loc.repo, loc.slug?.isEmpty == false {
+                        NavigationLink(value: ProjectPRsRoute(box: route.box, location: route.location)) {
+                            Label("Pull requests", systemImage: "arrow.triangle.pull")
+                        }
+                        .accessibilityIdentifier("project-prs")
+                    }
                     if let main = loc.worktrees?.first(where: { $0.main == true }) {
                         NavigationLink(value: WorktreeDetailsRoute(box: route.box, location: route.location, worktree: main.name)) {
                             Label("Detalhes: serviços e visualização", systemImage: "server.rack")

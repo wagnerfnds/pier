@@ -24,8 +24,15 @@ final class HomeStore {
         var id: String { "\(box)/\(service.id)" }
         var url: URL? { URL(string: "http://\(host.contains(":") ? "[\(host)]" : host):\(service.port)") }
     }
+    /// A project's pull request, with the box whose clone of the repo answered it.
+    struct BoxPR: Codable, Sendable, Hashable, Identifiable {
+        let box: String
+        let pr: HomePR
+        var id: String { pr.id }
+    }
     private struct Cache: Codable {
         var prs = Remote<HomePRs>()
+        var projectPRs = Remote<[BoxPR]>()
         var ci = Remote<[CIFailure]>()
         var git = Remote<GitActivity>()
         /// The boxes these came from (fingerprints): with others (one unpaired, the demo's, a UI test's mock box on the
@@ -34,6 +41,7 @@ final class HomeStore {
     }
 
     private(set) var prs = Remote<HomePRs>()
+    private(set) var projectPRs = Remote<[BoxPR]>()
     private(set) var ci = Remote<[CIFailure]>()
     private(set) var git = Remote<GitActivity>()
     private(set) var services: [ServiceEntry] = []
@@ -60,14 +68,14 @@ final class HomeStore {
     @ObservationIgnored private let cacheURL: URL
     @ObservationIgnored private var cachedBoxes: [String]?
 
-    static let interval: [HomeWidgetKind: TimeInterval] = [.prs: 300, .ci: 600, .git: 900, .services: 30, .limits: 120]
+    static let interval: [HomeWidgetKind: TimeInterval] = [.prs: 300, .projectPRs: 300, .ci: 600, .git: 900, .services: 30, .limits: 120]
 
     static let shared = HomeStore()
 
     init(cacheURL: URL? = nil) {
         self.cacheURL = cacheURL ?? Shared.supportDirectory.appendingPathComponent("home-cache.json")
         if let d = try? Data(contentsOf: self.cacheURL), let c = try? Self.decoder.decode(Cache.self, from: d) {
-            prs = c.prs; ci = c.ci; git = c.git; cachedBoxes = c.boxes
+            prs = c.prs; projectPRs = c.projectPRs; ci = c.ci; git = c.git; cachedBoxes = c.boxes
         }
     }
 
@@ -77,7 +85,7 @@ final class HomeStore {
         let now = model.boxes.map { $0.record.fingerprint.description }.sorted()
         guard now != cachedBoxes else { return }
         cachedBoxes = now
-        prs = Remote(); ci = Remote(); git = Remote()
+        prs = Remote(); projectPRs = Remote(); ci = Remote(); git = Remote()
         // The store lives for the app's run (`shared`): the old boxes' services and limits go too, and come back fresh.
         services = []; servicesAt = nil; servicesError = nil; reachable = [:]
         limits = []; limitsAt = nil; limitsError = nil
@@ -89,7 +97,7 @@ final class HomeStore {
 
     private func saveCache() {
         try? FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let d = try? Self.encoder.encode(Cache(prs: prs, ci: ci, git: git, boxes: cachedBoxes)) { try? d.write(to: cacheURL, options: .atomic) }
+        if let d = try? Self.encoder.encode(Cache(prs: prs, projectPRs: projectPRs, ci: ci, git: git, boxes: cachedBoxes)) { try? d.write(to: cacheURL, options: .atomic) }
     }
 
     // MARK: driving
@@ -124,7 +132,8 @@ final class HomeStore {
         async let d: Void = refresh(.services)
         async let e: Void = sessionSignals()
         async let f: Void = refresh(.limits)
-        _ = await (a, b, c, d, e, f)
+        async let g: Void = refresh(.projectPRs)
+        _ = await (a, b, c, d, e, f, g)
     }
 
     /// Pull-to-refresh.
@@ -136,7 +145,8 @@ final class HomeStore {
         async let d: Void = refresh(.services, force: true)
         async let e: Void = sessionSignals(force: true)
         async let f: Void = refresh(.limits, force: true)
-        _ = await (a, b, c, d, e, f)
+        async let g: Void = refresh(.projectPRs, force: true)
+        _ = await (a, b, c, d, e, f, g)
     }
 
     // MARK: targets
@@ -149,6 +159,8 @@ final class HomeStore {
         /// The location the shell starts in.
         let cwd: String?
         let repos: [(slug: String, branches: Set<String>)]
+        /// Every repo's slug that is not hidden (the projects' pull requests), busy ones first.
+        let allSlugs: [String]
         let projects: [HomeGitProject]
     }
 
@@ -170,7 +182,9 @@ final class HomeStore {
             var seen = Set<String>()
             let projects = ranked.filter { !model.prefs.isHidden(box: c.name, location: $0.name) && !$0.path.isEmpty && seen.insert($0.path).inserted }
                 .prefix(30).map { HomeGitProject(name: model.prefs.displayName(box: c.name, location: $0.name), path: $0.path) }
-            return Target(name: c.name, host: c.record.host, client: c.client, raw: c.raw, cwd: repos.first?.name, repos: Array(slugs.prefix(12)), projects: Array(projects))
+            let shown = ranked.filter { !model.prefs.isHidden(box: c.name, location: $0.name) }.compactMap(\.slug).filter { !$0.isEmpty }
+            return Target(name: c.name, host: c.record.host, client: c.client, raw: c.raw, cwd: repos.first?.name, repos: Array(slugs.prefix(12)),
+                          allSlugs: Array(shown.prefix(40)), projects: Array(projects))
         }
     }
 
@@ -181,6 +195,7 @@ final class HomeStore {
     func updatedAt(_ k: HomeWidgetKind) -> Date? {
         switch k {
         case .prs: prs.updatedAt
+        case .projectPRs: projectPRs.updatedAt
         case .ci: ci.updatedAt
         case .git: git.updatedAt
         case .services: servicesAt
@@ -200,6 +215,7 @@ final class HomeStore {
         defer { loading.remove(k) }
         switch k {
         case .prs: await fetchPRs(ts)
+        case .projectPRs: await fetchProjectPRs(ts)
         case .ci: await fetchCI(ts)
         case .git: await fetchGit(ts)
         case .services: await fetchServices(ts)
@@ -230,6 +246,31 @@ final class HomeStore {
         merged.review = union(ok.map(\.review)); merged.mine = union(ok.map(\.mine))
         merged.reviewCount = ok.map(\.reviewCount).max() ?? 0; merged.mineCount = ok.map(\.mineCount).max() ?? 0
         prs = Remote(value: merged, updatedAt: Date(), error: nil)
+        saveCache()
+    }
+
+    /// Every box's projects' open pull requests (anyone's); a repo cloned on two boxes is listed once.
+    private func fetchProjectPRs(_ ts: [Target]) async {
+        let results: [Result<[BoxPR], HomeError>] = await withTaskGroup(of: Result<[BoxPR], HomeError>.self) { g in
+            for t in ts {
+                guard let cwd = t.cwd, !t.allSlugs.isEmpty else { continue }
+                g.addTask {
+                    do { return .success(try await t.client.projectPullRequests(location: cwd, repos: t.allSlugs, perRepo: 5).map { BoxPR(box: t.name, pr: $0) }) }
+                    catch { return .failure(Self.problem(error)) }
+                }
+            }
+            return await gather(&g)
+        }
+        let ok = results.compactMap { try? $0.get() }
+        guard !ok.isEmpty else {
+            let err = results.compactMap { r -> HomeError? in if case .failure(let e) = r { e } else { nil } }.first
+            if let err { projectPRs.error = err } else { projectPRs = Remote(value: [], updatedAt: Date(), error: nil) }
+            saveCache(); return
+        }
+        var seen = Set<String>()
+        let all = ok.flatMap { $0 }.filter { seen.insert($0.pr.url).inserted }
+            .sorted { ($0.pr.updatedAt ?? .distantPast) > ($1.pr.updatedAt ?? .distantPast) }
+        projectPRs = Remote(value: all, updatedAt: Date(), error: nil)
         saveCache()
     }
 

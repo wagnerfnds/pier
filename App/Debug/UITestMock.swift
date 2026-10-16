@@ -953,6 +953,7 @@ extension MockBox {
     }
 
     private func prExec(_ cmd: String) -> (Int, Data)? {
+        if cmd.contains("pier-home:project-prs") { return ok(UITestShowcase.projectPRsOutput(command: cmd)) }
         if cmd.contains("pier-home:prs") {
             let line = String(decoding: Self.json(MockPRs.home()), as: UTF8.self)
             return ok(line + "\n")
@@ -1103,6 +1104,7 @@ extension MockBox {
         }
         if cmd.contains("PIER_MAIN_OK") { return ok("PIER_MAIN_OK 9c2e41a\n") }
         if cmd.contains("--model haiku") { return ok(UITestShowcase.aiDraft) }
+        if cmd.contains("pier-home:project-prs") { return ok(UITestShowcase.projectPRsOutput(command: cmd)) }
         if cmd.contains("pier-home:prs") { return ok(String(decoding: Self.json(UITestShowcase.homePRs()), as: UTF8.self) + "\n") }
         if cmd.contains("pier-home:ci") { return ok(UITestShowcase.ciOutput()) }
         if cmd.contains("pier-home:git") { return ok(UITestShowcase.gitActivity(command: cmd)) }

@@ -15102,6 +15102,76 @@
           }
         }
       }
+    },
+    "Recolher worktrees" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide worktrees"
+          }
+        }
+      }
+    },
+    "Mostrar worktrees" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show worktrees"
+          }
+        }
+      }
+    },
+    "Sem repositório no GitHub" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No GitHub repository"
+          }
+        }
+      }
+    },
+    "Este projeto não tem um remoto do GitHub para listar pull requests." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This project has no GitHub remote to list pull requests from."
+          }
+        }
+      }
+    },
+    "Nenhum pull request aberto." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No open pull requests."
+          }
+        }
+      }
+    },
+    "Abertos, de qualquer pessoa · %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open, by anyone · %lld"
+          }
+        }
+      }
+    },
+    "Abra um para revisar ou trazê-lo para uma worktree e avaliar com um agente." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open one to review it, or bring it into a worktree to try it with an agent."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
