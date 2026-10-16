@@ -167,7 +167,7 @@ func Render(s Spec) ([]byte, error) {
 		fmt.Fprintf(&b, "[Unit]\nDescription=%s\nAfter=network-online.target\n\n[Service]\nType=simple\n", s.Description)
 		fmt.Fprintf(&b, "ExecStart=%s\n", systemdArgs(append([]string{s.Program}, s.Args...)))
 		for _, k := range keys {
-			fmt.Fprintf(&b, "Environment=%s\n", systemdQuote(k+"="+s.Env[k]))
+			fmt.Fprintf(&b, "Environment=%s\n", systemdEnvQuote(k+"="+s.Env[k]))
 		}
 		// systemd 240+. Keeping a unit's output in a file pierd owns keeps
 		// credentials a program prints out of the journal, which is readable
@@ -208,6 +208,18 @@ func systemdQuote(s string) string {
 		return s
 	}
 	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `$$`, `%`, `%%`, "\n", `\n`, "\r", `\r`)
+	return `"` + r.Replace(s) + `"`
+}
+
+// systemdEnvQuote is systemdQuote for an Environment= line, where systemd
+// expands no variables: a "$$" there reaches the program as two dollars, which
+// a shell then reads as its own pid ("$$PIER_ENV_BIN" became "1234PIER_ENV_BIN"
+// and a service's PATH lost /usr/bin).
+func systemdEnvQuote(s string) string {
+	if s != "" && !strings.ContainsAny(s, " \t\"'\\%;\n\r") {
+		return s
+	}
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`, "\n", `\n`, "\r", `\r`)
 	return `"` + r.Replace(s) + `"`
 }
 

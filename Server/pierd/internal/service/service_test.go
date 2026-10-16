@@ -83,6 +83,12 @@ func TestRenderEscapesValues(t *testing.T) {
 	if !strings.Contains(string(unit), `"$$HOME 100%%"`) {
 		t.Fatalf("systemd argument not quoted:\n%s", unit)
 	}
+	// systemd expands no variables in Environment=, so a dollar stays one.
+	s.Env = map[string]string{"PIER_SH": `[ -n "$PIER_ENV_BIN" ] && PATH="$PIER_ENV_BIN:$PATH"`}
+	unit, _ = Render(s)
+	if !strings.Contains(string(unit), `Environment="PIER_SH=[ -n \"$PIER_ENV_BIN\" ] && PATH=\"$PIER_ENV_BIN:$PATH\""`) {
+		t.Fatalf("systemd environment value mangled:\n%s", unit)
+	}
 	// A line break in a value cannot start a directive of its own.
 	s.Env = map[string]string{"X": "a\nExecStartPre=/bin/evil\r"}
 	unit, _ = Render(s)
