@@ -47,6 +47,44 @@ final class RealBoxUITests: XCTestCase {
         if let dir = env["REAL_OUT"] { try? app.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir + "/real-chat.png")) }
     }
 
+    /// A real open question with several steps (skipped unless `TEST_RUNNER_REAL_FORM` names a session on the paired box
+    /// waiting at one, and `TEST_RUNNER_REAL_PICKS` lists the options to tap, `|`-separated): the chat's card shows the
+    /// whole form (Claude Code records the call only once answered), the picks go out with Enviar resposta, and the
+    /// agent's reply names them.
+    func testRealQuestionForm() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let session = env["REAL_FORM"], !session.isEmpty, let picks = env["REAL_PICKS"]?.split(separator: "|").map(String.init),
+              !picks.isEmpty else { throw XCTSkip("REAL_FORM / REAL_PICKS not set") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-openSession", session, "-undoSeconds", "0", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
+        app.launch()
+        let card = app.descendants(matching: .any).matching(identifier: "needs-you-card").firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 40), "no card for the real question")
+        let shot = { (name: String) in
+            let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; self.add(a)
+            if let dir = env["REAL_OUT"] { try? app.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir + "/\(name).png")) }
+        }
+        shot("real-form")
+        for p in picks {
+            let b = card.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", p)).firstMatch
+            XCTAssertTrue(b.waitForExistence(timeout: 10), "option '\(p)' is not on the card")
+            var tries = 0
+            while !b.isHittable, tries < 4 { card.swipeUp(); tries += 1 }
+            b.tap()
+        }
+        let send = card.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Enviar resposta")).firstMatch
+        var tries = 0
+        while !(send.exists && send.isHittable), tries < 4 { card.swipeUp(); tries += 1 }
+        XCTAssertTrue(send.isEnabled, "the form is complete but cannot be sent")
+        shot("real-form-picked")
+        send.tap()
+        XCTAssertTrue(card.waitForNonExistence(timeout: 30), "the card stayed after answering the real question")
+        let reply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", picks[0])).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 60), "the agent's reply never named the answer")
+        sleep(2)
+        shot("real-form-answered")
+    }
+
     /// A real shell through pierd's terminal stream (skipped unless `TEST_RUNNER_REAL_TERMINAL` names a shell session on
     /// the paired box, as `<box>/<session>`): a line typed runs, ⌃C from the keyboard stops `sleep`, and the shell answers
     /// the next line. The screen is the terminal's accessibility value.
