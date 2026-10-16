@@ -18,6 +18,9 @@ final class NotificationService: UNNotificationServiceExtension, @unchecked Send
         if let alert = CloudAlertPayload.info(in: request.content.userInfo) { CloudAlertPayload.apply(alert, to: c) }
         lock.withLock { handler = contentHandler; content = c }
         let options = NotificationChoices.options(in: c.userInfo)
+        #if DEBUG
+        let incoming = c.categoryIdentifier
+        #endif
         Task {
             if let options {
                 let id = await NotificationChoices.register(options: options)
@@ -25,6 +28,14 @@ final class NotificationService: UNNotificationServiceExtension, @unchecked Send
                 try? await Task.sleep(for: .milliseconds(200))
                 self.lock.withLock { self.content?.categoryIdentifier = id }
             }
+            #if DEBUG
+            // What happened to this alert, read back on the device by `-runIntent notifDelivered`.
+            let ids = await UNUserNotificationCenter.current().notificationCategories().map(\.identifier)
+            self.lock.withLock {
+                let id = self.content?.categoryIdentifier ?? "-"
+                self.content?.userInfo["nseDiag"] = "in=\(incoming) opts=\(options?.count ?? 0) out=\(id) registered=\(ids.contains(id))"
+            }
+            #endif
             await self.asMessage()
             self.finish()
         }

@@ -96,7 +96,7 @@ enum DebugIntentRunner {
                 for n in delivered {
                     let c = n.request.content
                     let buttons = categories.first { $0.identifier == c.categoryIdentifier }?.actions.map(\.title) ?? []
-                    lines.append("\(c.title) | category=\(c.categoryIdentifier) buttons=\(buttons.joined(separator: " | "))")
+                    lines.append("\(c.title) | category=\(c.categoryIdentifier) buttons=\(buttons.joined(separator: " | ")) nse=\(c.userInfo["nseDiag"] as? String ?? "-")")
                 }
                 let line = lines.isEmpty ? "delivered: none" : "delivered: " + lines.joined(separator: "\n")
                 out(line)

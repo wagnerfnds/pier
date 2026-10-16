@@ -130,9 +130,16 @@ func TestAStartupQuestionIsItsWatchsToRead(t *testing.T) {
 // something was already put in is asked about, as a project's folder is.
 func TestAChatTrustsItsOwnFolder(t *testing.T) {
 	for _, c := range []struct {
-		name         string
-		litter, spin bool
-	}{{"its own empty folder", false, false}, {"working at once", false, true}, {"a folder with files in it", true, false}} {
+		name                     string
+		litter, spin, slow, drop bool
+	}{
+		{name: "its own empty folder"},
+		{name: "working at once", spin: true},
+		{name: "a folder with files in it", litter: true},
+		// Claude Code starting cold: its question stays drawn for seconds after the Enter, or the first Enter is lost.
+		{name: "slow to take the answer", slow: true},
+		{name: "missing the first Enter", drop: true},
+	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
@@ -146,6 +153,12 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 			}
 			if c.spin {
 				script += "export SPIN=1\n"
+			}
+			if c.slow {
+				script += "export SLOW=5\n"
+			}
+			if c.drop {
+				script += "export DROP=1\n"
 			}
 			script += "exec " + shellQuote(fake) + " \"$@\"\n"
 			if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
@@ -197,7 +210,7 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 				}
 				return
 			}
-			waitUntil(t, "the agent to be trusted", 10*time.Second, func() bool { return read("trusted") != "" })
+			waitUntil(t, "the agent to be trusted", 15*time.Second, func() bool { return read("trusted") != "" })
 			if c.spin {
 				time.Sleep(time.Second)
 				if st := bx.startingState(sess.Name); st != startBooting {
@@ -229,15 +242,17 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 // exits on Enter unless Down moved its cursor to "Yes, I trust this
 // folder" first (Up moves it back), redrawing the menu as Claude Code's own
 // question does. Trusted, it runs its first prompt (out/got), says so
-// (out/trusted), and reads prompts a line at a time; with SPIN set, while a
-// spinner runs on, as it does working on that prompt.
+// (out/trusted), and reads prompts a line at a time (an empty one does
+// nothing); with SPIN set, while a spinner runs on, as it does working on
+// that prompt. SLOW keeps the question drawn that many seconds after it is
+// answered; DROP loses the first Enter.
 func trustingAgent(t *testing.T, out string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "claude")
 	script := `#!/bin/sh
 out='` + out + `'
 stty raw -echo
-yes=0
+yes=0 dropped=0
 menu() {
 	printf '\033[2J\033[H Accessing workspace:\r\n\r\n Quick safety check: Is this a project you created or one you trust?\r\n\r\n'
 	if [ $yes = 1 ]; then printf '   No, exit\r\n ❯ Yes, I trust this folder\r\n'; else printf ' ❯ No, exit\r\n   Yes, I trust this folder\r\n'; fi
@@ -257,19 +272,21 @@ while :; do
 		continue
 	fi
 	if [ "$c" = "$cr" ]; then
+		if [ -n "$DROP" ] && [ $dropped = 0 ]; then dropped=1; continue; fi
 		[ $yes = 1 ] && break
 		echo exited > "$out/exited"
 		exit 1
 	fi
 	printf '%s' "$c" >> "$out/swallowed"
 done
+[ -n "$SLOW" ] && sleep "$SLOW"
 stty sane
 printf '\033[2J\033[H'
 echo "ran: $1" >> "$out/got"
 echo yes > "$out/trusted"
 if [ -n "$SPIN" ]; then (i=0; while printf '\r✻ Working %s ' "$i"; do i=$((i+1)); sleep 0.1; done) & fi
 printf '> '
-while IFS= read -r line; do echo "$line" >> "$out/got"; printf '> '; done
+while IFS= read -r line; do [ -n "$line" ] && echo "$line" >> "$out/got"; printf '> '; done
 `
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)

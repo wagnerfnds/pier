@@ -172,6 +172,14 @@ var (
 	startupBlank    = 3 * time.Second
 	startupWatch    = 20 * time.Second
 	startupSettle   = 8 * time.Second
+	// pierd's answer in a chat's own folder can take a while to show: an
+	// agent starting cold keeps its question drawn for seconds after the
+	// Enter, or misses a key sent while it still sets up. After trustRetry
+	// with the question still there the answer is given again (at most
+	// trustRetries times), and the person is told only after trustGrace.
+	trustRetry   = 4 * time.Second
+	trustRetries = 2
+	trustGrace   = 15 * time.Second
 )
 
 const (
@@ -313,7 +321,7 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 	}()
 	began := time.Now()
 	var answered, trusted time.Time
-	told := false
+	told, retries := false, 0
 	// A chat's own folder: pierd answers its question (trustOwnFolder).
 	own := sess.Location == "" && isChatDir(sess.Dir)
 	last, same := "", 0
@@ -338,10 +346,16 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 				if own = chatDirBare(sess.Dir) && b.trustOwnFolder(ctx, sess.Name, screen); own {
 					trusted = time.Now()
 				}
+			} else if own && retries < trustRetries && time.Since(trusted) > trustRetry {
+				// Still asking a while after the answer: give it again.
+				retries++
+				if b.trustOwnFolder(ctx, sess.Name, screen) {
+					trusted = time.Now()
+				}
 			}
-			// The person is told when pierd did not answer, or its answer
+			// The person is told when pierd did not answer, or its answers
 			// did not take.
-			if notify && !told && (trusted.IsZero() || time.Since(trusted) > answerStep) {
+			if notify && !told && (trusted.IsZero() || retries >= trustRetries && time.Since(trusted) > trustGrace) {
 				told = true
 				// From the screen: its hooks don't run until it is trusted.
 				b.Events.Publish(events.Event{Type: adapters.Waiting, Box: b.Name, Origin: from, Data: map[string]any{

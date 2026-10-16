@@ -130,10 +130,7 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
         var body = session.title ?? loc
         if state == .waiting {
             title = String(localized: "\(agent) precisa de você")
-            if let a = session.ask {
-                let extra = [a.tool, a.input ?? a.message].compactMap { $0 }.joined(separator: " ")
-                if !extra.isEmpty { body += " — " + extra }
-            }
+            if let extra = session.ask?.glance { body += " — " + extra }
         } else {
             title = String(localized: "\(agent) terminou")
         }
