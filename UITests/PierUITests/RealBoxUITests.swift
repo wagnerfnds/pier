@@ -85,6 +85,52 @@ final class RealBoxUITests: XCTestCase {
         shot("real-form-answered")
     }
 
+    /// A real push opens the chat at its question (skipped unless `TEST_RUNNER_REAL_PUSH` holds words of a question the
+    /// paired box will ask within a few minutes, and `TEST_RUNNER_REAL_PICKS` the options to tap): the app goes to the
+    /// background, the "Needs you" notification arrives (banner or Notification Center), a tap on it opens the session
+    /// with the whole form on its card, and the answers reach the agent.
+    func testRealNotificationOpensTheForm() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let words = env["REAL_PUSH"], !words.isEmpty, let picks = env["REAL_PICKS"]?.split(separator: "|").map(String.init),
+              !picks.isEmpty else { throw XCTSkip("REAL_PUSH / REAL_PICKS not set") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-undoSeconds", "0", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
+        app.launch()
+        sleep(4)
+        XCUIDevice.shared.press(.home)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let shot = { (name: String, of: XCUIApplication) in
+            let a = XCTAttachment(screenshot: of.screenshot()); a.name = name; a.lifetime = .keepAlways; self.add(a)
+        }
+        var note = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", words)).firstMatch
+        if !note.waitForExistence(timeout: 300) {
+            springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.01))
+                .press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.6)))
+            note = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", words)).firstMatch
+            XCTAssertTrue(note.waitForExistence(timeout: 10), "the push never arrived")
+        }
+        shot("real-push", springboard)
+        note.tap()
+        let card = app.descendants(matching: .any).matching(identifier: "needs-you-card").firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 40), "the notification opened no card")
+        shot("real-push-opened", app)
+        for p in picks {
+            let b = card.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", p)).firstMatch
+            XCTAssertTrue(b.waitForExistence(timeout: 10), "option '\(p)' is not on the card")
+            var tries = 0
+            while !b.isHittable, tries < 4 { card.swipeUp(); tries += 1 }
+            b.tap()
+        }
+        let send = card.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Enviar resposta")).firstMatch
+        var tries = 0
+        while !(send.exists && send.isHittable), tries < 4 { card.swipeUp(); tries += 1 }
+        send.tap()
+        XCTAssertTrue(card.waitForNonExistence(timeout: 30), "the card stayed after answering")
+        let reply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", picks[0])).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 60), "the agent's reply never named the answer")
+        shot("real-push-answered", app)
+    }
+
     /// A real shell through pierd's terminal stream (skipped unless `TEST_RUNNER_REAL_TERMINAL` names a shell session on
     /// the paired box, as `<box>/<session>`): a line typed runs, ⌃C from the keyboard stops `sleep`, and the shell answers
     /// the next line. The screen is the terminal's accessibility value.
