@@ -1,8 +1,9 @@
 import Foundation
 import PierKit
 
-/// Phone-local organisation of projects: sections, renames, hidden. JSON in Application Support.
-/// A project key is "<box>/<location>".
+/// The person's organisation of projects (sections, renames, hidden) and this device's own marks. JSON in Application
+/// Support; the organisation is also kept in iCloud's key-value store (`SyncedOrganization`), so every device of the
+/// person shows the same sections. A project key is "<box>/<location>".
 @MainActor @Observable
 final class LocalPrefs {
     struct Section: Codable, Identifiable, Hashable {
@@ -67,6 +68,10 @@ final class LocalPrefs {
         /// How the projects in no section are ordered, and their order when that is by hand.
         var unsortedSort: ProjectSort = .activity
         var unsortedOrder: [String] = []
+        /// When the organisation above last changed (here or on another device), and whether this device has synced it
+        /// with iCloud at least once (until then its first sync merges instead of choosing a side).
+        var organizationAt: Date?
+        var organizationSynced = false
 
         init() {}
         init(from d: Decoder) throws {
@@ -87,6 +92,8 @@ final class LocalPrefs {
             sidebarExpanded = try c.decodeIfPresent([String: Bool].self, forKey: .sidebarExpanded) ?? [:]
             unsortedSort = try c.decodeIfPresent(ProjectSort.self, forKey: .unsortedSort) ?? .activity
             unsortedOrder = try c.decodeIfPresent([String].self, forKey: .unsortedOrder) ?? []
+            organizationAt = try c.decodeIfPresent(Date.self, forKey: .organizationAt)
+            organizationSynced = try c.decodeIfPresent(Bool.self, forKey: .organizationSynced) ?? false
         }
     }
 
@@ -96,8 +103,16 @@ final class LocalPrefs {
     private(set) var composeDraft = ""
     private var url: URL
 
+    /// The prefs are the app's own file (not a test's).
+    @ObservationIgnored private let ownFile: Bool
+    /// The person's own prefs (not a test's, a mock run's or the demo's, which never reach iCloud) follow iCloud.
+    private var syncs: Bool { ownFile && !UITestMock.enabled && !DemoMode.isOn }
+    /// The organisation as last read from or written to iCloud.
+    @ObservationIgnored private var lastSynced: SyncedOrganization?
+
     init(url: URL? = nil) {
         self.url = url ?? Self.defaultURL
+        ownFile = url == nil
         load()
         // A mock run is a test or a screenshot: it starts with no prompt draft a previous run left behind (one test typed
         // a long prompt and the next found it in Nova tarefa). Within a run the draft comes back as ever.
@@ -105,6 +120,53 @@ final class LocalPrefs {
         composeDraft = data.composeDraft
         // The widgets' copy follows these prefs from the start, whatever changed it meanwhile.
         if url == nil { mirrorForWidgets() }
+        if ownFile && !UITestMock.enabled {
+            NotificationCenter.default.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                                                   object: NSUbiquitousKeyValueStore.default, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pullOrganization() }
+            }
+            NSUbiquitousKeyValueStore.default.synchronize()
+            pullOrganization()
+        }
+    }
+
+    // MARK: iCloud (the organisation)
+
+    private static let organizationKey = "organization.v1"
+
+    private var organization: SyncedOrganization {
+        SyncedOrganization(sections: data.sections.map { .init(id: $0.id, name: $0.name, projects: $0.projects, sort: $0.sort) },
+                           renames: data.renames, hidden: data.hidden, unsortedSort: data.unsortedSort, unsortedOrder: data.unsortedOrder,
+                           expanded: data.sidebarExpanded, updatedAt: data.organizationAt ?? .distantPast)
+    }
+
+    private func apply(_ o: SyncedOrganization) {
+        data.sections = o.sections.map { Section(id: $0.id, name: $0.name, projects: $0.projects, sort: $0.sort) }
+        data.renames = o.renames; data.hidden = o.hidden
+        data.unsortedSort = o.unsortedSort; data.unsortedOrder = o.unsortedOrder
+        data.sidebarExpanded = o.expanded
+        data.organizationAt = o.updatedAt
+    }
+
+    /// Reads iCloud's copy and takes it, or merges with it on the first sync; sends back what iCloud lacks.
+    func pullOrganization() {
+        guard syncs else { return }
+        let store = NSUbiquitousKeyValueStore.default
+        let remote = store.data(forKey: Self.organizationKey).flatMap { try? JSONDecoder().decode(SyncedOrganization.self, from: $0) }
+        let local = organization
+        let resolved = SyncedOrganization.resolve(local: local, remote: remote, synced: data.organizationSynced)
+        let changed = !resolved.sameContent(as: local) || !data.organizationSynced
+        if !resolved.sameContent(as: local) { apply(resolved) }
+        data.organizationSynced = true
+        lastSynced = resolved
+        if remote.map({ !$0.sameContent(as: resolved) || $0.updatedAt != resolved.updatedAt }) ?? !resolved.isEmpty { push(resolved) }
+        if changed { writeFile() }
+    }
+
+    private func push(_ o: SyncedOrganization) {
+        guard let d = try? JSONEncoder().encode(o) else { return }
+        NSUbiquitousKeyValueStore.default.set(d, forKey: Self.organizationKey)
+        lastSynced = o
     }
 
     /// The archive marks ("box/session" -> date) as saved, read without a prefs object (CarPlay and Siri run without the
@@ -138,6 +200,9 @@ final class LocalPrefs {
         load()
         draftSave?.cancel()
         composeDraft = data.composeDraft
+        // Back from the demo: the person's own organisation, as iCloud has it now.
+        lastSynced = nil
+        pullOrganization()
     }
 
     static func key(box: String, location: String) -> String { "\(box)/\(location)" }
@@ -390,6 +455,15 @@ final class LocalPrefs {
         data = v
     }
     private func save() {
+        // The organisation changed here: it is the newest now, on every device.
+        if syncs, let last = lastSynced, !organization.sameContent(as: last) {
+            data.organizationAt = Date()
+            push(organization)
+        }
+        writeFile()
+    }
+
+    private func writeFile() {
         let fm = FileManager.default
         try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var out = data

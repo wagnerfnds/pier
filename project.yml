@@ -59,6 +59,8 @@ targets:
         # APNs key needed.
         com.apple.developer.icloud-container-identifiers: ["iCloud.$(PIER_BUNDLE_ID)"]
         com.apple.developer.icloud-services: ["CloudKit"]
+        # The person's sections, names and hidden projects, the same on every device (LocalPrefs, SyncedOrganization).
+        com.apple.developer.ubiquity-kvstore-identifier: "$(TeamIdentifierPrefix)$(PIER_BUNDLE_ID)"
         # Siri's messages to and from the agents (App/Intents/MessageIntents.swift: replies by voice, in the car too) and
         # the agents' notifications as messages (App/Shared/CommunicationNotification.swift). Self-service capabilities:
         # automatic signing adds them to the App ID.
