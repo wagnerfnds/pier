@@ -63,6 +63,12 @@ enum DebugIntentRunner {
                 i.text = d.string(forKey: "intentText") ?? "ok"
                 _ = try await i.perform()
                 out("message queued")
+            case "answerChoice":
+                // The Live Activity's choice button (`AnswerChoiceIntent`), run as the system runs it on a tap.
+                guard let s = session() else { out("-intentSession box/name required"); return }
+                let choice = d.string(forKey: "intentText") ?? ""
+                _ = try await AnswerChoiceIntent(box: s.box, session: s.name, choice: choice).perform()
+                out("answerChoice \(choice) done")
             case "allow", "deny":
                 guard let s = session() else { out("-intentSession box/name required"); return }
                 let e = SessionEntity(id: "\(s.box)/\(s.name)", box: s.box, session: s.name, title: s.name, project: "", agent: "", state: "waiting")
