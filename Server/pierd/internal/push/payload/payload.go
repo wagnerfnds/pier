@@ -109,6 +109,7 @@ type ContentState struct {
 	Added   *int    `json:"added"`
 	Removed *int    `json:"removed"`
 	Reply   *string `json:"reply"` // the agent's last reply, a few lines (finished)
+	Choices *int    `json:"choices"` // how many choices a waiting question offers, when they could be read (the island shows it)
 }
 
 // Attributes mirrors SessionActivityAttributes (only used to start an activity by push).

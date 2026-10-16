@@ -18,6 +18,11 @@ import Testing
         #expect(Ask.classify(Ask(tool: "AskUserQuestionX")) == .permission)
         #expect(Ask(tool: "Bash", input: "rm -rf build").summary == "Bash  rm -rf build")
         #expect(Ask(tool: nil, input: "x").summary == "x")
+        #expect(Ask(tool: "AskUserQuestion", input: "Which colour?").summary == "Which colour?")
+        #expect(Ask(tool: "request_user_input", input: "Which colour?").glance == "Which colour?")
+        #expect(Ask(tool: "AskUserQuestion").summary == "AskUserQuestion")
+        #expect(Ask(tool: "Bash", why: "Clean").glance == "Bash  Clean")
+        #expect(Ask().glance == nil)
     }
 
     @Test func sessionRouting() {

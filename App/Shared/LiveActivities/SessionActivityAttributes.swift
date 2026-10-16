@@ -113,11 +113,7 @@ extension SessionActivityAttributes.ContentState {
     /// Content derived from a session alone (no network): phase, timer and ask summary.
     static func base(from s: Session, previous: Self? = nil) -> Self {
         let phase = ActivityPhase(s)
-        var ask: String?
-        if phase == .waiting, let a = s.ask {
-            let t = [a.tool, a.input ?? a.message ?? a.why].compactMap { $0 }.joined(separator: "  ")
-            ask = t.isEmpty ? nil : t
-        }
+        let ask = phase == .waiting ? s.ask?.glance : nil
         let since = s.stateSince ?? previous?.since ?? s.created
         var c = Self(phase: phase, since: since, step: nil, ask: ask, hasMenu: false, added: nil, removed: nil)
         if let p = previous {

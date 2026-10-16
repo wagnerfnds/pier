@@ -89,11 +89,7 @@ struct WidgetSnapshot: Codable, Sendable, Hashable {
                 var project = s.chat ? String(localized: "Conversa")
                     : loc.isEmpty ? (s.dir.split(separator: "/").last.map(String.init) ?? s.name) : prefs.displayName(box: f.record.name, location: loc)
                 if let wt, wt != title { project += " · \(wt)" }
-                var ask: String?
-                if st == .needsYou, let a = s.ask {
-                    let t = [a.tool, a.input ?? a.message ?? a.why].compactMap { $0 }.joined(separator: "  ")
-                    ask = t.isEmpty ? nil : t
-                }
+                let ask = st == .needsYou ? s.ask?.glance : nil
                 out.append(WSession(box: f.record.name, name: s.name, title: title, project: project, agent: s.agent,
                                     state: st, since: s.stateSince ?? s.created, ask: ask))
             }

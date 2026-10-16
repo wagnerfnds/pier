@@ -926,7 +926,7 @@ extension WidgetSnapshot {
         typealias U = UITestShowcase
         return WidgetSnapshot(updated: now, boxes: [WBox(name: "devbox", online: true)], sessions: [
             s(U.permission, U.titlePermission, "storefront · stripe-checkout", "claude", .needsYou, 180, ask: "Bash  npm install stripe"),
-            s(U.question, U.titleQuestion, "storefront · pricing-page", "claude", .needsYou, 60, ask: "AskUserQuestion  " + U.questionText),
+            s(U.question, U.titleQuestion, "storefront · pricing-page", "claude", .needsYou, 60, ask: U.questionText),
             s(U.passkeys, U.titlePasskeys, "mobile-app · passkeys", "claude", .working, 720),
             s(U.docs, U.titleDocs, "docs-site · release-notes", "codex", .working, 360),
             s(U.finished, U.titleFinished, "billing-api · webhook-retries", "claude", .done, 240),

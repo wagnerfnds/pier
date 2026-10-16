@@ -430,6 +430,9 @@ func (e *Engine) announceWaiting(name string, since time.Time) {
 	all := e.all()
 	ask := s.Ask.Summary()
 	cs := e.contentState(s, "waiting", hasMenu, nil, nil, text.Clip(ask, 200), "")
+	if n := len(options); n > 1 {
+		cs.Choices = &n
+	}
 	log := e.log.With("session", name, "category", category, "hasMenu", hasMenu, "options", len(options))
 	if stale {
 		log.Info("waiting state is stale; no alert")

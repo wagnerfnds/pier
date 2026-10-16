@@ -55,7 +55,7 @@ func TestAlertPermission(t *testing.T) {
 
 func TestAlertQuestion(t *testing.T) {
 	b, _ := BuildAlert(AlertParams{
-		Box: "casa", Session: "projeto-wt-1", Location: "projeto/wt-1", Title: "✋ Needs you · Claude Code", Body: "AskUserQuestion  Which colour?",
+		Box: "casa", Session: "projeto-wt-1", Location: "projeto/wt-1", Title: "✋ Needs you · Claude Code", Body: "Which colour?",
 		Category: CategoryNeedsYouQuestion, HasMenu: bp(false), Level: "time-sensitive", Sound: true,
 	})
 	golden(t, "alert_waiting_question", b)
@@ -64,7 +64,7 @@ func TestAlertQuestion(t *testing.T) {
 func TestAlertQuestionWithOptions(t *testing.T) {
 	b, _ := BuildAlert(AlertParams{
 		Box: "casa", Session: "projeto-wt-1", Location: "projeto/wt-1", Title: "✋ Needs you · Pricing page",
-		Body:     "AskUserQuestion  Which layout?\n1 Three tiers · 2 One plan · 3 A table",
+		Body:     "Which layout?\n1 Three tiers · 2 One plan · 3 A table",
 		Category: CategoryNeedsYouChoice(3), HasMenu: bp(false), Options: []string{"Three tiers", "One plan", "A table"}, OptionsKind: "menu",
 		Level: "time-sensitive", Sound: true,
 	})

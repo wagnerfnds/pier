@@ -20,9 +20,19 @@ extension Ask {
     /// `ExitPlanMode`: a plain numbered menu on screen (parse like a permission); the plan is the preceding `text` item.
     public var isPlanApproval: Bool { tool == "ExitPlanMode" }
 
-    /// "Bash  rm -rf build": what to show next to Allow / Deny.
+    /// "Bash  rm -rf build": what to show next to Allow / Deny. A question is its words alone ("Which colour?"): the
+    /// tool's name means nothing to the person answering it.
     public var summary: String {
-        [tool, input].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
+        if tool == "AskUserQuestion" || tool == "request_user_input", let input, !input.isEmpty { return input }
+        return [tool, input].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
+    }
+
+    /// The one line a glance shows (Live Activity, widgets): `summary`, with the agent's message or reason when the
+    /// hook gave no input. nil when there is nothing to say.
+    public var glance: String? {
+        if tool == "AskUserQuestion" || tool == "request_user_input", let input, !input.isEmpty { return input }
+        let t = [tool, input ?? message ?? why].compactMap { $0 }.joined(separator: "  ")
+        return t.isEmpty ? nil : t
     }
 }
 

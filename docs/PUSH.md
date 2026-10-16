@@ -141,7 +141,8 @@ title and subtitle): Siri reads it in the car and a spoken reply reaches the ses
 * Title: the state first, then the session's name: "✋ Needs you", "✅ Done", "⚠️ Failed", "⏳ In background",
   "⚙️ Working" (pt-BR: "Precisa de você", "Concluído", "Falhou", "Em segundo plano", "Trabalhando"), by the device's
   `locale`. Subtitle: `<repo / worktree> · <agent>` (plus the box when the device has several). Body: the ask for
-  waiting; for finished, the recap or the reply's first sentence, then `+N −M` from `/v1/review`.
+  waiting (`Bash  rm -rf build`; a question is its words alone, without the tool's name); for finished, the recap or
+  the reply's first sentence, then `+N −M` from `/v1/review`.
 * Interruption level: `time-sensitive` (waiting), `active` (finished), `passive` (working).
 * The Allow/Deny actions do not trust the push: they read the session's screen again, find the menu with
   `MenuParser` and send the digit the menu assigns (API.md §5.3), never a fixed `1`. If the menu is gone or changed
@@ -188,7 +189,7 @@ priority 10 (5 for silent progress).
 ```json
 { "aps": { "timestamp": 1790000000, "event": "update",
     "content-state": { "phase": "waiting", "since": 1790000000, "step": null, "ask": "Bash  rm -rf build",
-                       "hasMenu": true, "added": null, "removed": null, "reply": null },
+                       "hasMenu": true, "added": null, "removed": null, "reply": null, "choices": null },
     "alert": { "title": "Fix login", "body": "Needs you" } } }
 ```
 
@@ -202,8 +203,10 @@ plain `JSONDecoder()` whose default date strategy reads seconds since 2001).
 * `since`: a number, **seconds since 1970**, fractions allowed. The app also accepts a number < 1e9 as seconds since
   2001 (legacy, `activity_date_epoch: "reference"`) and an RFC 3339 string. pierd sends Unix seconds with millisecond
   precision.
-* Required: `phase`, `since`. Optional (null or absent): `step`, `ask`, `added`, `removed`, `reply`; `hasMenu`
-  defaults to `false`. pierd always sends all eight keys, nulls included.
+* Required: `phase`, `since`. Optional (null or absent): `step`, `ask`, `added`, `removed`, `reply`, `choices`;
+  `hasMenu` defaults to `false`. pierd always sends all nine keys, nulls included.
+* `choices`: how many choices a waiting question offers when pierd read them (the alert's `options`, 4.3); the
+  Dynamic Island shows the count.
 * `reply`: the agent's last reply of the turn (or its recap), Markdown marks stripped, whitespace folded, ≤ 280
   characters, sent with `finished`; the lock-screen card shows it. Zero `added` / `removed` are not shown.
 * End: `"event": "end"` with the final `content-state` and `"dismissal-date": <Unix seconds>`.
@@ -218,7 +221,7 @@ Sent to the `push_to_start_token` with the same headers; `attributes-type` is th
     "attributes": { "box": "devbox", "session": "shop-checkout-claude-1x2y", "title": "Fix login",
                     "project": "shop · checkout-fix", "agent": "claude" },
     "content-state": { "phase": "running", "since": 1790000000, "step": null, "ask": null, "hasMenu": false,
-                       "added": null, "removed": null, "reply": null },
+                       "added": null, "removed": null, "reply": null, "choices": null },
     "alert": { "title": "Fix login", "body": "Working" } } }
 ```
 

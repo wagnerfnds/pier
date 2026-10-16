@@ -114,14 +114,28 @@ struct DetailLine: View {
     }
 }
 
+/// A question's choices are a tap away (the notification's buttons, the Inbox): say how many.
+struct ChoicesHint: View {
+    let count: Int
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "list.number").font(.system(size: 11, weight: .semibold))
+            Text("\(count) opções · toque para responder").font(.system(size: 12, weight: .medium))
+        }
+        .foregroundStyle(BTheme.orange)
+    }
+}
+
 // MARK: lock screen
 
 struct SessionLockScreenView: View {
     let attrs: SessionActivityAttributes
     let state: ActivityContentState
 
-    /// A row of buttons closes the banner: Permitir / Negar, or the line counts and Revisar.
-    private var hasActions: Bool { (state.phase == .waiting && state.hasMenu) || state.phase == .finished }
+    /// A row closes the banner: Permitir / Negar, how many choices a question offers, or the line counts and Revisar.
+    private var hasActions: Bool {
+        (state.phase == .waiting && (state.hasMenu || (state.choices ?? 0) > 1)) || state.phase == .finished
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -146,6 +160,8 @@ struct SessionLockScreenView: View {
             DetailLine(state: state, lines: hasActions ? 2 : 3)
             if state.phase == .waiting && state.hasMenu {
                 ActivityPermissionButtons(attrs: attrs)
+            } else if state.phase == .waiting, let n = state.choices, n > 1 {
+                ChoicesHint(count: n)
             } else if state.phase == .finished {
                 HStack {
                     if let a = state.added, let r = state.removed, a + r > 0 { DiffCounts(added: a, removed: r) }
@@ -232,12 +248,7 @@ struct IslandExpandedBottom: View {
             if state.phase == .waiting && state.hasMenu {
                 ActivityPermissionButtons(attrs: attrs)
             } else if state.phase == .waiting, let n = state.choices, n > 1 {
-                // The choices are a tap away (the notification's buttons, the Inbox): say how many.
-                HStack(spacing: 5) {
-                    Image(systemName: "list.number").font(.system(size: 11, weight: .semibold))
-                    Text("\(n) opções · toque para responder").font(.system(size: 12, weight: .medium))
-                }
-                .foregroundStyle(BTheme.orange)
+                ChoicesHint(count: n)
             } else if state.phase == .finished {
                 HStack { Spacer(); ReviewLink(attrs: attrs) }
             }

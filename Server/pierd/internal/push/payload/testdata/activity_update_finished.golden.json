@@ -10,7 +10,8 @@
       "hasMenu": false,
       "added": 6,
       "removed": 0,
-      "reply": null
+      "reply": null,
+      "choices": null
     },
     "stale-date": 1790003600,
     "alert": {

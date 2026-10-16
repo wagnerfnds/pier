@@ -10,7 +10,8 @@
       "hasMenu": false,
       "added": null,
       "removed": null,
-      "reply": null
+      "reply": null,
+      "choices": null
     },
     "attributes-type": "SessionActivityAttributes",
     "attributes": {

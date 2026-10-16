@@ -266,8 +266,34 @@ func TestWaitingQuestionCarriesTheTranscriptChoices(t *testing.T) {
 		t.Fatalf("%+v", p)
 	}
 	// The numbered buttons of the app's own category need the choices in the body, numbered the same way.
-	if !strings.HasSuffix(p.APS.Alert.Body, "\n1 Red · 2 Green · 3 Blue") {
+	// The question in its own words, without the tool's name.
+	if p.APS.Alert.Body != "Which colour?\n1 Red · 2 Green · 3 Blue" {
 		t.Fatalf("body %q", p.APS.Alert.Body)
+	}
+}
+
+func TestWaitingQuestionActivityHasTheQuestionAndHowManyChoices(t *testing.T) {
+	r := newRig(t, dev("c1", "en"))
+	r.st.PutActivity(state.Activity{Client: "c1", Box: "casa", Session: "sandbox-subtract-claude-6s1", Token: "00aa11bb", Env: "development"})
+	r.box.question = []string{"Red", "Green", "Blue"}
+	r.box.screen = "just some output\n"
+	r.box.set(sess("running", time.Now().Add(-time.Minute)))
+	r.start()
+	s := sess("waiting", time.Now())
+	s.Ask = &boxapi.Ask{Tool: "AskUserQuestion", Input: "Which colour?"}
+	r.change(s)
+	waitFor(t, "activity update", func() bool { return len(r.snd.byType("liveactivity")) == 1 })
+	var p struct {
+		APS struct {
+			CS struct {
+				Ask     string
+				Choices *int
+			} `json:"content-state"`
+		}
+	}
+	json.Unmarshal(r.snd.byType("liveactivity")[0].Payload, &p)
+	if p.APS.CS.Ask != "Which colour?" || p.APS.CS.Choices == nil || *p.APS.CS.Choices != 3 {
+		t.Fatalf("%+v", p.APS.CS)
 	}
 }
 

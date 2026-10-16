@@ -21,10 +21,14 @@ type Ask struct {
 	Message string `json:"message,omitempty"`
 }
 
-// Summary is "Bash  rm -rf build".
+// Summary is "Bash  rm -rf build"; a question is its words alone ("Which colour?"), the tool's name means nothing to
+// the person answering it.
 func (a *Ask) Summary() string {
 	if a == nil {
 		return ""
+	}
+	if (a.Tool == "AskUserQuestion" || a.Tool == "request_user_input") && a.Input != "" {
+		return a.Input
 	}
 	var p []string
 	for _, s := range []string{a.Tool, a.Input} {

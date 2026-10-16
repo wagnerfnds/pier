@@ -25,6 +25,23 @@ func TestGetThroughTheHandlerInProcess(t *testing.T) {
 	}
 }
 
+func TestSummary(t *testing.T) {
+	for _, c := range []struct {
+		a    *Ask
+		want string
+	}{
+		{nil, ""},
+		{&Ask{Tool: "Bash", Input: "rm -rf build"}, "Bash  rm -rf build"},
+		{&Ask{Tool: "AskUserQuestion", Input: "Which colour?"}, "Which colour?"},
+		{&Ask{Tool: "request_user_input", Input: "Which colour?"}, "Which colour?"},
+		{&Ask{Tool: "AskUserQuestion"}, "AskUserQuestion"},
+	} {
+		if got := c.a.Summary(); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.a, got, c.want)
+		}
+	}
+}
+
 func TestOpenQuestion(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/sessions/{name}/transcript", func(w http.ResponseWriter, r *http.Request) {

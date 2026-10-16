@@ -2,7 +2,7 @@
   "aps": {
     "alert": {
       "title": "✋ Needs you · Claude Code",
-      "body": "AskUserQuestion  Which colour?"
+      "body": "Which colour?"
     },
     "category": "NEEDS_YOU_QUESTION",
     "thread-id": "casa/projeto-wt-1",

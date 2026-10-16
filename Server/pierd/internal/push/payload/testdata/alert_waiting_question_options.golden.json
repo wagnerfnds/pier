@@ -2,7 +2,7 @@
   "aps": {
     "alert": {
       "title": "✋ Needs you · Pricing page",
-      "body": "AskUserQuestion  Which layout?\n1 Three tiers · 2 One plan · 3 A table"
+      "body": "Which layout?\n1 Three tiers · 2 One plan · 3 A table"
     },
     "category": "NEEDS_YOU_CHOICE_3",
     "thread-id": "casa/projeto-wt-1",

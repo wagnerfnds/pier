@@ -10,7 +10,8 @@
       "hasMenu": true,
       "added": null,
       "removed": null,
-      "reply": null
+      "reply": null,
+      "choices": null
     },
     "alert": {
       "title": "Corrigir login",
