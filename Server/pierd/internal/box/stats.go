@@ -27,6 +27,12 @@ type Stats struct {
 	// Hooks is true when an agent tool on the box reports to pierd, so
 	// an agent's waiting or finished state is known.
 	Hooks bool `json:"hooks"`
+	// CPUPercent and TempC are the latest samples (samples.go): the CPU's
+	// busy time over the last 15 s, and its temperature where the box has a
+	// sensor. History is the last half hour of them, with memory.
+	CPUPercent *float64 `json:"cpu_percent,omitempty"`
+	TempC      *float64 `json:"temp_c,omitempty"`
+	History    *History `json:"history,omitempty"`
 }
 
 // Usage is bytes in use out of a total.
@@ -71,6 +77,10 @@ func (b *Box) handleStats(w http.ResponseWriter, r *http.Request) error {
 	}
 	home, _ := os.UserHomeDir()
 	s.Hooks = hooksInstalled(home)
+	if b.Samples != nil {
+		h, cpu, temp := b.Samples.Snapshot()
+		s.History, s.CPUPercent, s.TempC = &h, cpu, temp
+	}
 	writeJSON(w, s)
 	return nil
 }

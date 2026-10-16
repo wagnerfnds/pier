@@ -457,7 +457,18 @@ final class MockBox: PierTransport, @unchecked Sendable {
                 + (UserDefaults.standard.string(forKey: "mockTTY") == "0" ? [] : ["tty"])
             return (200, Self.json(info))
         case (.get, "doctor"): return (200, Self.json(doctorChecks()))
-        case (.get, "stats"): return (200, Self.fixture(MockFixtures.stats))
+        case (.get, "stats"):
+            // pierd's half hour of samples (box/samples.go): waves that move a little every poll.
+            var st = Self.fixtureObject(MockFixtures.stats)
+            let t = Date().timeIntervalSince1970 / 15
+            func wave(_ base: Double, _ amp: Double, _ speed: Double) -> [Double] {
+                (0..<120).map { i in ((base + amp * sin((Double(i) + t) / speed) + amp * 0.4 * sin((Double(i) + t) / (speed / 3))) * 10).rounded() / 10 }
+            }
+            let cpu = wave(28, 14, 9), mem = wave(46, 3, 20), temp = wave(58, 6, 12)
+            st["history"] = ["interval_s": 15, "cpu": cpu, "memory": mem, "temp": temp] as JSON
+            st["cpu_percent"] = cpu.last; st["temp_c"] = temp.last
+            if var m = st["memory"] as? JSON, let total = m["total"] as? Double, let last = mem.last { m["used"] = Int(total * last / 100); st["memory"] = m }
+            return (200, Self.json(st))
         case (.get, "agents"): return (200, Self.fixture(MockFixtures.agents))
         case (.get, "locations") where p.count == 2: return (200, projects.locations(MockFixtures.locations))
         case (.get, "locations") where p.count == 4 && p[3] == "branches": return (200, Self.fixture(MockFixtures.branches))

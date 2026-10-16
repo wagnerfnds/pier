@@ -34,6 +34,9 @@ const DefaultOrigin = "pier"
 var validOrigin = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 type Box struct {
+	// Samples is the box's CPU, memory and temperature over the last half
+	// hour (samples.go), carried by `GET /v1/stats`; nil sends none.
+	Samples   *Sampler
 	Name      string
 	Locations *Locations
 	Sessions  *Sessions

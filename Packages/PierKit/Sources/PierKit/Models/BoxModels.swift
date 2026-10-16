@@ -309,8 +309,37 @@ public struct BoxStats: Codable, Sendable, Hashable {
     public let disks: [BoxStats.Disk]
     public let agents: [BoxStats.AgentProc]
     public let hooks: Bool
+    /// The CPU's busy share over the last 15 s, in percent (pierd ≥ 1.6; older boxes: `load` over `cpus`).
+    public let cpuPercent: Double?
+    /// The CPU's temperature in °C, on boxes with a sensor.
+    public let tempC: Double?
+    /// The last half hour of CPU, memory and temperature, for the charts.
+    public let history: History?
 
-    public init(hostname: String = "", uptimeS: Int64? = nil, cpus: Int = 0, load: [Double]? = nil, memory: BoxStats.Usage = .init(), swap: BoxStats.Usage = .init(), disks: [BoxStats.Disk] = [], agents: [BoxStats.AgentProc] = [], hooks: Bool = false) {
+    /// Samples one every `intervalS` seconds, oldest first; nil where one could not be read. Percentages and °C.
+    public struct History: Codable, Sendable, Hashable {
+        public let intervalS: Int
+        public let cpu: [Double?]
+        public let memory: [Double?]
+        public let temp: [Double?]
+        public init(intervalS: Int = 15, cpu: [Double?] = [], memory: [Double?] = [], temp: [Double?] = []) {
+            self.intervalS = intervalS; self.cpu = cpu; self.memory = memory; self.temp = temp
+        }
+        enum CodingKeys: String, CodingKey { case intervalS = "interval_s", cpu, memory, temp }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            intervalS = try c.decodeIfPresent(Int.self, forKey: .intervalS) ?? 15
+            cpu = try c.decodeIfPresent([Double?].self, forKey: .cpu) ?? []
+            memory = try c.decodeIfPresent([Double?].self, forKey: .memory) ?? []
+            temp = try c.decodeIfPresent([Double?].self, forKey: .temp) ?? []
+        }
+    }
+
+    public init(hostname: String = "", uptimeS: Int64? = nil, cpus: Int = 0, load: [Double]? = nil, memory: BoxStats.Usage = .init(), swap: BoxStats.Usage = .init(), disks: [BoxStats.Disk] = [], agents: [BoxStats.AgentProc] = [], hooks: Bool = false,
+                cpuPercent: Double? = nil, tempC: Double? = nil, history: History? = nil) {
+        self.cpuPercent = cpuPercent
+        self.tempC = tempC
+        self.history = history
         self.hostname = hostname
         self.uptimeS = uptimeS
         self.cpus = cpus
@@ -332,6 +361,9 @@ public struct BoxStats: Codable, Sendable, Hashable {
         case disks
         case agents
         case hooks
+        case cpuPercent = "cpu_percent"
+        case tempC = "temp_c"
+        case history
     }
 
     public init(from decoder: Decoder) throws {
@@ -345,6 +377,15 @@ public struct BoxStats: Codable, Sendable, Hashable {
         self.disks = try c.decodeIfPresent([BoxStats.Disk].self, forKey: .disks) ?? []
         self.agents = try c.decodeIfPresent([BoxStats.AgentProc].self, forKey: .agents) ?? []
         self.hooks = try c.decodeIfPresent(Bool.self, forKey: .hooks) ?? false
+        self.cpuPercent = try? c.decodeIfPresent(Double.self, forKey: .cpuPercent)
+        self.tempC = try? c.decodeIfPresent(Double.self, forKey: .tempC)
+        self.history = try? c.decodeIfPresent(History.self, forKey: .history)
+    }
+
+    /// The CPU's use, 0…1: the measured share when the box sends it, else the 1-minute load over the CPUs.
+    public var cpuFraction: Double {
+        if let p = cpuPercent { return min(1, max(0, p / 100)) }
+        return min(1, (load?.first ?? 0) / Double(max(cpus, 1)))
     }
 }
 

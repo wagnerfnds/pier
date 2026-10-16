@@ -95,10 +95,15 @@ notifications).
  "memory":{"total":63096745984,"used":230916096},"swap":{"total":8589930496,"used":8192},
  "disks":[{"mount":"/","total":1889743667200,"used":813817757696}],
  "agents":[{"tool":"codex","pid":6366,"path":"/home/octocat/code/shop","state":"finished","since":"2026-10-07T19:07:42Z"}],
- "hooks":true}
+ "hooks":true, "cpu_percent":23.4, "temp_c":64.4,
+ "history":{"interval_s":15,"cpu":[null,12.5,30,23.4],"memory":[40.1,40.3,41,41.2],"temp":[60,61.5,63,64.4]}}
 ```
 
-No CPU percentage: CPU is `load` (1/5/15-minute load average) over `cpus`. Sizes are bytes. `agents` are agent
+`cpu_percent` (pierd ≥ 1.6) is the CPU's busy share over the last 15 s, from `/proc/stat`; older boxes send none, and
+CPU is then `load` (1/5/15-minute load average) over `cpus`. `temp_c` is the CPU's temperature (hwmon `coretemp`,
+`k10temp`, `zenpower` or `cpu_thermal`, else a CPU thermal zone), absent without a sensor. `history` is the last half
+hour, one sample every `interval_s` seconds, oldest first, percentages and °C, `null` where a sample could not be read
+(the first CPU sample, no sensor); the app draws CPU, memory and temperature as waves. Sizes are bytes. `agents` are agent
 processes seen on the box, including ones pierd did not start. `hooks: true` means the agents' hooks report to pierd.
 
 ### 1.3 `GET /v1/doctor`

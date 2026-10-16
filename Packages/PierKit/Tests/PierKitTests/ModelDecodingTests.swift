@@ -141,6 +141,17 @@ import Testing
         #expect(shell.needsYouKind == nil)
     }
 
+    /// pierd ≥ 1.6 measures the CPU and keeps half an hour of samples; an older box sends neither (the load average then).
+    @Test func statsCarryTheHistory() throws {
+        let s: BoxStats = try Fixture.decode("stats_running.json")
+        #expect(s.cpuPercent == 23.4 && s.tempC == 64.4 && abs(s.cpuFraction - 0.234) < 1e-9)
+        let h = try #require(s.history)
+        #expect(h.intervalS == 15 && h.cpu == [nil, 12.5, 30, 23.4] && h.temp.last == 64.4 && h.memory.count == 4)
+        let old: BoxStats = try Fixture.decode("stats.json")
+        #expect(old.history == nil && old.tempC == nil)
+        #expect(abs(old.cpuFraction - min(1, (old.load?.first ?? 0) / Double(old.cpus))) < 1e-9)
+    }
+
     @Test func nanosecondDates() throws {
         let s: [Session] = try Fixture.decode("sessions_waiting.json")
         let since = try #require(s.first?.stateSince)

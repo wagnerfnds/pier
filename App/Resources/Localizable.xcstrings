@@ -15222,6 +15222,16 @@
           }
         }
       }
+    },
+    "Temperatura" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temperature"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

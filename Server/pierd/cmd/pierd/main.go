@@ -357,6 +357,8 @@ func serve(b boxHome, args []string) error {
 			bx.Exe = exe
 		}
 	}
+	bx.Samples = &box.Sampler{}
+	go bx.Samples.Run(ctx)
 	go bx.SyncSkills()
 	go bx.StartShares(ctx)
 	bx.Mount(s)

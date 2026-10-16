@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import PierKit
 
 struct DashboardView: View {
@@ -231,15 +232,26 @@ struct BoxChip: View {
                     Text(statusText).font(.caption).foregroundStyle(Theme.textDim)
                 }
                 if let s = conn.stats, conn.state.isOnline {
-                    let cpu = min(1, (s.load?.first ?? 0) / Double(max(s.cpus, 1)))
+                    let cpu = s.cpuFraction
                     let mem = s.memory.total > 0 ? Double(s.memory.used) / Double(s.memory.total) : 0
                     let disk = s.disks.first.map { $0.total > 0 ? Double($0.used) / Double($0.total) : 0 } ?? 0
-                    HStack(spacing: 14) {
-                        UsageMeter(label: String(localized: "CPU"), value: cpu)
-                        UsageMeter(label: String(localized: "Memória"), value: mem)
+                    if let h = s.history, h.cpu.compactMap({ $0 }).count > 1 {
+                        // The last half hour as waves (pierd samples them); the disk barely moves: a bar.
+                        HStack(alignment: .top, spacing: 12) {
+                            WaveMeter(label: String(localized: "CPU"), samples: h.cpu, now: cpu * 100, unit: .percent)
+                            WaveMeter(label: String(localized: "Memória"), samples: h.memory, now: mem * 100, unit: .percent)
+                            if let t = s.tempC { WaveMeter(label: String(localized: "Temperatura"), samples: h.temp, now: t, unit: .celsius) }
+                        }
+                        .padding(.top, 2)
                         UsageMeter(label: String(localized: "Disco"), value: disk)
+                    } else {
+                        HStack(spacing: 14) {
+                            UsageMeter(label: String(localized: "CPU"), value: cpu)
+                            UsageMeter(label: String(localized: "Memória"), value: mem)
+                            UsageMeter(label: String(localized: "Disco"), value: disk)
+                        }
+                        .padding(.top, 2)
                     }
-                    .padding(.top, 2)
                     MonoText(String(localized: "\(s.cpus) CPUs · \(Fmt.bytes(s.memory.total))"), size: 11, color: Theme.textFaint)
                 } else if case .offline(let m) = conn.state {
                     Text(m).font(.caption2).foregroundStyle(Theme.textFaint).lineLimit(2).frame(maxWidth: 180, alignment: .leading)
@@ -257,6 +269,55 @@ struct BoxChip: View {
         }
         .frame(maxWidth: fullWidth ? .infinity : nil, alignment: .leading)
         .fixedSize(horizontal: !fullWidth, vertical: true)
+    }
+}
+
+/// A value over the last half hour as a wave: a smooth line over a fading area, the current value beside its name.
+/// Percentages go from 0 to 100; a temperature from 30 °C (or lower, if it was) to 90 °C (or higher).
+struct WaveMeter: View {
+    enum Unit { case percent, celsius }
+    let label: String
+    let samples: [Double?]
+    let now: Double
+    let unit: Unit
+
+    private var hot: Double { unit == .percent ? now / 100 : (now - 40) / 50 }
+    private var tint: Color { hot > 0.85 ? Theme.red : hot > 0.6 ? Theme.orange : unit == .celsius ? Theme.green : Theme.accent }
+    private var nowText: String { unit == .percent ? "\(Int(now.rounded()))%" : "\(Int(now.rounded()))°" }
+    private var points: [(Int, Double)] { samples.enumerated().compactMap { i, v in v.map { (i, $0) } } }
+    private var domain: ClosedRange<Double> {
+        guard unit == .celsius else { return 0...100 }
+        let vs = points.map(\.1)
+        return min(30, (vs.min() ?? 30) - 2)...max(90, (vs.max() ?? 90) + 2)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(label).font(.caption2).foregroundStyle(Theme.textDim).lineLimit(1)
+                Spacer(minLength: 4)
+                MonoText(nowText, size: 10, color: Theme.textFaint)
+            }
+            Chart {
+                ForEach(points, id: \.0) { p in
+                    AreaMark(x: .value("t", p.0), yStart: .value("base", domain.lowerBound), yEnd: .value("v", p.1))
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(LinearGradient(colors: [tint.opacity(0.35), tint.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                    LineMark(x: .value("t", p.0), y: .value("v", p.1))
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(tint)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+            }
+            .chartXScale(domain: 0...max(1, samples.count - 1))
+            .chartYScale(domain: domain)
+            .chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
+            .frame(height: 30)
+        }
+        .frame(minWidth: 70)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) \(nowText)")
+        .accessibilityIdentifier("wave-\(label)")
     }
 }
 
