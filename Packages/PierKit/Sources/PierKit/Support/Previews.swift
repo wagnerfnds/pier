@@ -35,20 +35,25 @@ public enum PrepareChoice {
     }
 
     /// The way picked at first: only the code when the person asked for that last time in the project, else the project's
-    /// own default (a setup agent until it has a recipe).
+    /// own default (a setup agent where the person allowed them, until it has a recipe).
     public static func initial(projectDefault: PrepareMode?, skippedLastTime: Bool, modes: [PrepareMode]) -> PrepareMode {
         if skippedLastTime, modes.contains(.none) { return .none }
         if let d = projectDefault, d != .none, modes.contains(d) { return d }
         return .script
     }
 
-    /// What the request carries. Only the code is `prepare: false`, which every box with the capability understands. The
-    /// way the project prepares by default is left to the box, which then hands a recipe that fails to a setup agent;
-    /// another way is named. An older box gets nothing new.
-    public static func request(_ mode: PrepareMode, projectDefault: PrepareMode?, canSkip: Bool, canAgent: Bool) -> (prepare: Bool?, prepareWith: PrepareMode?) {
+    /// What the request carries. Only the code is `prepare: false`, which every box with the capability understands. A
+    /// way the person picked is named, so the box does what the composer showed; the project's default, left as it was,
+    /// is left to the box, which may hand a recipe a setup agent saved that fails to another one (where the person
+    /// allowed them). An older box gets nothing new.
+    public static func request(_ mode: PrepareMode, picked: Bool, projectDefault: PrepareMode?, canSkip: Bool, canAgent: Bool) -> (prepare: Bool?, prepareWith: PrepareMode?) {
         guard canSkip else { return (nil, nil) }
         if mode == .none { return (false, nil) }
-        guard canAgent, mode != projectDefault else { return (nil, nil) }
+        guard canAgent, picked || mode != projectDefault else { return (nil, nil) }
         return (nil, mode)
     }
+
+    /// Picking a setup agent asks the person first, once per project: an agent that runs commands unattended is only for
+    /// code they trust, and until they allowed it there (`Location.setupAgent`) the box never starts one by itself.
+    public static func asksConsent(_ mode: PrepareMode, allowed: Bool) -> Bool { mode == .agent && !allowed }
 }

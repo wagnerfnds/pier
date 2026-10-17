@@ -114,7 +114,8 @@ struct ComposeScreenPlaceholder: View {
     }
 
     #if DEBUG
-    /// Test hooks: `-composePrompt`, `-composeSheet project|worktree|base`, `-composeSubmit 1`, `-composeProject`, `-composeAgent`, `-composeOptions 1`.
+    /// Test hooks: `-composePrompt`, `-composeSheet project|worktree|base`, `-composeSubmit 1`, `-composeProject`, `-composeAgent`, `-composeOptions 1`,
+    /// `-composePrepare none|script|agent` (picked as a tap would: an agent asks for the project's consent first).
     private func debugHooks() {
         let d = UserDefaults.standard
         if let l = d.string(forKey: "composeProject") { vm.selectLocation(l) }
@@ -122,6 +123,7 @@ struct ComposeScreenPlaceholder: View {
         if let a = d.string(forKey: "composeAgent") { vm.selectAgent(a) }
         if let p = d.string(forKey: "composePrompt") { vm.prompt = p; vm.promptChanged() }
         if d.bool(forKey: "composeOptions") { optionsOpen = true }
+        if let m = d.string(forKey: "composePrepare").flatMap(PrepareMode.init(rawValue:)) { vm.pickPrepare(m) }
         if d.bool(forKey: "composeFakePhoto") {
             let img = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 300)).image { c in
                 UIColor.systemTeal.setFill(); c.fill(CGRect(x: 0, y: 0, width: 400, height: 300))
@@ -534,7 +536,7 @@ struct ComposeScreenPlaceholder: View {
                 VStack(alignment: .leading, spacing: 6) {
                     FlowLayout(spacing: 6, lineSpacing: 6) {
                         ForEach(vm.prepareModes, id: \.self) { m in
-                            ChoiceChip(title: PrepareText.choice(m), selected: vm.prepareMode == m) { vm.prepareMode = m; Haptic.selection() }
+                            ChoiceChip(title: PrepareText.choice(m), selected: vm.prepareMode == m) { vm.pickPrepare(m); Haptic.selection() }
                                 .accessibilityIdentifier("compose-prepare-\(m.rawValue)")
                         }
                     }
@@ -547,6 +549,10 @@ struct ComposeScreenPlaceholder: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("compose-prepare")
             Divider().overlay(Theme.stroke).padding(.leading, 42)
+        }
+        // A setup agent picked for a project that has not allowed them: asked once, here.
+        .sheet(isPresented: $vm.askingConsent) {
+            SetupAgentConsentSheet(box: vm.box, location: vm.location ?? "") { vm.consentGiven() }.environment(app)
         }
     }
 

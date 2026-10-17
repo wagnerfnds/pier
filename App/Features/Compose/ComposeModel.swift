@@ -32,9 +32,14 @@ final class ComposeModel {
     var effort: String?
     var photos: [ComposePhoto] = []
     /// How a new worktree gets its environment as it is made: the project's setup script and autostart services, a setup
-    /// agent that works the project out (where the box has them, by default while the project has no recipe), or only the
-    /// code for a quick fix, prepared later from Detalhes. "Only the code" is remembered per project.
+    /// agent that works the project out (where the box has them, by default while a project that allowed them has no
+    /// recipe), or only the code for a quick fix, prepared later from Detalhes. "Only the code" is remembered per project.
     var prepareMode: PrepareMode = .script
+    /// The person picked `prepareMode` (rather than leaving the project's default): the request then names it.
+    var preparePicked = false
+    /// The person picked a setup agent for a project that has not allowed them yet: the consent sheet is up, and the
+    /// pick waits for it (`pickPrepare`, `consentGiven`).
+    var askingConsent = false
     var stage: Stage = .idle
     var error: String?
     var loadingBranches = false
@@ -86,7 +91,25 @@ final class ComposeModel {
         if !(agent?.canPickModel ?? false) { model = nil }
         if !(agent?.canPickEffort ?? false) { effort = nil }
         prepareMode = PrepareChoice.initial(projectDefault: locationObject?.prepareWith, skippedLastTime: pick?.prepare == false, modes: prepareModes)
+        preparePicked = false
         refreshName()
+    }
+
+    /// The person picks how the new worktree is prepared. A setup agent asks first, once per project, where the project
+    /// has not allowed them yet: the pick is made once they did (`consentGiven`).
+    func pickPrepare(_ mode: PrepareMode) {
+        if PrepareChoice.asksConsent(mode, allowed: locationObject?.setupAgent ?? true) {
+            askingConsent = true
+            return
+        }
+        prepareMode = mode
+        preparePicked = true
+    }
+
+    /// The project now allows setup agents (the consent sheet recorded it on the box): the agent is the pick.
+    func consentGiven() {
+        prepareMode = .agent
+        preparePicked = true
     }
 
     // MARK: derived
@@ -111,10 +134,11 @@ final class ComposeModel {
     }
     /// The ways offered, in order: only the code, the project's script, a setup agent.
     var prepareModes: [PrepareMode] { PrepareChoice.modes(canSkip: canSkipPrepare, canAgent: canPrepareWithAgent) }
-    /// What the request says: only the code, or a way that is not the project's default, and only to a box that
-    /// understands it.
+    /// What the request says: only the code, or the way the person picked (or one that is not the project's default),
+    /// and only to a box that understands it.
     private var prepareArgs: (prepare: Bool?, prepareWith: PrepareMode?) {
-        PrepareChoice.request(prepareMode, projectDefault: locationObject?.prepareWith, canSkip: canSkipPrepare, canAgent: canPrepareWithAgent)
+        PrepareChoice.request(prepareMode, picked: preparePicked, projectDefault: locationObject?.prepareWith,
+                              canSkip: canSkipPrepare, canAgent: canPrepareWithAgent)
     }
     var existingWorktree: Worktree? {
         if case .existing(let n) = target { return worktrees.first { $0.name == n } }

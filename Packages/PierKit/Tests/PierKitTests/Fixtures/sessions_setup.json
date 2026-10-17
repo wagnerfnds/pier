@@ -1,0 +1,30 @@
+[
+  {
+    "agent" : "claude",
+    "agent_state" : "running",
+    "attached" : 0,
+    "command" : "claude --settings '{\"skipDangerousModePermissionPrompt\":true}' --disallowedTools AskUserQuestion --permission-mode bypassPermissions 'You are the setup agent of a Pier box: you prepare a fresh checkout of the project leads-app so that it runs, alone and unattended.'",
+    "created" : "2026-10-17T05:12:40Z",
+    "dir" : "/home/ubuntu/code/leads-app-login",
+    "exited" : false,
+    "location" : "leads-app/login",
+    "name" : "leads-app-login-setup",
+    "preset" : "claude",
+    "setup" : true,
+    "state_since" : "2026-10-17T05:12:44Z",
+    "title" : "Environment setup"
+  },
+  {
+    "agent" : "claude",
+    "agent_state" : "running",
+    "attached" : 0,
+    "command" : "claude",
+    "created" : "2026-10-17T05:12:39Z",
+    "dir" : "/home/ubuntu/code/leads-app-login",
+    "exited" : false,
+    "location" : "leads-app/login",
+    "name" : "leads-app-login",
+    "preset" : "claude",
+    "state_since" : "2026-10-17T05:12:42Z"
+  }
+]

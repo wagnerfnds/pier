@@ -10,6 +10,7 @@
     "scripts" : {
 
     },
+    "setup_agent" : true,
     "slug" : "octocat/leads-app",
     "worktrees" : [
       {

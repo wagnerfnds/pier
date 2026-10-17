@@ -601,7 +601,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
         let flat = main ? location : "\(location)-\(worktree)"
         var s = Self.session(name, location: main ? location : "\(location)/\(worktree)", dir: "/home/ubuntu/code/\(flat)", state: "running",
                              title: "Environment setup")
-        s["command"] = "claude --disallowedTools AskUserQuestion --permission-mode bypassPermissions"
+        s["command"] = #"claude --settings '{"skipDangerousModePermissionPrompt":true}' --disallowedTools AskUserQuestion --permission-mode bypassPermissions"#
+        s["setup"] = true
         s["created"] = Self.iso()
         sessions.insert(s, at: 0)
         transcripts[name] = [item("user", text: "You are the setup agent of a Pier box: you prepare a fresh checkout of the project \(location) so that it runs, alone and unattended.")]

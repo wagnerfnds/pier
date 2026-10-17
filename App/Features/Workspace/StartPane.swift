@@ -165,7 +165,7 @@ struct StartPane: View {
             if compose.isNew, !compose.prepareModes.isEmpty {
                 Section(S("Preparação")) {
                     ForEach(compose.prepareModes, id: \.self) { m in
-                        Button { compose.prepareMode = m } label: {
+                        Button { compose.pickPrepare(m) } label: {
                             if compose.prepareMode == m { Label(PrepareText.choice(m), systemImage: "checkmark") } else { Text(PrepareText.choice(m)) }
                         }
                     }
@@ -182,6 +182,10 @@ struct StartPane: View {
         }
         .plainMenu()
         .accessibilityIdentifier("start-target")
+        // A setup agent picked for a project that has not allowed them: asked once, here.
+        .sheet(isPresented: $compose.askingConsent) {
+            SetupAgentConsentSheet(box: compose.box, location: compose.location ?? "") { compose.consentGiven() }.environment(model)
+        }
     }
 
     private func chip<C: View>(@ViewBuilder _ content: () -> C) -> some View {

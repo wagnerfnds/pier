@@ -11,7 +11,7 @@ import Testing
         return [
             "info.json": d(BoxInfo.self), "info_relay.json": d(BoxInfo.self), "stats.json": d(BoxStats.self), "stats_running.json": d(BoxStats.self),
             "doctor.json": d([DoctorCheck].self), "agents.json": d([AgentCLI].self),
-            "locations.json": d([Location].self), "branches_sandbox.json": d(BranchList.self),
+            "locations.json": d([Location].self), "location_setup_agent.json": d(Location.self), "branches_sandbox.json": d(BranchList.self),
             "worktrees_sandbox.json": d([WorktreeStatus].self), "worktrees_sandbox2.json": d([WorktreeStatus].self),
             "worktree_created.json": d(Worktree.self), "worktree_removed.json": d(Obj.self), "worktree_log.json": d(Obj.self),
             "services.json": d([JSONValue].self), "services_wt.json": d([JSONValue].self),
@@ -20,7 +20,7 @@ import Testing
             "sessions_empty.json": d([Session].self), "sessions_running.json": d([Session].self),
             "sessions_finished.json": d([Session].self), "sessions_waiting.json": d([Session].self),
             "sessions_queued.json": d([Session].self), "sessions_question.json": d([Session].self),
-            "sessions_codex.json": d([Session].self), "sessions_mixed.json": d([Session].self),
+            "sessions_codex.json": d([Session].self), "sessions_mixed.json": d([Session].self), "sessions_setup.json": d([Session].self),
             "screen_claude_trust.json": d(Obj.self), "screen_claude_working.json": d(Obj.self), "screen_codex_trust.json": d(Obj.self),
             "screen_finished.json": d(Obj.self), "screen_permission.json": d(Obj.self), "screen_mcp_dialog.json": d(Obj.self), "screen_question.json": d(Obj.self),
             "screen_shell.json": d(Obj.self),

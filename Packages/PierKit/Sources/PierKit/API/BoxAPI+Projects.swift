@@ -54,6 +54,13 @@ extension BoxAPI {
         return try decode(try await call(.post, path, body: Body(prepare_with: with.rawValue)).data)
     }
 
+    /// Record the person's consent to setup agents for a project (capability `prepare.agent`): allowed, its new worktrees
+    /// without a recipe are prepared by one unasked; taken back, by script. Answers the project as the list has it.
+    public func setSetupAgent(location: String, allowed: Bool) async throws -> Location {
+        struct Body: Encodable { let allowed: Bool }
+        return try decode(try await call(.put, "/v1/locations/\(Self.seg(location))/setup-agent", body: Body(allowed: allowed)).data)
+    }
+
     /// The worktree's preview: the page to open, a test login, its public link (capability `preview`). Empty when nothing
     /// was recorded.
     public func preview(location: String, worktree: String) async throws -> WorktreePreview {

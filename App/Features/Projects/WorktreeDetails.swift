@@ -133,6 +133,8 @@ struct WorktreeDetailsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @State private var store: WorktreeDetailsStore
+    /// A setup agent asked for in a project that has not allowed them: the consent sheet is up.
+    @State private var askingConsent = false
 
     init(box: String, location: String, worktree: String) {
         self.box = box; self.location = location; self.worktree = worktree
@@ -151,7 +153,8 @@ struct WorktreeDetailsView: View {
 
     var body: some View {
         List {
-            if let p = store.prepare, p.hasAnything { prepareSection(p) }
+            // Also where only a setup agent could prepare it (a project without a recipe that has not allowed them yet).
+            if let p = store.prepare, p.hasAnything || (p.prepareWith != nil && canPrepareWithAgent) { prepareSection(p) }
             preview
             servicesSection
             environment
@@ -161,6 +164,10 @@ struct WorktreeDetailsView: View {
         .scrollContentBackground(.hidden)
         .pierBackground()
         .refreshable { await store.load(model: model) }
+        // A setup agent asked for in a project that has not allowed them: asked once, then it runs.
+        .sheet(isPresented: $askingConsent) {
+            SetupAgentConsentSheet(box: box, location: location) { Task { await store.runPrepare(model: model, with: .agent) } }.environment(model)
+        }
         .task { await AccountsCache.shared.load(box: box, model: model) }
         .task {
             while !Task.isCancelled {
@@ -225,19 +232,23 @@ struct WorktreeDetailsView: View {
             }
             if let e = store.prepareError { Text(e).font(.caption).foregroundStyle(Theme.red) }
             if !running {
-                // The project's default way first (a setup agent while it has no recipe), the other beside it.
+                // The project's default way first (a setup agent while a project that allowed them has no recipe), the
+                // other beside it; a script with nothing to run is no way at all where a setup agent is offered.
                 let byAgent = p.prepareWith == .agent || (p.prepareWith == nil && p.byAgent)
                 let again = p.state == .ready || p.state == .failed
+                let agentToo = p.prepareWith == .script && canPrepareWithAgent
                 HStack(spacing: 16) {
-                    Button { Task { await store.runPrepare(model: model) } } label: {
-                        Label(byAgent ? (again ? "Preparar com agente de novo" : "Preparar com agente") : (again ? "Preparar de novo" : "Preparar ambiente"),
-                              systemImage: byAgent ? "sparkles" : "hammer")
-                            .font(.subheadline.weight(.semibold))
+                    if byAgent || p.hasWork || !agentToo {
+                        Button { Task { await store.runPrepare(model: model) } } label: {
+                            Label(byAgent ? (again ? "Preparar com agente de novo" : "Preparar com agente") : (again ? "Preparar de novo" : "Preparar ambiente"),
+                                  systemImage: byAgent ? "sparkles" : "hammer")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .accessibilityIdentifier("prepare-run")
                     }
-                    .accessibilityIdentifier("prepare-run")
-                    if p.prepareWith == .script, canPrepareWithAgent {
-                        Button { Task { await store.runPrepare(model: model, with: .agent) } } label: {
-                            Label("Preparar com agente", systemImage: "sparkles").font(.subheadline)
+                    if agentToo {
+                        Button { prepareWithAgent() } label: {
+                            Label("Preparar com agente", systemImage: "sparkles").font(.subheadline.weight(p.hasWork ? .regular : .semibold))
                         }
                         .accessibilityIdentifier("prepare-agent")
                     } else if byAgent, p.hasWork {
@@ -261,6 +272,15 @@ struct WorktreeDetailsView: View {
     /// A setup agent can prepare it: the box has them, and Claude Code.
     private var canPrepareWithAgent: Bool {
         conn?.info?.has("prepare.agent") == true && (conn?.info?.agents.contains { $0.id == "claude" } ?? false)
+    }
+
+    /// Prepares it with a setup agent, once the project allowed them: the first time, the person is asked.
+    private func prepareWithAgent() {
+        if PrepareChoice.asksConsent(.agent, allowed: project?.setupAgent ?? true) {
+            askingConsent = true
+        } else {
+            Task { await store.runPrepare(model: model, with: .agent) }
+        }
     }
 
     private func prepareTitle(_ p: PrepareStatus) -> String {
@@ -287,7 +307,9 @@ struct WorktreeDetailsView: View {
     @ViewBuilder private var preview: some View {
         Section {
             if let p = store.preview, !p.isEmpty {
-                WorktreePreviewBlock(preview: p, host: host, reachable: p.port.flatMap { store.reachable[$0] })
+                WorktreePreviewBlock(preview: p, host: host, reachable: p.port.flatMap { store.reachable[$0] },
+                                     place: WorktreeDetailsRoute(box: box, location: location, worktree: worktree))
+                    .id("\(box)/\(location)/\(worktree)")
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("worktree-preview")
             }

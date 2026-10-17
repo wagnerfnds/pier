@@ -53,6 +53,24 @@ import Testing
         #expect(later.state == .ready && later.prepareWith == nil)
         let loc = try Fixture.decode("locations.json", as: [Location].self)
         #expect(loc.first?.prepareWith == .agent && loc.dropFirst().allSatisfy { $0.prepareWith == nil })
+        // The person's consent: allowed for the first project only.
+        #expect(loc.first?.setupAgent == true && loc.dropFirst().allSatisfy { !$0.setupAgent })
+        let allowed = try Fixture.decode("location_setup_agent.json", as: Location.self)
+        #expect(allowed.setupAgent && allowed.prepareWith == .agent)
+        // A setup agent's session says so; every other session does not.
+        let sessions = try Fixture.decode("sessions_setup.json", as: [Session].self)
+        #expect(sessions.map(\.setup) == [true, false])
+        #expect(try Fixture.decode("sessions_mixed.json", as: [Session].self).allSatisfy { !$0.setup })
+    }
+
+    /// The consent goes to the project's own route, as a yes or a no.
+    @Test func consentRoute() async throws {
+        let t = MockTransport { _, _, _ in (200, try Fixture.data("location_setup_agent.json")) }
+        let a = BoxAPI(transport: t, eventPolicy: EventStreamPolicy(jitter: 0))
+        #expect(try await a.setSetupAgent(location: "leads-app", allowed: true).setupAgent)
+        _ = try await a.setSetupAgent(location: "a b", allowed: false)
+        #expect(t.requests.map { "\($0.method) \($0.path)" } == ["PUT /v1/locations/leads-app/setup-agent", "PUT /v1/locations/a%20b/setup-agent"])
+        #expect(t.requests.map(\.body) == [#"{"allowed":true}"#, #"{"allowed":false}"#])
     }
 
     /// prepare_with goes out only when set, by its name.
@@ -74,7 +92,8 @@ import Testing
 
     /// The composer's ways: none on an older box, only the code or the script without setup agents, all three with
     /// them; the project's default picked first unless the person asked for only the code last time; the default left
-    /// to the box, another way named.
+    /// as it was left to the box, a way the person picked (or another one) named; a setup agent asks for consent
+    /// until the project allows them.
     @Test func composerChoice() {
         #expect(PrepareChoice.modes(canSkip: false, canAgent: true).isEmpty)
         #expect(PrepareChoice.modes(canSkip: true, canAgent: false) == [.none, .script])
@@ -86,12 +105,19 @@ import Testing
         #expect(PrepareChoice.initial(projectDefault: .agent, skippedLastTime: false, modes: [.none, .script]) == .script)
         #expect(PrepareChoice.initial(projectDefault: nil, skippedLastTime: false, modes: all) == .script)
 
-        #expect(PrepareChoice.request(.none, projectDefault: .agent, canSkip: true, canAgent: true) == (false, nil))
-        #expect(PrepareChoice.request(.agent, projectDefault: .agent, canSkip: true, canAgent: true) == (nil, nil))
-        #expect(PrepareChoice.request(.script, projectDefault: .agent, canSkip: true, canAgent: true) == (nil, .script))
-        #expect(PrepareChoice.request(.agent, projectDefault: .script, canSkip: true, canAgent: true) == (nil, .agent))
-        #expect(PrepareChoice.request(.script, projectDefault: nil, canSkip: true, canAgent: false) == (nil, nil))
-        #expect(PrepareChoice.request(.none, projectDefault: nil, canSkip: false, canAgent: false) == (nil, nil))
+        #expect(PrepareChoice.request(.none, picked: true, projectDefault: .agent, canSkip: true, canAgent: true) == (false, nil))
+        #expect(PrepareChoice.request(.agent, picked: false, projectDefault: .agent, canSkip: true, canAgent: true) == (nil, nil))
+        #expect(PrepareChoice.request(.agent, picked: true, projectDefault: .agent, canSkip: true, canAgent: true) == (nil, .agent))
+        #expect(PrepareChoice.request(.script, picked: false, projectDefault: .script, canSkip: true, canAgent: true) == (nil, nil))
+        #expect(PrepareChoice.request(.script, picked: true, projectDefault: .script, canSkip: true, canAgent: true) == (nil, .script))
+        #expect(PrepareChoice.request(.script, picked: false, projectDefault: .agent, canSkip: true, canAgent: true) == (nil, .script))
+        #expect(PrepareChoice.request(.agent, picked: true, projectDefault: .script, canSkip: true, canAgent: true) == (nil, .agent))
+        #expect(PrepareChoice.request(.script, picked: true, projectDefault: nil, canSkip: true, canAgent: false) == (nil, nil))
+        #expect(PrepareChoice.request(.none, picked: true, projectDefault: nil, canSkip: false, canAgent: false) == (nil, nil))
+
+        #expect(PrepareChoice.asksConsent(.agent, allowed: false))
+        #expect(!PrepareChoice.asksConsent(.agent, allowed: true))
+        #expect(!PrepareChoice.asksConsent(.script, allowed: false) && !PrepareChoice.asksConsent(.none, allowed: false))
     }
 }
 

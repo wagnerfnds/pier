@@ -23,15 +23,18 @@ enum PrepareText {
 }
 
 /// A worktree's preview in Detalhes and in the session's inspector (`GET …/preview`, docs/API.md §2.12.1): the page the
-/// setup agent (or another) recorded, at its public link first (Copiar, Abrir; a link is made by the box itself and
-/// renewed while the worktree is there), then on the box's own address, and the app's test login with the password
-/// hidden until asked for.
+/// setup agent (or another) recorded, at its public link first (Copiar, Abrir, Enviar, and in Detalhes Abrir no Pier; a
+/// link is made by the box itself, a day at a time, and renewed while the worktree is there), then on the box's own
+/// address, and the app's test login with the password hidden until asked for (again for each worktree: its owner gives
+/// the block the worktree's identity).
 struct WorktreePreviewBlock: View {
     let preview: WorktreePreview
     /// The box's address as this device reaches it (empty through a relay).
     let host: String
     /// Whether the page answers on the box's own address from here (nil: not checked).
     var reachable: Bool? = nil
+    /// The worktree, where its page can open in the app's own browser too (Detalhes: Abrir no Pier).
+    var place: WorktreeDetailsRoute? = nil
 
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -65,6 +68,7 @@ struct WorktreePreviewBlock: View {
                 Button { openURL(url) } label: { Label("Abrir", systemImage: "safari") }
                     .accessibilityIdentifier("preview-open-link")
                 ShareLink(item: url) { Label("Enviar", systemImage: "square.and.arrow.up") }
+                if let place { PreviewOpenButton(box: place.box, location: place.location, worktree: place.worktree, url: url) }
             }
             .font(.subheadline.weight(.semibold))
             .buttonStyle(.borderless)
@@ -81,6 +85,7 @@ struct WorktreePreviewBlock: View {
             Circle().fill(reachable == true ? Theme.green : reachable == false ? Theme.orange : Theme.textFaint).frame(width: 7, height: 7)
             Text(url.absoluteString).font(.mono(12)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
             Spacer(minLength: 4)
+            if let place { PreviewOpenButton(box: place.box, location: place.location, worktree: place.worktree, url: url) }
             Button { openURL(url) } label: { Image(systemName: "safari") }.buttonStyle(.borderless).accessibilityLabel("Abrir")
             Button { copy(url.absoluteString, S("Link copiado.")) } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless)
                 .accessibilityLabel("Copiar link")

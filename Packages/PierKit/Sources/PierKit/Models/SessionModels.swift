@@ -58,8 +58,11 @@ public struct Session: Codable, Sendable, Identifiable, Hashable {
     /// A conversation that belongs to no project (capability `session.chat`): an agent with no location, in a folder
     /// of its own under `~/pier/chats` on the box. No worktree, so no review, services or worktree cleanup.
     public let chat: Bool
+    /// A worktree's setup agent (capability `prepare.agent`, docs/API.md §2.6.1): the app names it in its own words
+    /// rather than by the box's English title.
+    public let setup: Bool
 
-    public init(name: String, location: String? = nil, dir: String = "", command: String? = nil, created: Date = Date(timeIntervalSince1970: 0), attached: Int = 0, exited: Bool = false, agent: String? = nil, agentState: AgentState? = nil, stateSince: Date? = nil, preset: String? = nil, turn: String? = nil, stateSeq: Int64? = nil, fidelity: String? = nil, title: String? = nil, queued: Int? = nil, ask: Ask? = nil, service: String? = nil, chat: Bool = false) {
+    public init(name: String, location: String? = nil, dir: String = "", command: String? = nil, created: Date = Date(timeIntervalSince1970: 0), attached: Int = 0, exited: Bool = false, agent: String? = nil, agentState: AgentState? = nil, stateSince: Date? = nil, preset: String? = nil, turn: String? = nil, stateSeq: Int64? = nil, fidelity: String? = nil, title: String? = nil, queued: Int? = nil, ask: Ask? = nil, service: String? = nil, chat: Bool = false, setup: Bool = false) {
         self.name = name
         self.location = location
         self.dir = dir
@@ -79,6 +82,7 @@ public struct Session: Codable, Sendable, Identifiable, Hashable {
         self.ask = ask
         self.service = service
         self.chat = chat
+        self.setup = setup
     }
 
     enum CodingKeys: String, CodingKey {
@@ -101,6 +105,7 @@ public struct Session: Codable, Sendable, Identifiable, Hashable {
         case ask
         case service
         case chat
+        case setup
     }
 
     public init(from decoder: Decoder) throws {
@@ -124,6 +129,7 @@ public struct Session: Codable, Sendable, Identifiable, Hashable {
         self.ask = try c.decodeIfPresent(Ask.self, forKey: .ask)
         self.service = try c.decodeIfPresent(String.self, forKey: .service)
         self.chat = try c.decodeIfPresent(Bool.self, forKey: .chat) ?? false
+        self.setup = try c.decodeIfPresent(Bool.self, forKey: .setup) ?? false
     }
 
     public var id: String { name }
@@ -140,7 +146,7 @@ public struct Session: Codable, Sendable, Identifiable, Hashable {
         return name == o.name && location == o.location && dir == o.dir && command == o.command && created == o.created
             && exited == o.exited && agent == o.agent && agentState == o.agentState && sameSince
             && preset == o.preset && turn == o.turn && fidelity == o.fidelity && title == o.title
-            && queued == o.queued && ask == o.ask && service == o.service && chat == o.chat
+            && queued == o.queued && ask == o.ask && service == o.service && chat == o.chat && setup == o.setup
     }
 
     public static func sameListing(_ a: [Session], _ b: [Session]) -> Bool {

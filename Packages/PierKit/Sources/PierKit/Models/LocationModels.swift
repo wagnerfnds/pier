@@ -99,13 +99,17 @@ public struct Location: Codable, Sendable, Hashable, Identifiable {
     public let isolated: Bool
     /// The agent accounts it chose, by agent (`PUT …/accounts`); an agent missing uses the box's default.
     public let accounts: [String: String]?
-    /// How a new worktree is prepared when the request does not say: a setup agent when the project has no recipe yet,
-    /// else its script. nil from a box without setup agents.
+    /// How a new worktree is prepared when the request does not say: a setup agent when the person allowed them here
+    /// (`setupAgent`) and the project has no recipe yet, else its script. nil from a box without setup agents.
     public let prepareWith: PrepareMode?
+    /// The person allowed setup agents to prepare the project's new worktrees (`PUT …/setup-agent`, asked once per
+    /// project); until then the box prepares them by script unless an agent is asked for.
+    public let setupAgent: Bool
 
-    public init(name: String, path: String = "", repo: Bool = false, worktrees: [Worktree]? = nil, remote: String? = nil, slug: String? = nil, defaultBranch: String? = nil, repoTrust: String? = nil, check: String? = nil, checkFrom: String? = nil, agents: [AgentPreset]? = nil, scripts: Scripts? = nil, space: String? = nil, outsideRoot: Bool = false, isolated: Bool = false, accounts: [String: String]? = nil, prepareWith: PrepareMode? = nil) {
+    public init(name: String, path: String = "", repo: Bool = false, worktrees: [Worktree]? = nil, remote: String? = nil, slug: String? = nil, defaultBranch: String? = nil, repoTrust: String? = nil, check: String? = nil, checkFrom: String? = nil, agents: [AgentPreset]? = nil, scripts: Scripts? = nil, space: String? = nil, outsideRoot: Bool = false, isolated: Bool = false, accounts: [String: String]? = nil, prepareWith: PrepareMode? = nil, setupAgent: Bool = false) {
         self.accounts = accounts
         self.prepareWith = prepareWith
+        self.setupAgent = setupAgent
         self.space = space
         self.outsideRoot = outsideRoot
         self.isolated = isolated
@@ -141,6 +145,7 @@ public struct Location: Codable, Sendable, Hashable, Identifiable {
         case isolated
         case accounts
         case prepareWith = "prepare_with"
+        case setupAgent = "setup_agent"
     }
 
     public init(from decoder: Decoder) throws {
@@ -162,6 +167,7 @@ public struct Location: Codable, Sendable, Hashable, Identifiable {
         self.isolated = try c.decodeIfPresent(Bool.self, forKey: .isolated) ?? false
         self.accounts = try c.decodeIfPresent([String: String].self, forKey: .accounts)
         self.prepareWith = try? c.decodeIfPresent(PrepareMode.self, forKey: .prepareWith)
+        self.setupAgent = try c.decodeIfPresent(Bool.self, forKey: .setupAgent) ?? false
     }
 
     public var id: String { name }

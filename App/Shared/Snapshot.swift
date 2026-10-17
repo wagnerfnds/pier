@@ -85,7 +85,7 @@ struct WidgetSnapshot: Codable, Sendable, Hashable {
                 guard let st = WState(s) else { continue }
                 let (loc, wt) = Self.split(s.location)
                 if !loc.isEmpty, prefs.isHidden(box: f.record.name, location: loc) { continue }
-                let title = nonEmpty(s.title) ?? wt ?? s.name
+                let title = s.setupTitle ?? nonEmpty(s.title) ?? wt ?? s.name
                 var project = s.chat ? String(localized: "Conversa")
                     : loc.isEmpty ? (s.dir.split(separator: "/").last.map(String.init) ?? s.name) : prefs.displayName(box: f.record.name, location: loc)
                 if let wt, wt != title { project += " · \(wt)" }
@@ -125,5 +125,15 @@ enum SnapshotStore {
         let changed = !(read()?.sameContent(as: snap) ?? false)
         if let d = try? Shared.encoder().encode(snap) { try? d.write(to: url, options: .atomic) }
         return changed
+    }
+}
+
+extension Session {
+    /// A worktree's setup agent's session in the app's own words ("Preparação do ambiente"), unless someone renamed it:
+    /// pierd titles every one "Environment setup" (setupagent.go). nil for any other session.
+    var setupTitle: String? {
+        guard setup else { return nil }
+        let t = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty || t == "Environment setup" ? String(localized: "Preparação do ambiente") : nil
     }
 }

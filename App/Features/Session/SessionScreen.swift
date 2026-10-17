@@ -448,8 +448,9 @@ struct SessionDetailsList: View {
                 if (session.queued ?? 0) > 0 { row("clock", "Na fila", "\(session.queued ?? 0)") }
             }
             .listRowBackground(Theme.card)
-            // The worktree's page, its public link and the app's test login, as in its Detalhes.
-            if let place { SessionPreviewSection(store: place) }
+            // The worktree's page, its public link and the app's test login, as in its Detalhes; another session's starts
+            // anew (a password shown here stays with this worktree).
+            if let place { SessionPreviewSection(store: place).id(placeKey) }
             if let todos = signals?.todos, !todos.isEmpty {
                 Section {
                     ForEach(Array(todos.enumerated()), id: \.offset) { _, t in
