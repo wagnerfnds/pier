@@ -499,3 +499,39 @@ func TestSendsWithoutATurnKeepTheirKeys(t *testing.T) {
 		t.Fatalf("a send without a turn made one: %+v", all)
 	}
 }
+
+// Each tool an agent runs reports it working again: that is no new state, so
+// the time it started working stays. Another question or another turn ended is
+// a new episode, with a time of its own.
+func TestStateSinceIsWhenTheStateBegan(t *testing.T) {
+	tr, bus := ledger(t, Session{Name: "shop-claude", Dir: "/srv/shop", Agent: "claude"})
+	s := "shop-claude"
+	since := func() time.Time {
+		st, ok := tr.State(s)
+		if !ok {
+			t.Fatal("no state")
+		}
+		return st.Since
+	}
+	hook(bus, "agent.started", s, "/srv/shop", "claude", "signal", "prompt")
+	working := since()
+	time.Sleep(5 * time.Millisecond)
+	hook(bus, "agent.started", s, "/srv/shop", "claude", "signal", "tool")
+	if got := since(); !got.Equal(working) {
+		t.Fatalf("a tool run moved Since from %v to %v", working, got)
+	}
+	hook(bus, "agent.waiting", s, "/srv/shop", "claude", "reason", "permission")
+	asked := since()
+	time.Sleep(5 * time.Millisecond)
+	hook(bus, "agent.waiting", s, "/srv/shop", "claude", "reason", "permission")
+	if got := since(); !got.After(asked) {
+		t.Fatalf("a second question kept the first one's Since")
+	}
+	hook(bus, "agent.finished", s, "/srv/shop", "claude")
+	ended := since()
+	time.Sleep(5 * time.Millisecond)
+	hook(bus, "agent.finished", s, "/srv/shop", "claude")
+	if got := since(); !got.After(ended) {
+		t.Fatalf("another turn ended kept the last one's Since")
+	}
+}

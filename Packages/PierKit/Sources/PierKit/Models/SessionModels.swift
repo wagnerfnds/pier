@@ -130,13 +130,16 @@ public struct Session: Codable, Sendable, Identifiable, Hashable {
     public var isAgent: Bool { agent != nil && service == nil }
     public var needsYou: Bool { agentState == .waiting && !exited }
 
-    /// The same session as far as anything the app shows goes: everything but `attached`, the count of tmux clients,
-    /// which changes each time a terminal on screen connects to the session or reconnects. A list differing only there
-    /// is no news, and writing it redrew every screen that lists sessions.
+    /// The same session as far as anything the app shows goes. Left out: `attached`, the count of tmux clients, which
+    /// changes each time a terminal on screen connects to the session or reconnects; `stateSeq`, which moves on every
+    /// event of the agent (each tool it runs); and, while the agent keeps working on the same turn, `stateSince`, which
+    /// older boxes moved on every tool too. A list differing only there is no news, and writing it redrew every screen
+    /// that lists sessions every few seconds per working agent.
     public func sameListing(as o: Session) -> Bool {
-        name == o.name && location == o.location && dir == o.dir && command == o.command && created == o.created
-            && exited == o.exited && agent == o.agent && agentState == o.agentState && stateSince == o.stateSince
-            && preset == o.preset && turn == o.turn && stateSeq == o.stateSeq && fidelity == o.fidelity && title == o.title
+        let sameSince = stateSince == o.stateSince || (agentState == .running && o.agentState == .running && turn == o.turn)
+        return name == o.name && location == o.location && dir == o.dir && command == o.command && created == o.created
+            && exited == o.exited && agent == o.agent && agentState == o.agentState && sameSince
+            && preset == o.preset && turn == o.turn && fidelity == o.fidelity && title == o.title
             && queued == o.queued && ask == o.ask && service == o.service && chat == o.chat
     }
 
