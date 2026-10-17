@@ -194,11 +194,14 @@ final class ChatHistoryUITests: XCTestCase {
 
     /// The production server's first window is up to 300 items, even though older-page requests ask for 120.
     /// Exercise that loaded volume with ordinary Markdown; the tall-tail cases separately cover one huge row.
-    func testFullInitialPageRemainsResponsiveAfterSwitchingSessions() {
+    func testFullInitialPageRemainsResponsiveAfterSwitchingSessions() throws {
         let pageFlag = app.launchArguments.firstIndex(of: "-uiTestChatLabPageSize")!
         app.launchArguments[pageFlag + 1] = "300"
         openLab()
 
+        guard element("sidebar-home").exists else {
+            throw XCTSkip("session switching uses the regular-width Mac/iPad sidebar")
+        }
         let labRow = element("sidebar-chat-\(lab)")
         let otherRow = element("sidebar-agent-devbox/\(other)")
         XCTAssertTrue(labRow.waitForExistence(timeout: 5), "the lab sidebar entry is missing")

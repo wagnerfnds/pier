@@ -140,8 +140,11 @@ final class AppModel {
         SharedKeychain.migrateLegacyIfNeeded()
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "testKeychainMigration") { SharedKeychain.debugSelfTest() }
-        // Test hook: `-uiTestDemoReset 1` starts outside the demo, whatever an earlier run left.
-        if UserDefaults.standard.bool(forKey: "uiTestDemoReset") { prefs.flush(); DemoMode.isOn = false; prefs.reload() }
+        // Test hook: `-uiTestDemoReset 1` starts outside the demo, whatever an earlier run left. So does a mock box
+        // (`-uiTestMock 1`): after a test that ended in the demo it would otherwise serve the demo's made-up data.
+        if UserDefaults.standard.bool(forKey: "uiTestDemoReset") || (UITestMock.enabled && DemoMode.isOn) {
+            prefs.flush(); DemoMode.isOn = false; prefs.reload()
+        }
         // `-cloudAlertsSeed 1`: every alert field in CloudKit's development schema; `-cloudAlertsTest 1`: a test alert for
         // the person's iPhone and iPad; `-cloudAlertsDiagnose 1`: the iCloud subscriptions (an iPhone's shows up from the
         // Mac too) in the log.
