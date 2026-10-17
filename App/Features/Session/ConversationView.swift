@@ -28,10 +28,11 @@ struct ConversationView: View {
 
     private enum ScrollTarget: Hashable { case tail }
 
+    /// The newest turns and the end are one measured group, followed explicitly, wherever scroll geometry exists. On
+    /// iOS older rows stay lazy, but a lazy end row of its own came back blank when a long conversation whose last reply
+    /// is taller than the screen was opened again (an iPad switching sessions).
     private static var measuresTail: Bool {
-        #if targetEnvironment(macCatalyst)
         if #available(iOS 18, *) { return true }
-        #endif
         return false
     }
 
@@ -107,8 +108,8 @@ struct ConversationView: View {
                 }
             }
             // Observe streaming in a child, so each draft update does not fold/diff the entire history.
-            // Follow content changes explicitly, outside the layout transaction. On modern Catalyst the end shares
-            // one measured group with the recent replies, so the command targets that group's lower edge.
+            // Follow content changes explicitly, outside the layout transaction. On iOS 18 and modern Catalyst the end
+            // shares one measured group with the recent replies, so the command targets that group's lower edge.
             .background { DraftFollow(vm: vm) { follow(proxy) } }
             .background {
                 #if DEBUG
@@ -491,7 +492,7 @@ private struct ConversationRowAccessibility: ViewModifier {
     }
 }
 
-/// Catalyst follows explicitly after loading/layout. The mobile lazy list keeps its initial-position fallback.
+/// Catalyst follows explicitly after loading/layout. The mobile lazy list keeps its initial-position anchor as well.
 private struct InitialConversationAnchor: ViewModifier {
     func body(content: Content) -> some View {
         #if targetEnvironment(macCatalyst)

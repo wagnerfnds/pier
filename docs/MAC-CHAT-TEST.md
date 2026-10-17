@@ -63,9 +63,11 @@ budget is consumed before following and is canceled when loading older history o
 appearance or deliberate return-to-end/new send resets it; draft, revision and viewport events cannot rearm it.
 Scroll geometry callbacks record
 passive diagnostics and handle actual user scrolling; estimated list height and idle scroll geometry cannot request
-history or schedule another follow. iPhone and iPad keep separate lazy rows and their initial-position
-fallback. Catalyst 17 (macOS 14) also retains separate lazy rows and the default bottom anchor because its visibility
-fallback uses row appearance.
+history or schedule another follow. iPhone and iPad (iOS 18) keep lazy rows for older history and their
+initial-position anchor, but their newest turns and end are the same measured group, followed the same way: a lazy end
+row of its own came back blank when a long conversation with a tall final reply was opened again. iOS 17 and Catalyst
+17 (macOS 14) retain separate lazy rows and the default bottom anchor because their visibility fallback uses row
+appearance.
 
 Content following uses a view-model revision when transcript items or pending prompts change, including a command or tool
 updated at the same server cursor. Metadata-only polls do not request a follow; the transcript is not compared in the view body.
