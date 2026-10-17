@@ -204,7 +204,10 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   below 1080 pt), and comes back as it was. In tabs `SplitPane` lays the tabs' pane over the conversation's: the two
   are the same views either way, so turning side by side on or off moves them, no terminal starts its stream again and
   the conversation keeps its place (a terminal shows in one place at a time: the newest view of it takes the stream
-  over, `LiveTerminal.run`).
+  over, `LiveTerminal.run`). What the panes show is made in the tabs' body and `SplitPane`'s closures only place it: a
+  tab names what runs in its terminal from the terminal's live view, made before the strip. `LiveTerminalUITests`
+  turns side by side on and off on the iPad and checks the stream stays the same (`live-terminal-stream`: its state
+  and how many were opened, Debug with the mock only).
 - **A real terminal** (`LiveTerminal.swift`, on a box with the `tty` capability, docs/API.md 4.8): a terminal tab, and a
   shell's own screen, is libghostty (Ghostty's VT engine and Metal renderer, through the `GhosttyTerminal` package with
   its in-memory backend) fed by `BoxAPI.terminal`: the app is a tmux client of the session, so colors, the cursor, a

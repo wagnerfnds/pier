@@ -480,14 +480,27 @@ struct SessionTerminalTabs<Conversation: View>: View {
     /// Live terminals shown once stay mounted under the one on screen, still streaming, so going back to one is instant.
     /// The conversation and the tabs are the same two panes either way (`SplitPane` lays one over the other in tabs), so
     /// turning side by side on or off moves them: no terminal starts its stream again, the conversation keeps its place.
+    /// What the panes show is made here, in this view's body, and `SplitPane`'s closures only place it: a value read in
+    /// there would draw only them again. A tab says what runs in its terminal once the terminal's live view (or feed) is
+    /// made, so those come before the strip, and the terminals kept mounted are read here (`shown` grows right after one
+    /// first shows), so the strip is drawn again with the new one and follows what runs in it from then on.
     private func content(_ list: [Session], split: Bool) -> some View {
         let current = terminals.current(in: list)
         let side = split ? terminals.side(in: list) : current
         let sideTerminal: String? = if case .terminal(let name)? = side { name } else { nil }
         let live = terminals.live
         let hidden = !split && side != nil
+        let focused = terminals.focusTarget
+        let mounted = live ? list.filter { terminals.shown.contains($0.name) || $0.name == sideTerminal }
+            .map { MountedTerminal(session: $0, terminal: terminals.liveTerminal(for: $0)) } : []
+        let fed = live ? nil : sideTerminal.flatMap { name in list.first { $0.name == name } }
+            .flatMap { s in terminals.feed(for: s).map { (session: s, feed: $0) } }
+        let browser = side == .browser ? terminals.browser : nil
+        let opening = terminals.opening
+        let tabs = strip(list, current: split ? side : current, conversation: !split)
+        let showsTabs = !list.isEmpty || terminals.browserOpen
         return VStack(spacing: 0) {
-            if !split && (!list.isEmpty || terminals.browserOpen) { strip(list, current: current, conversation: true) }
+            if !split && showsTabs { tabs }
             SplitPane(key: "session.side", initialFraction: 0.5,
                       minLeading: SessionTerminals.minConversation, minTrailing: SessionTerminals.minSide, split: split) {
                 VStack(spacing: 0) { conversation }
@@ -497,20 +510,16 @@ struct SessionTerminalTabs<Conversation: View>: View {
                     .accessibilityHidden(hidden)
             } trailing: {
                 VStack(spacing: 0) {
-                    if split { strip(list, current: side, conversation: false) }
+                    if split { tabs }
                     ZStack {
-                        if live {
-                            ForEach(list.filter { terminals.shown.contains($0.name) || $0.name == sideTerminal }, id: \.name) { s in
-                                liveSurface(s, visible: s.name == sideTerminal)
-                            }
-                        } else if let sideTerminal, let s = list.first(where: { $0.name == sideTerminal }) {
-                            surface(s)
+                        ForEach(mounted) { m in
+                            let visible = m.session.name == sideTerminal
+                            liveSurface(m, visible: visible, focus: visible && focused == m.session.name)
                         }
-                        if side == .browser, let browser = terminals.browser {
-                            PreviewBrowser(browser: browser).zIndex(2)
-                        }
+                        if let fed { surface(fed.session, feed: fed.feed, focus: focused == fed.session.name) }
+                        if let browser { PreviewBrowser(browser: browser).zIndex(2) }
                         if split && side == nil {
-                            SideEmpty(opening: terminals.opening, openTerminal: openTerminal, openBrowser: { terminals.openBrowser() })
+                            SideEmpty(opening: opening, openTerminal: openTerminal, openBrowser: { terminals.openBrowser() })
                         }
                     }
                     .frame(maxHeight: .infinity)
@@ -522,25 +531,23 @@ struct SessionTerminalTabs<Conversation: View>: View {
         }
     }
 
-    private func liveSurface(_ s: Session, visible: Bool) -> some View {
-        LiveTerminalSurface(terminal: terminals.liveTerminal(for: s), exited: s.exited, visible: visible,
-                            focus: visible && terminals.focusTarget == s.name,
-                            onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
-                            onClose: { ask(close: s) })
+    private func liveSurface(_ m: MountedTerminal, visible: Bool, focus: Bool) -> some View {
+        let s = m.session
+        return LiveTerminalSurface(terminal: m.terminal, exited: s.exited, visible: visible, focus: focus,
+                                   onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
+                                   onClose: { ask(close: s) })
             .opacity(visible ? 1 : 0)
             .allowsHitTesting(visible)
             .accessibilityHidden(!visible)
             .zIndex(visible ? 1 : 0)
     }
 
-    @ViewBuilder private func surface(_ s: Session) -> some View {
-        if let feed = terminals.feed(for: s) {
-            TerminalSurface(feed: feed, focus: terminals.focusTarget == s.name,
-                            onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
-                            onError: { terminals.banner = BannerMessage(text: $0, kind: .error) },
-                            onClose: { ask(close: s) })
-                .id(s.name)
-        }
+    private func surface(_ s: Session, feed: TerminalFeed, focus: Bool) -> some View {
+        TerminalSurface(feed: feed, focus: focus,
+                        onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
+                        onError: { terminals.banner = BannerMessage(text: $0, kind: .error) },
+                        onClose: { ask(close: s) })
+            .id(s.name)
     }
 
     /// Closing one that runs is asked first; renaming takes a name.
@@ -591,17 +598,26 @@ struct SessionTerminalTabs<Conversation: View>: View {
     /// The tabs: Conversa (not side by side, where it shows anyway), the terminals, the browser once open; + for a
     /// terminal, the globe for the browser while it is closed, and at the end, on the iPad and the Mac, side by side.
     private func strip(_ list: [Session], current: SessionTerminals.SideTab?, conversation: Bool) -> some View {
-        HStack(spacing: 0) {
+        // Read here, in the body, not in the rows' closures: a tab is named after what runs in its terminal.
+        let rows = list.enumerated().map { i, s in
+            (session: s, title: terminals.label(s, position: i + 1).text,
+             running: !s.exited && (terminals.running(s) != nil || !(s.command ?? "").isEmpty))
+        }
+        let needsYou = current != nil && vm.session.needsYou
+        let browserOpen = terminals.browserOpen
+        let page = terminals.browser?.url
+        let opening = terminals.opening
+        return HStack(spacing: 0) {
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     if conversation {
-                        ConversationTab(active: current == nil, needsYou: current != nil && vm.session.needsYou) {
+                        ConversationTab(active: current == nil, needsYou: needsYou) {
                             terminals.pick(nil)
                         }
                     }
-                    ForEach(Array(list.enumerated()), id: \.element.name) { i, s in
-                        TerminalTab(title: terminals.label(s, position: i + 1).text,
-                                    running: !s.exited && (terminals.running(s) != nil || !(s.command ?? "").isEmpty),
+                    ForEach(rows, id: \.session.name) { row in
+                        let s = row.session
+                        TerminalTab(title: row.title, running: row.running,
                                     exited: s.exited, active: current == .terminal(s.name), session: s.name,
                                     select: {
                                         terminals.pick(.terminal(s.name))
@@ -618,16 +634,16 @@ struct SessionTerminalTabs<Conversation: View>: View {
                                 Button(role: .destructive) { ask(close: s) } label: { Label("Fechar terminal", systemImage: "xmark") }
                             }
                     }
-                    if terminals.browserOpen {
-                        BrowserTab(active: current == .browser, page: terminals.browser?.url,
+                    if browserOpen {
+                        BrowserTab(active: current == .browser, page: page,
                                    select: { terminals.pick(.browser) }, close: { terminals.closeBrowser() })
                     }
                     stripButton(help: "Novo terminal (⌃⇧`)", label: "Novo terminal", id: "terminal-new", action: openTerminal) {
-                        if terminals.opening { ProgressView().controlSize(.mini) }
+                        if opening { ProgressView().controlSize(.mini) }
                         else { Image(systemName: "plus").font(.system(size: Density.small + 1, weight: .semibold)) }
                     }
-                    .disabled(terminals.opening)
-                    if !terminals.browserOpen {
+                    .disabled(opening)
+                    if !browserOpen {
                         stripButton(help: "Navegador: a página da worktree", label: "Navegador", id: "browser-open",
                                     action: { terminals.openBrowser() }) {
                             Image(systemName: "globe").font(.system(size: Density.small + 1))
@@ -678,6 +694,13 @@ struct SessionTerminalTabs<Conversation: View>: View {
         .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityIdentifier("session-side-by-side")
     }
+}
+
+/// A terminal kept mounted beside or under the conversation, with its live terminal, made in the tabs' body.
+private struct MountedTerminal: Identifiable {
+    let session: Session
+    let terminal: LiveTerminal
+    var id: String { session.name }
 }
 
 /// Side by side with nothing open beside the conversation: a terminal or the browser, a click away.

@@ -89,6 +89,10 @@ final class LiveTerminal {
     private(set) var running: String?
     /// The screen's last lines, read every two seconds while it shows and VoiceOver runs: what VoiceOver reads of it.
     private(set) var screenText = ""
+    #if DEBUG
+    /// Streams opened so far: the UI tests check that moving a terminal (side by side and back) does not open another.
+    private(set) var streams = 0
+    #endif
 
     /// Ghostty's state for the view (configuration, focus, keys).
     @ObservationIgnored let state: TerminalViewState
@@ -169,6 +173,9 @@ final class LiveTerminal {
             guard let size = pipe.currentSize, let client = model?.client(for: box) else { return }
             let stream = client.terminal(session: name, cols: size.cols, rows: size.rows, history: nil)
             pipe.attach(stream)
+            #if DEBUG
+            streams += 1
+            #endif
             if fed {
                 // The box draws it all again, the scrollback first: the old one goes (a full reset, then the
                 // scrollback erased).
@@ -362,6 +369,19 @@ struct LiveTerminalView: View {
             terminal.state.requestFocus()
             onFocused()
         }
+        #if DEBUG
+        // For the UI tests (`-uiTestMock`): the stream's state ("live", or the word over the screen) and how many streams
+        // were opened, which a terminal moved side by side and back must not change. Out of the terminal's own element,
+        // which takes in its overlay.
+        .overlay(alignment: .topLeading) {
+            if UITestMock.enabled {
+                Color.clear.frame(width: 1, height: 1)
+                    .accessibilityElement()
+                    .accessibilityIdentifier("live-terminal-stream")
+                    .accessibilityValue("\(terminal.phase.debugName) \(terminal.streams)")
+            }
+        }
+        #endif
     }
 
     @ViewBuilder private var overlay: some View {
@@ -398,6 +418,21 @@ struct LiveTerminalView: View {
         }
     }
 }
+
+#if DEBUG
+extension LiveTerminal.Phase {
+    /// One word for the UI tests.
+    var debugName: String {
+        switch self {
+        case .connecting: "connecting"
+        case .live: "live"
+        case .reconnecting: "reconnecting"
+        case .ended: "ended"
+        case .failed: "failed"
+        }
+    }
+}
+#endif
 
 /// The keys a phone's keyboard lacks, typed into the live terminal as the program's modes want them.
 private struct LiveKeysBar: View {
