@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,9 +35,14 @@ import (
 // (mcp.json, mode 0600: the tokens are in it) and writes each server into
 // the agents' configuration through their own CLIs (`claude mcp add
 // --scope user`, `codex mcp add`), which keep those files whole while the
-// agents run. What pierd wrote is recorded (mcp-written.json) and only
-// that is ever removed: a server the person added by hand, even one of the
-// same name, is left as it is.
+// agents run.
+//
+// pierd records each entry it writes (mcp-written.json) the moment the CLI
+// is done, and only ever removes or rewrites an entry that is still as it
+// wrote it: a server the person added by hand, even one of the same name,
+// and an entry of pierd's they changed by hand, are left as they are. An
+// entry exactly as pierd would write it is pierd's even when the record
+// lacks it (pierd stopped between the write and the record).
 //
 // Claude Code keeps the token in the Authorization header of its entry, as
 // its CLI stores one. Codex reads it from a variable its entry names
@@ -81,15 +87,16 @@ type MCPServerView struct {
 	Enabled  bool              `json:"enabled"`
 	// Problems are what the last sync could not do for this server.
 	Problems []string `json:"problems,omitempty"`
-	// Status, by agent, when asked for (?status=1).
+	// Status, by agent, when asked for (?status=1 or deep).
 	Status map[string]MCPAgentStatus `json:"status,omitempty"`
 }
 
 // MCPAgentStatus is how one agent's default account sees a server: State is
-// connected, failed, needs_auth, configured (Codex, a stdio server: its own
-// list cannot tell more), disabled, missing (not in the account's
-// configuration), taken (a server of that name pierd did not add),
-// unavailable (the agent's CLI is not on the box), pending or unknown.
+// connected, failed, needs_auth, configured (a stdio server, which only the
+// deep check starts), disabled, missing (not in the account's
+// configuration), taken (a server of that name pierd did not add), changed
+// (pierd's entry, changed by hand since), unavailable (the agent's CLI is
+// not on the box), pending or unknown.
 type MCPAgentStatus struct {
 	State   string `json:"state"`
 	Issue   string `json:"issue,omitempty"`
@@ -112,8 +119,11 @@ var (
 
 const (
 	maxMCPServers = 50
-	// mcpCLITimeout bounds one add or remove; mcpListTimeout a list, which
-	// for Claude Code connects to every server it has.
+	// maxMCPBody fits a server at the limits below: 20 headers and a token
+	// of 8 KB each, or 50 arguments and variables of a stdio server.
+	maxMCPBody = 1 << 20
+	// mcpCLITimeout bounds one add or remove; mcpListTimeout a list (Claude
+	// Code's connects to every server the account has).
 	mcpCLITimeout  = 30 * time.Second
 	mcpListTimeout = 20 * time.Second
 	// mcpSyncTimeout bounds a whole sync once the request that asked for it
@@ -139,6 +149,30 @@ func (s MCPServer) view() MCPServerView {
 		v.Agents = []string{}
 	}
 	return v
+}
+
+// mcpSecrets are what must never reach a problem or an answer: the tokens,
+// and the values of stdio servers' variables.
+func mcpSecrets(servers []MCPServer) []string {
+	var out []string
+	for _, s := range servers {
+		out = append(out, s.Token)
+		for _, v := range s.Env {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// redact takes the secrets out of a CLI's words (one that echoes its
+// arguments back when it refuses them).
+func redact(msg string, secrets []string) string {
+	for _, s := range secrets {
+		if len(s) >= 3 {
+			msg = strings.ReplaceAll(msg, s, "[redacted]")
+		}
+	}
+	return msg
 }
 
 // --- the list ---
@@ -181,21 +215,35 @@ func (b *Box) saveMCP(f mcpFile) error {
 }
 
 // mcpWritten is what pierd wrote into each account's configuration: by
-// account ("claude:" + its folder), each server's name and a hash of what
-// was written, so a sync rewrites only what changed.
+// account ("claude:" + its folder), each server's name and the fingerprint
+// of the entry as written.
 type mcpWritten map[string]map[string]string
 
+// loadMCPWritten reads the record. One that cannot be read is set aside
+// (mcp-written.json.bad) and said in the log: the entries pierd wrote are
+// then recognised by their content again.
 func (b *Box) loadMCPWritten() mcpWritten {
 	w := mcpWritten{}
-	if data, err := os.ReadFile(b.mcpWrittenPath()); err == nil {
-		json.Unmarshal(data, &w)
+	data, err := os.ReadFile(b.mcpWrittenPath())
+	if err != nil {
+		if !os.IsNotExist(err) {
+			b.logf("mcp: cannot read %s: %v", b.mcpWrittenPath(), err)
+		}
+		return w
+	}
+	if err := json.Unmarshal(data, &w); err != nil {
+		b.logf("mcp: %s is not a record pierd can read (%v); kept as %s.bad, its entries are recognised by their content", b.mcpWrittenPath(), err, b.mcpWrittenPath())
+		os.Rename(b.mcpWrittenPath(), b.mcpWrittenPath()+".bad")
+		return mcpWritten{}
 	}
 	return w
 }
 
-func (b *Box) saveMCPWritten(w mcpWritten) error {
+func (b *Box) saveMCPWritten(w mcpWritten) {
 	data, _ := json.MarshalIndent(w, "", "  ")
-	return statefile.Write(b.mcpWrittenPath(), append(data, '\n'))
+	if err := statefile.Write(b.mcpWrittenPath(), append(data, '\n')); err != nil {
+		b.logf("mcp: cannot record what pierd wrote: %v", err)
+	}
 }
 
 // mcpHasWork says whether a sync has anything to do: servers in the list,
@@ -205,7 +253,11 @@ func (b *Box) mcpHasWork() bool {
 		return false
 	}
 	f, _ := b.loadMCP()
-	return len(f.Servers) > 0 || len(b.loadMCPWritten()) > 0
+	if len(f.Servers) > 0 {
+		return true
+	}
+	_, err := os.Stat(b.mcpWrittenPath())
+	return err == nil
 }
 
 // mcpSessionEnv is what a session needs for the box's MCP servers: the
@@ -278,6 +330,17 @@ func (req mcpRequest) server(name string) MCPServer {
 	return s
 }
 
+// printableASCII says s is visible ASCII (and spaces, when allowed): what
+// every agent's HTTP stack sends as a header as it is.
+func printableASCII(s string, spaces bool) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; (c < 0x21 || c > 0x7e) && !(spaces && c == ' ') {
+			return false
+		}
+	}
+	return true
+}
+
 // check refuses what the agents could not use, or what would carry a secret
 // somewhere it shows.
 func (s MCPServer) check(agents []string) error {
@@ -289,8 +352,8 @@ func (s MCPServer) check(agents []string) error {
 	if len(s.Agents) == 0 {
 		return badRequest("pick at least one agent for %s", s.Name)
 	}
-	if strings.ContainsAny(s.Token, " \t\r\n\x00") || len(s.Token) > 8<<10 {
-		return badRequest("the token is one line without spaces, up to 8 KB")
+	if !printableASCII(s.Token, false) || len(s.Token) > 8<<10 {
+		return badRequest("the token is printable ASCII without spaces, up to 8 KB")
 	}
 	switch s.Transport {
 	case "http":
@@ -311,8 +374,8 @@ func (s MCPServer) check(agents []string) error {
 			if strings.EqualFold(k, "Authorization") {
 				return badRequest("put the token in token: pierd sends it as Authorization: Bearer")
 			}
-			if strings.ContainsAny(v, "\r\n\x00") || len(v) > 8<<10 {
-				return badRequest("the value of %s is one line, up to 8 KB", k)
+			if !printableASCII(v, true) || len(v) > 8<<10 {
+				return badRequest("the value of %s is printable ASCII on one line, up to 8 KB", k)
 			}
 		}
 	case "stdio":
@@ -337,7 +400,7 @@ func (s MCPServer) check(agents []string) error {
 			if !envVarName.MatchString(k) {
 				return badRequest("%q cannot be a variable name", k)
 			}
-			if strings.ContainsRune(v, 0) || len(v) > 16<<10 {
+			if strings.ContainsRune(v, 0) || len(v) > 8<<10 {
 				return badRequest("%s is too long", k)
 			}
 		}
@@ -349,17 +412,19 @@ func (s MCPServer) check(agents []string) error {
 
 // --- routes ---
 
-// getMCP answers the box's servers, and with ?status=1 how each agent's
-// default account sees them (up to about 20 seconds: Claude Code connects to
-// every server it has).
+// getMCP answers the box's servers. ?status=1 adds how each agent's default
+// account sees them: whether its configuration has pierd's entry, and
+// pierd's own handshake with each http server, with what that agent sends.
+// ?status=deep asks Claude Code's own list instead, which starts every
+// server the account has, so it is only for an explicit check.
 func (b *Box) getMCP(w http.ResponseWriter, r *http.Request) error {
 	f, err := b.loadMCP()
 	if err != nil {
 		return err
 	}
 	views := b.mcpViews(f)
-	if r.URL.Query().Get("status") == "1" {
-		status := b.mcpStatus(r.Context(), f.Servers)
+	if q := r.URL.Query().Get("status"); q == "1" || q == "deep" {
+		status := b.mcpStatus(r.Context(), f.Servers, q == "deep")
 		for i := range views {
 			views[i].Status = status[views[i].Name]
 		}
@@ -388,7 +453,7 @@ func (b *Box) putMCP(w http.ResponseWriter, r *http.Request) error {
 		return badRequest("a server's name is 1 to 40 of a-z, 0-9, - and _")
 	}
 	var req mcpRequest
-	if err := decode(r, &req); err != nil {
+	if err := decodeLimit(r, &req, maxMCPBody); err != nil {
 		return err
 	}
 	if b.mcpPath() == "" {
@@ -435,14 +500,15 @@ func (b *Box) putMCP(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), mcpSyncTimeout)
 	b.syncMCPLocked(ctx)
 	cancel()
+	// The answer is this server as saved, with what the sync could not do
+	// for it, whatever another request does once the lock is let go.
+	v := s.view()
+	b.mcp.pmu.Lock()
+	v.Problems = b.mcp.problems[name]
+	b.mcp.pmu.Unlock()
 	b.mcp.mu.Unlock()
 	b.publish(r, "mcp.changed", map[string]any{"names": []string{name}})
-	f, _ = b.loadMCP()
-	for _, v := range b.mcpViews(f) {
-		if v.Name == name {
-			writeJSON(w, v)
-		}
-	}
+	writeJSON(w, v)
 	return nil
 }
 
@@ -453,6 +519,14 @@ func (b *Box) deleteMCP(w http.ResponseWriter, r *http.Request) error {
 	if b.mcpPath() == "" {
 		return httpError{http.StatusNotImplemented, "this box keeps no state folder"}
 	}
+	has := func(f mcpFile) int {
+		return slices.IndexFunc(f.Servers, func(x MCPServer) bool { return x.Name == name })
+	}
+	if f, err := b.loadMCP(); err != nil {
+		return err
+	} else if has(f) < 0 {
+		return httpError{http.StatusNotFound, "no MCP server named " + name}
+	}
 	if err := b.before(r, "mcp.change", map[string]any{"name": name, "removed": true}); err != nil {
 		return err
 	}
@@ -462,7 +536,7 @@ func (b *Box) deleteMCP(w http.ResponseWriter, r *http.Request) error {
 		b.mcp.mu.Unlock()
 		return err
 	}
-	i := slices.IndexFunc(f.Servers, func(x MCPServer) bool { return x.Name == name })
+	i := has(f)
 	if i < 0 {
 		b.mcp.mu.Unlock()
 		return httpError{http.StatusNotFound, "no MCP server named " + name}
@@ -510,14 +584,33 @@ func (b *Box) syncMCPSoon() {
 	}()
 }
 
+// WaitMCP lets a sync that is writing into the accounts finish before pierd
+// stops, for at most max: an entry is recorded the moment its CLI is done,
+// so stopping in between only costs a CLI call the next sync repeats.
+func (b *Box) WaitMCP(max time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		b.mcp.bg.Wait()
+		b.mcp.mu.Lock()
+		b.mcp.mu.Unlock()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(max):
+	}
+}
+
 // syncMCPLocked writes the list into every account and takes out what pierd
 // wrote that should no longer be there. The caller holds b.mcp.mu.
 func (b *Box) syncMCPLocked(ctx context.Context) {
 	f, err := b.loadMCP()
 	if err != nil {
+		b.logf("mcp: %v", err)
 		return
 	}
 	written := b.loadMCPWritten()
+	secrets := mcpSecrets(f.Servers)
 	problems := map[string][]string{}
 	keep := map[string]bool{}
 	for _, a := range b.Accounts() {
@@ -531,12 +624,11 @@ func (b *Box) syncMCPLocked(ctx context.Context) {
 				continue
 			}
 		}
-		mine := written[key]
 		wanted := false
 		for _, s := range f.Servers {
 			wanted = wanted || s.wants(a.Agent)
 		}
-		if !wanted && len(mine) == 0 {
+		if !wanted && len(written[key]) == 0 {
 			continue
 		}
 		cli, ok := agentFound(a.Agent)
@@ -544,95 +636,142 @@ func (b *Box) syncMCPLocked(ctx context.Context) {
 			// Nothing to write into without the CLI; GET ?status=1 says so.
 			continue
 		}
-		next := b.syncAccountMCP(ctx, a, cli, f.Servers, mine, problems)
-		if len(next) == 0 {
-			delete(written, key)
-		} else {
-			written[key] = next
+		label := mcpAccountLabel(a)
+		note := func(name, format string, args ...any) {
+			problems[name] = append(problems[name], label+": "+redact(fmt.Sprintf(format, args...), secrets))
 		}
+		// Each write is recorded the moment the CLI is done with it.
+		commit := func(name, fp string) {
+			m := written[key]
+			if fp == "" {
+				delete(m, name)
+				if len(m) == 0 {
+					delete(written, key)
+				}
+			} else {
+				if m == nil {
+					m = map[string]string{}
+					written[key] = m
+				}
+				m[name] = fp
+			}
+			b.saveMCPWritten(written)
+		}
+		owned := func(name string) (string, bool) {
+			fp, ok := written[key][name]
+			return fp, ok
+		}
+		b.syncAccountMCP(ctx, a, cli, f.Servers, maps.Clone(written[key]), owned, commit, note)
 	}
 	// An account that is gone took its configuration with it.
+	changed := false
 	for key := range written {
 		if !keep[key] {
 			delete(written, key)
+			changed = true
 		}
 	}
-	b.saveMCPWritten(written)
+	if changed {
+		b.saveMCPWritten(written)
+	}
 	b.mcp.pmu.Lock()
 	b.mcp.problems = problems
 	b.mcp.pmu.Unlock()
 }
 
-// syncAccountMCP brings one account in line and answers what pierd has
-// written there now.
-func (b *Box) syncAccountMCP(ctx context.Context, a Account, cli agentpath.Found, servers []MCPServer, mine map[string]string, problems map[string][]string) map[string]string {
-	label := mcpAccountLabel(a)
-	note := func(name, format string, args ...any) {
-		problems[name] = append(problems[name], label+": "+fmt.Sprintf(format, args...))
-	}
-	next := map[string]string{}
-	for k, v := range mine {
-		next[k] = v
-	}
-	existing, err := b.mcpConfigured(ctx, a, cli)
+// syncAccountMCP brings one account in line: mine is what pierd had written
+// there when it began, owned what it has now. An entry is only removed or
+// rewritten while it is as pierd wrote it; an entry exactly as pierd would
+// write it is taken for pierd's.
+func (b *Box) syncAccountMCP(ctx context.Context, a Account, cli agentpath.Found, servers []MCPServer, mine map[string]string,
+	owned func(string) (string, bool), commit func(name, fp string), note func(name, format string, args ...any)) {
+	live, err := b.mcpLive(ctx, a, cli)
 	if err != nil {
 		for _, s := range servers {
 			if s.wants(a.Agent) {
 				note(s.Name, "could not read its servers: %v", err)
 			}
 		}
-		return next
+		return
 	}
 	byName := map[string]MCPServer{}
 	for _, s := range servers {
 		byName[s.Name] = s
 	}
-	// What pierd wrote and no longer should be there goes first.
-	names := make([]string, 0, len(mine))
+	// What pierd wrote and should no longer be there goes first: servers off
+	// the list, turned off, or no longer for this agent.
+	var gone []string
 	for n := range mine {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		if s, ok := byName[n]; ok && s.wants(a.Agent) {
-			continue
+		if s, listed := byName[n]; !listed || !s.wants(a.Agent) {
+			gone = append(gone, n)
 		}
-		if existing[n] {
+	}
+	sort.Strings(gone)
+	for _, n := range gone {
+		fp, _ := owned(n)
+		liveFP, there := live[n]
+		switch {
+		case !there:
+			commit(n, "")
+		case liveFP != fp:
+			// Changed by hand since pierd wrote it: the person's now.
+			commit(n, "")
+			note(n, "%s was changed by hand since pierd wrote it; it is left as it is", n)
+		default:
 			if err := b.mcpRemove(ctx, a, cli, n); err != nil {
 				note(n, "could not remove it: %v", err)
 				continue
 			}
+			commit(n, "")
 		}
-		delete(next, n)
 	}
 	for _, s := range servers {
 		if !s.wants(a.Agent) {
 			continue
 		}
 		fp := mcpFingerprint(s, a.Agent)
-		old, owned := mine[s.Name]
+		liveFP, there := live[s.Name]
+		old, mine := owned(s.Name)
 		switch {
-		case existing[s.Name] && !owned:
+		case there && liveFP == fp:
+			// Already as it should be: pierd's, recorded or not.
+			if !mine || old != fp {
+				commit(s.Name, fp)
+			}
+			continue
+		case there && !mine:
 			note(s.Name, "already has a server named %s that pierd did not add; it is left as it is", s.Name)
 			continue
-		case owned && old == fp && existing[s.Name]:
+		case there && liveFP != old:
+			commit(s.Name, "")
+			note(s.Name, "%s was changed by hand since pierd wrote it; it is left as it is", s.Name)
 			continue
 		}
+		// Not there, or pierd's entry as pierd wrote it: (re)write it.
 		// Claude Code's add refuses a name it has; Codex's replaces it.
-		if existing[s.Name] && a.Agent == "claude" {
+		if there && a.Agent == "claude" {
 			if err := b.mcpRemove(ctx, a, cli, s.Name); err != nil {
 				note(s.Name, "could not update it: %v", err)
 				continue
 			}
-			delete(next, s.Name)
+			commit(s.Name, "")
 		}
 		if err := b.mcpAdd(ctx, a, cli, s); err != nil {
+			// Codex writes the entry, then may wait for a sign-in nobody can
+			// give it here (a server that offers OAuth): the entry is there,
+			// and pierd's.
+			if a.Agent == "codex" {
+				if again, lerr := b.mcpLive(ctx, a, cli); lerr == nil && again[s.Name] == fp {
+					commit(s.Name, fp)
+					note(s.Name, "Codex has it, and wants a sign-in for it too (codex mcp login %s on the box): %v", s.Name, err)
+					continue
+				}
+			}
 			note(s.Name, "could not add it: %v", err)
 			continue
 		}
-		next[s.Name] = fp
+		commit(s.Name, fp)
 	}
-	return next
 }
 
 // mcpAccountLabel names an account in a problem: the agent, and the
@@ -648,9 +787,9 @@ func mcpAccountLabel(a Account) string {
 	return agent + " (" + a.Name + ")"
 }
 
-// mcpFingerprint is what decides that an account's entry must be written
-// again: Claude Code's holds the token itself, Codex's only the variable's
-// name.
+// mcpFingerprint is what an agent's entry holds of a server: Claude Code's
+// holds the token itself, Codex's only the variable's name and no headers.
+// It tells an entry as pierd writes it from any other.
 func mcpFingerprint(s MCPServer, agent string) string {
 	v := struct {
 		T, U, C string
@@ -659,6 +798,15 @@ func mcpFingerprint(s MCPServer, agent string) string {
 		Tok     string
 		HasTok  bool
 	}{s.Transport, s.URL, s.Command, s.Args, s.Headers, s.Env, "", s.Token != ""}
+	if len(v.A) == 0 {
+		v.A = nil
+	}
+	if len(v.H) == 0 {
+		v.H = nil
+	}
+	if len(v.E) == 0 {
+		v.E = nil
+	}
 	if agent == "claude" {
 		v.Tok = s.Token
 	} else {
@@ -667,6 +815,72 @@ func mcpFingerprint(s MCPServer, agent string) string {
 	data, _ := json.Marshal(v)
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:12])
+}
+
+// claudeEntryFingerprint is the fingerprint of an entry of Claude Code's
+// configuration, read as pierd writes one ("" for any other shape).
+func claudeEntryFingerprint(raw json.RawMessage) string {
+	var e struct {
+		Type    string            `json:"type"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+		Command string            `json:"command"`
+		Args    []string          `json:"args"`
+		Env     map[string]string `json:"env"`
+	}
+	if json.Unmarshal(raw, &e) != nil {
+		return ""
+	}
+	s := MCPServer{}
+	switch {
+	case e.Type == "http" && e.Command == "":
+		s.Transport, s.URL = "http", e.URL
+		for k, v := range e.Headers {
+			if strings.EqualFold(k, "Authorization") {
+				tok, ok := strings.CutPrefix(v, "Bearer ")
+				if !ok || k != "Authorization" {
+					return ""
+				}
+				s.Token = tok
+				continue
+			}
+			if s.Headers == nil {
+				s.Headers = map[string]string{}
+			}
+			s.Headers[k] = v
+		}
+	case (e.Type == "stdio" || e.Type == "") && e.Command != "" && e.URL == "":
+		s.Transport, s.Command, s.Args, s.Env = "stdio", e.Command, e.Args, e.Env
+	default:
+		return ""
+	}
+	return mcpFingerprint(s, "claude")
+}
+
+// codexEntryFingerprint is the fingerprint of an entry of Codex's list,
+// read as pierd writes one ("" for any other shape: another token variable,
+// headers, an entry turned off).
+func codexEntryFingerprint(name string, e codexMCPEntry) string {
+	if !e.Enabled || len(e.Transport.HTTPHeaders) > 0 || len(e.Transport.EnvHTTPHeaders) > 0 {
+		return ""
+	}
+	s := MCPServer{}
+	switch e.Transport.Type {
+	case "streamable_http":
+		s.Transport, s.URL = "http", e.Transport.URL
+		if v := e.Transport.BearerTokenEnvVar; v != nil {
+			if *v != mcpTokenVar(name) {
+				return ""
+			}
+			// Codex's entry holds the variable's name, never the token.
+			s.Token = "set"
+		}
+	case "stdio":
+		s.Transport, s.Command, s.Args, s.Env = "stdio", e.Transport.Command, e.Transport.Args, e.Transport.Env
+	default:
+		return ""
+	}
+	return mcpFingerprint(s, "codex")
 }
 
 // mcpAdd writes one server into an account through the agent's CLI.
@@ -719,11 +933,13 @@ func (b *Box) mcpRemove(ctx context.Context, a Account, cli agentpath.Found, nam
 	return err
 }
 
-// mcpConfigured are the names in an account's own list: Claude Code's user
-// scope (the mcpServers of its .claude.json, read, never written), Codex's
-// list. Only these tell pierd's entries from the person's.
-func (b *Box) mcpConfigured(ctx context.Context, a Account, cli agentpath.Found) (map[string]bool, error) {
-	out := map[string]bool{}
+// mcpLive is an account's own list as it is now: each name, and the
+// fingerprint its entry would have had pierd written it ("" for an entry
+// pierd never writes in that shape). Claude Code's user scope is read from
+// its .claude.json (read, never written; reading starts no server), Codex's
+// from its CLI's list.
+func (b *Box) mcpLive(ctx context.Context, a Account, cli agentpath.Found) (map[string]string, error) {
+	out := map[string]string{}
 	switch a.Agent {
 	case "claude":
 		data, err := os.ReadFile(claudeGlobalConfig(a))
@@ -739,8 +955,8 @@ func (b *Box) mcpConfigured(ctx context.Context, a Account, cli agentpath.Found)
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil, err
 		}
-		for n := range cfg.MCPServers {
-			out[n] = true
+		for n, raw := range cfg.MCPServers {
+			out[n] = claudeEntryFingerprint(raw)
 		}
 	case "codex":
 		raw, err := b.mcpCLI(ctx, a, cli, mcpListTimeout, "mcp", "list", "--json")
@@ -751,8 +967,8 @@ func (b *Box) mcpConfigured(ctx context.Context, a Account, cli agentpath.Found)
 		if err != nil {
 			return nil, err
 		}
-		for n := range list {
-			out[n] = true
+		for n, e := range list {
+			out[n] = codexEntryFingerprint(n, e)
 		}
 	}
 	return out, nil
@@ -774,7 +990,8 @@ func claudeGlobalConfig(a Account) string {
 // one; with the PATH the CLI was found with, never with pierd's PIER_*
 // variables, its hooks quiet, from pierd's own folder (no project's
 // .mcp.json there). A command that outlives its time is stopped with
-// everything it started (servers a list connects to).
+// everything it started (servers a list connects to). Its output comes
+// back even when it fails.
 func (b *Box) mcpCLI(ctx context.Context, a Account, cli agentpath.Found, timeout time.Duration, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -856,10 +1073,12 @@ func sortedKeys(m map[string]string) []string {
 // --- how the agents see the servers ---
 
 // mcpStatus asks each agent's default account how it sees the servers:
-// Claude Code's list connects to each one; Codex's only says what its
-// configuration holds, so pierd shakes hands with an http server itself,
-// with what Codex sends (the bearer token).
-func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer) map[string]map[string]MCPAgentStatus {
+// whether its configuration has pierd's entry, and pierd's own handshake
+// with each http server, sending what that agent sends (Claude Code the
+// token and the headers, Codex the token). Nothing of the account's starts.
+// deep asks Claude Code's own list instead, which starts every server the
+// account has.
+func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer, deep bool) map[string]map[string]MCPAgentStatus {
 	out := map[string]map[string]MCPAgentStatus{}
 	set := func(name, agent string, st MCPAgentStatus) {
 		if out[name] == nil {
@@ -867,25 +1086,32 @@ func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer) map[string]map
 		}
 		out[name][agent] = st
 	}
+	secrets := mcpSecrets(servers)
 	written := b.loadMCPWritten()
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	probes := map[string]MCPAgentStatus{}
+	probes := map[string]MCPAgentStatus{} // "agent/name"
 	for _, s := range servers {
-		if s.Transport == "http" && s.wants("codex") {
+		if s.Transport != "http" {
+			continue
+		}
+		for _, agent := range mcpAgents {
+			if !s.wants(agent) || agent == "claude" && deep {
+				continue
+			}
 			wg.Add(1)
-			go func(s MCPServer) {
+			go func(s MCPServer, agent string) {
 				defer wg.Done()
-				st := probeMCP(ctx, s)
+				st := probeMCP(ctx, s, agent == "claude")
 				mu.Lock()
-				probes[s.Name] = st
+				probes[agent+"/"+s.Name] = st
 				mu.Unlock()
-			}(s)
+			}(s, agent)
 		}
 	}
+	lives := map[string]map[string]string{}
 	lists := map[string]map[string]MCPAgentStatus{}
 	accounts := map[string]Account{}
-	owned := map[string]map[string]string{}
 	failures := map[string]MCPAgentStatus{}
 	for _, agent := range mcpAgents {
 		wanted := false
@@ -897,7 +1123,6 @@ func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer) map[string]map
 		}
 		a := b.defaultAccount(agent)
 		accounts[agent] = a
-		owned[agent] = written[agent+":"+a.Dir]
 		cli, ok := agentFound(agent)
 		if !ok {
 			mu.Lock()
@@ -908,36 +1133,22 @@ func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer) map[string]map
 		wg.Add(1)
 		go func(agent string, a Account, cli agentpath.Found) {
 			defer wg.Done()
-			var got map[string]MCPAgentStatus
-			var err error
-			if agent == "claude" {
-				var raw []byte
-				if raw, err = b.mcpCLI(ctx, a, cli, mcpListTimeout, "mcp", "list"); err == nil {
-					got = parseClaudeMCPList(string(raw))
-				}
-			} else {
-				var raw []byte
-				if raw, err = b.mcpCLI(ctx, a, cli, mcpListTimeout, "mcp", "list", "--json"); err == nil {
-					var list map[string]codexMCPEntry
-					if list, err = parseCodexMCPList(raw); err == nil {
-						got = map[string]MCPAgentStatus{}
-						for n, e := range list {
-							st := MCPAgentStatus{State: "configured"}
-							if !e.Enabled {
-								st.State = "disabled"
-							}
-							got[n] = st
-						}
-					}
+			live, err := b.mcpLive(ctx, a, cli)
+			var list map[string]MCPAgentStatus
+			if err == nil && agent == "claude" && deep {
+				// Its output says what it saw even when it ends badly.
+				raw, lerr := b.mcpCLI(ctx, a, cli, mcpListTimeout, "mcp", "list")
+				if list = parseClaudeMCPList(string(raw)); len(list) == 0 && lerr != nil {
+					err = lerr
 				}
 			}
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				failures[agent] = MCPAgentStatus{State: "unknown", Issue: err.Error()}
+				failures[agent] = MCPAgentStatus{State: "unknown", Issue: redact(err.Error(), secrets)}
 				return
 			}
-			lists[agent] = got
+			lives[agent], lists[agent] = live, list
 		}(agent, a, cli)
 	}
 	wg.Wait()
@@ -953,15 +1164,26 @@ func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer) map[string]map
 				set(s.Name, agent, f)
 				continue
 			}
-			st, present := lists[agent][s.Name]
-			_, ours := owned[agent][s.Name]
+			liveFP, present := lives[agent][s.Name]
+			ownFP, mine := written[agent+":"+accounts[agent].Dir][s.Name]
+			desired := mcpFingerprint(s, agent)
+			var st MCPAgentStatus
 			switch {
 			case !present:
 				st = MCPAgentStatus{State: "missing", Issue: "not in this account's configuration yet"}
-			case !ours:
+			case liveFP != desired && !mine:
 				st = MCPAgentStatus{State: "taken", Issue: "a server of this name that pierd did not add"}
-			case agent == "codex" && st.State == "configured" && s.Transport == "http":
-				st = probes[s.Name]
+			case liveFP != desired && liveFP != ownFP:
+				st = MCPAgentStatus{State: "changed", Issue: "changed by hand since pierd wrote it"}
+			case agent == "claude" && deep:
+				var ok bool
+				if st, ok = lists[agent][s.Name]; !ok {
+					st = MCPAgentStatus{State: "unknown", Issue: "not in claude mcp list"}
+				}
+			case s.Transport == "http":
+				st = probes[agent+"/"+s.Name]
+			default:
+				st = MCPAgentStatus{State: "configured"}
 			}
 			st.Account = label
 			set(s.Name, agent, st)
@@ -1030,9 +1252,14 @@ type codexMCPEntry struct {
 	Name      string `json:"name"`
 	Enabled   bool   `json:"enabled"`
 	Transport struct {
-		Type              string  `json:"type"`
-		URL               string  `json:"url"`
-		BearerTokenEnvVar *string `json:"bearer_token_env_var"`
+		Type              string            `json:"type"`
+		URL               string            `json:"url"`
+		BearerTokenEnvVar *string           `json:"bearer_token_env_var"`
+		HTTPHeaders       map[string]string `json:"http_headers"`
+		EnvHTTPHeaders    map[string]string `json:"env_http_headers"`
+		Command           string            `json:"command"`
+		Args              []string          `json:"args"`
+		Env               map[string]string `json:"env"`
 	} `json:"transport"`
 	AuthStatus string `json:"auth_status"`
 }
@@ -1057,8 +1284,9 @@ func parseCodexMCPList(raw []byte) (map[string]codexMCPEntry, error) {
 var mcpHTTP = &http.Client{Timeout: 10 * time.Second}
 
 // probeMCP opens an MCP session with an http server the way an agent does
-// first (initialize), with the bearer token, and closes it again.
-func probeMCP(ctx context.Context, s MCPServer) MCPAgentStatus {
+// first (initialize), with the bearer token and, for Claude Code, the
+// extra headers, and closes it again.
+func probeMCP(ctx context.Context, s MCPServer, withHeaders bool) MCPAgentStatus {
 	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"pierd","version":%q}}}`, version.Version)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL, strings.NewReader(body))
 	if err != nil {
@@ -1066,6 +1294,11 @@ func probeMCP(ctx context.Context, s MCPServer) MCPAgentStatus {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	if withHeaders {
+		for k, v := range s.Headers {
+			req.Header.Set(k, v)
+		}
+	}
 	if s.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+s.Token)
 	}
@@ -1075,11 +1308,11 @@ func probeMCP(ctx context.Context, s MCPServer) MCPAgentStatus {
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		return MCPAgentStatus{State: "failed", Issue: err.Error()}
+		return MCPAgentStatus{State: "failed", Issue: redact(err.Error(), []string{s.Token})}
 	}
 	defer resp.Body.Close()
 	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
-		defer closeMCPSession(s, id)
+		defer closeMCPSession(s, id, withHeaders)
 	}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
@@ -1109,7 +1342,7 @@ func probeMCP(ctx context.Context, s MCPServer) MCPAgentStatus {
 			continue
 		}
 		if msg.Error != nil {
-			return MCPAgentStatus{State: "failed", Issue: msg.Error.Message}
+			return MCPAgentStatus{State: "failed", Issue: redact(msg.Error.Message, []string{s.Token})}
 		}
 		if msg.Result != nil {
 			return MCPAgentStatus{State: "connected"}
@@ -1120,7 +1353,7 @@ func probeMCP(ctx context.Context, s MCPServer) MCPAgentStatus {
 
 // closeMCPSession ends the session a probe opened, as the protocol asks of a
 // client that is done.
-func closeMCPSession(s MCPServer, id string) {
+func closeMCPSession(s MCPServer, id string, withHeaders bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, s.URL, nil)
@@ -1128,6 +1361,11 @@ func closeMCPSession(s MCPServer, id string) {
 		return
 	}
 	req.Header.Set("Mcp-Session-Id", id)
+	if withHeaders {
+		for k, v := range s.Headers {
+			req.Header.Set(k, v)
+		}
+	}
 	if s.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+s.Token)
 	}

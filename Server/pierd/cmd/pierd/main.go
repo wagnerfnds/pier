@@ -354,6 +354,7 @@ func serve(b boxHome, args []string) error {
 		Socket:       b.socket(),
 		Invites:      &box.Invites{Address: func() string { return pairAddress(b) }, Relay: relayAddr, TTL: defaultTTL},
 		Relay:        relayAddr,
+		Log:          logger,
 	}
 	if rl != nil {
 		bx.Publisher = rl
@@ -421,7 +422,10 @@ func serve(b boxHome, args []string) error {
 		}()
 	}
 	logger.Printf("pierd %s serving %s as %q (%s); local API %s", version.Version, ln.Addr(), hostname, id.Fingerprint().Short(), b.socket())
-	return s.Serve(ctx, ln)
+	err = s.Serve(ctx, ln)
+	// A sync writing MCP servers into the agents' accounts finishes first.
+	bx.WaitMCP(10 * time.Second)
+	return err
 }
 
 // startPush turns push notifications on when $PIER_HOME/push.json is there:

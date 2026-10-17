@@ -2,10 +2,12 @@ package box
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +17,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"pier/pierd/internal/hooks"
 )
 
 // The MCP tests never run the real agent CLIs: claude and codex on PATH are
@@ -146,6 +150,11 @@ func fakeClaude(dir, home string, args []string) int {
 			return 2
 		}
 		name := rest[0]
+		if name == os.Getenv("FAKE_CLAUDE_FAIL") {
+			// A refusal that repeats the command back, token and all.
+			fmt.Fprintf(os.Stderr, "error: invalid options: %s\n", strings.Join(args, " "))
+			return 1
+		}
 		if _, ok := servers[name]; ok {
 			fmt.Fprintf(os.Stderr, "MCP server %s already exists in user config\n", name)
 			return 1
@@ -199,6 +208,9 @@ func fakeClaude(dir, home string, args []string) int {
 				continue
 			}
 			fmt.Printf("%s: %s - ✘ Failed to connect — CONNECTION_CLOSED: Connection closed\n", n, e["command"])
+		}
+		if os.Getenv("FAKE_CLAUDE_LIST_EXIT") != "" {
+			return 1
 		}
 	default:
 		return 2
@@ -263,6 +275,16 @@ func fakeCodex(dir, home string, args []string) int {
 		servers[name] = e
 		save()
 		fmt.Printf("Added global MCP server '%s'.\n", name)
+		if name == os.Getenv("FAKE_CODEX_LOGIN") {
+			// Written, then a sign-in that never comes: Codex gives up. The
+			// mark says the wait began, for a test to look at pierd then.
+			if mark := os.Getenv("FAKE_CODEX_LOGIN_MARK"); mark != "" {
+				os.WriteFile(mark, nil, 0o600)
+			}
+			time.Sleep(1500 * time.Millisecond)
+			fmt.Fprintf(os.Stderr, "Error: OAuth login for '%s' did not complete\n", name)
+			return 1
+		}
 	case "remove":
 		if _, ok := servers[args[1]]; !ok {
 			fmt.Printf("No MCP server named '%s' found.\n", args[1])
@@ -557,6 +579,8 @@ func TestMCPRefusesWhatTheAgentsCannotUse(t *testing.T) {
 		{"badheader", map[string]any{"url": "https://x.example.com", "headers": map[string]string{"X Team": "1"}}},
 		{"newline", map[string]any{"url": "https://x.example.com", "headers": map[string]string{"X-Team": "a\nb"}}},
 		{"spaces", map[string]any{"url": "https://x.example.com", "token": "two words"}},
+		{"nonascii", map[string]any{"url": "https://x.example.com", "token": "tök"}},
+		{"headerutf8", map[string]any{"url": "https://x.example.com", "headers": map[string]string{"X-Team": "naïve"}}},
 		{"stdiotoken", map[string]any{"transport": "stdio", "command": "x", "token": "t"}},
 		{"nocommand", map[string]any{"transport": "stdio"}},
 		{"badenv", map[string]any{"transport": "stdio", "command": "x", "env": map[string]string{"1X": "y"}}},
@@ -579,6 +603,14 @@ func TestMCPRefusesWhatTheAgentsCannotUse(t *testing.T) {
 	call(t, c, "GET", "/v1/mcp", "", nil, &list)
 	if len(list.Servers) != 1 || list.Servers[0].Name != "my-server" || list.Servers[0].TokenSet || strings.Join(list.Servers[0].Agents, ",") != "claude" {
 		t.Fatalf("servers = %+v", list.Servers)
+	}
+	// A server at the documented limits fits in a request: 20 headers of 6 KB.
+	big := map[string]string{}
+	for i := range 20 {
+		big[fmt.Sprintf("X-Big-%d", i)] = strings.Repeat("a", 6<<10)
+	}
+	if status := call(t, c, "PUT", "/v1/mcp/big", "", map[string]any{"url": "https://x.example.com", "headers": big, "token": strings.Repeat("t", 8<<10), "agents": []string{"claude"}}, nil); status != 200 {
+		t.Errorf("a server with 20 headers of 6 KB = %d", status)
 	}
 }
 
@@ -684,7 +716,7 @@ func TestMCPProbe(t *testing.T) {
 	srv, closed := mcpServerStub(t, "good")
 	ctx := context.Background()
 	start := time.Now()
-	if st := probeMCP(ctx, MCPServer{URL: srv.URL, Token: "good"}); st.State != "connected" {
+	if st := probeMCP(ctx, MCPServer{URL: srv.URL, Token: "good"}, false); st.State != "connected" {
 		t.Fatalf("right token = %+v", st)
 	}
 	if time.Since(start) > 3*time.Second {
@@ -697,18 +729,18 @@ func TestMCPProbe(t *testing.T) {
 	if closed.Load() != 1 {
 		t.Error("the probe left its session open")
 	}
-	if st := probeMCP(ctx, MCPServer{URL: srv.URL, Token: "bad"}); st.State != "needs_auth" || !strings.Contains(st.Issue, "refused the token") {
+	if st := probeMCP(ctx, MCPServer{URL: srv.URL, Token: "bad"}, false); st.State != "needs_auth" || !strings.Contains(st.Issue, "refused the token") {
 		t.Errorf("wrong token = %+v", st)
 	}
-	if st := probeMCP(ctx, MCPServer{URL: srv.URL}); st.State != "needs_auth" || !strings.Contains(st.Issue, "asks for a token") {
+	if st := probeMCP(ctx, MCPServer{URL: srv.URL}, false); st.State != "needs_auth" || !strings.Contains(st.Issue, "asks for a token") {
 		t.Errorf("no token = %+v", st)
 	}
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "<html>hello</html>") }))
 	defer page.Close()
-	if st := probeMCP(ctx, MCPServer{URL: page.URL}); st.State != "failed" || !strings.Contains(st.Issue, "not answer as an MCP server") {
+	if st := probeMCP(ctx, MCPServer{URL: page.URL}, false); st.State != "failed" || !strings.Contains(st.Issue, "not answer as an MCP server") {
 		t.Errorf("a web page = %+v", st)
 	}
-	if st := probeMCP(ctx, MCPServer{URL: "http://127.0.0.1:1/mcp"}); st.State != "failed" || st.Issue == "" {
+	if st := probeMCP(ctx, MCPServer{URL: "http://127.0.0.1:1/mcp"}, false); st.State != "failed" || st.Issue == "" {
 		t.Errorf("nothing listening = %+v", st)
 	}
 }
@@ -757,5 +789,248 @@ func TestMCPStatusPerAgent(t *testing.T) {
 	call(t, c, "PUT", "/v1/mcp/crm", "", map[string]any{"url": srv.URL + "/mcp", "token": "stale"}, nil)
 	if st := status()["crm"]["codex"]; st.State != "needs_auth" {
 		t.Errorf("a refused token for codex = %+v", st)
+	}
+}
+
+// readWritten is pierd's record as it is on disk now.
+func readWritten(t *testing.T, state string) mcpWritten {
+	t.Helper()
+	w := mcpWritten{}
+	data, _ := os.ReadFile(filepath.Join(state, "mcp-written.json"))
+	json.Unmarshal(data, &w)
+	return w
+}
+
+// pierd records each entry the moment its CLI is done, so stopping in the
+// middle of a sync never leaves its own entries behind as someone else's;
+// an entry Codex wrote before waiting for a sign-in is pierd's too; and a
+// record lost or broken is rebuilt from the entries that are exactly as
+// pierd writes them, without writing anything again.
+func TestMCPOwnershipIsRecordedAtEachWriteAndRecoveredByContent(t *testing.T) {
+	home, calls := mcpTestHome(t)
+	t.Setenv("FAKE_CODEX_LOGIN", "oauth")
+	mark := filepath.Join(t.TempDir(), "codex-waits")
+	t.Setenv("FAKE_CODEX_LOGIN_MARK", mark)
+	state := t.TempDir()
+	var logged bytes.Buffer
+	var bx *Box
+	c, _ := servedBox(t, func(b *Box) { b.StateDir = state; b.Log = log.New(&logged, "", 0); bx = b })
+	t.Cleanup(func() { bx.mcp.bg.Wait() })
+
+	type result struct {
+		status int
+		v      MCPServerView
+	}
+	done := make(chan result, 1)
+	go func() {
+		var v MCPServerView
+		st := call(t, c, "PUT", "/v1/mcp/oauth", "", map[string]any{"url": "http://127.0.0.1:1/mcp"}, &v)
+		done <- result{st, v}
+	}()
+	// While Codex still waits for its sign-in, Claude Code's entry is on
+	// the record already.
+	claudeKey, codexKey := "claude:"+filepath.Join(home, ".claude"), "codex:"+filepath.Join(home, ".codex")
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(mark); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Codex never began its wait")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := readWritten(t, state)[claudeKey]["oauth"]; got == "" {
+		t.Fatalf("Claude Code's entry was not recorded while the sync ran: %v", readWritten(t, state))
+	}
+	select {
+	case r := <-done:
+		t.Fatalf("the sync had ended (%d) when it was looked at", r.status)
+	default:
+	}
+	r := <-done
+	if r.status != 200 || len(r.v.Problems) != 1 || !strings.Contains(r.v.Problems[0], "Codex: Codex has it, and wants a sign-in for it too (codex mcp login oauth on the box)") {
+		t.Fatalf("put oauth = %d %+v", r.status, r.v)
+	}
+	if readWritten(t, state)[codexKey]["oauth"] == "" {
+		t.Fatal("the entry Codex wrote before its sign-in is not pierd's")
+	}
+
+	// The record lost (pierd stopped between a write and its record).
+	os.Remove(filepath.Join(state, "mcp-written.json"))
+	before := len(fakeCalls(t, calls))
+	var list struct{ Servers []MCPServerView }
+	call(t, c, "GET", "/v1/mcp?status=1", "", nil, &list)
+	for agent, st := range list.Servers[0].Status {
+		if st.State == "taken" || st.State == "changed" {
+			t.Errorf("pierd's own entry reads %s for %s", st.State, agent)
+		}
+	}
+	bx.SyncMCP()
+	if w := readWritten(t, state); w[claudeKey]["oauth"] == "" || w[codexKey]["oauth"] == "" {
+		t.Fatalf("record after recovery = %v", w)
+	}
+	// A broken record: set aside, said in the log, rebuilt the same way.
+	os.WriteFile(filepath.Join(state, "mcp-written.json"), []byte("{broken"), 0o600)
+	bx.SyncMCP()
+	if _, err := os.Stat(filepath.Join(state, "mcp-written.json.bad")); err != nil {
+		t.Error("the broken record was not kept aside")
+	}
+	if !strings.Contains(logged.String(), "is not a record pierd can read") {
+		t.Errorf("log = %q", logged.String())
+	}
+	if w := readWritten(t, state); w[claudeKey]["oauth"] == "" || w[codexKey]["oauth"] == "" {
+		t.Fatalf("record after a broken one = %v", w)
+	}
+	for _, cl := range fakeCalls(t, calls)[before:] {
+		if cl.Args[1] == "add" || cl.Args[1] == "remove" {
+			t.Errorf("recovering the record wrote again: %s %v", cl.Tool, cl.Args)
+		}
+	}
+}
+
+// An entry of pierd's that the person changed by hand is theirs from then
+// on: pierd neither rewrites it nor removes it.
+func TestMCPLeavesEntriesChangedByHand(t *testing.T) {
+	home, calls := mcpTestHome(t)
+	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir() })
+	var v MCPServerView
+	if status := call(t, c, "PUT", "/v1/mcp/crm", "", map[string]any{"url": "http://127.0.0.1:1/crm", "token": "tok-1"}, &v); status != 200 || len(v.Problems) != 0 {
+		t.Fatalf("put = %d %+v", status, v)
+	}
+	path := filepath.Join(home, ".claude.json")
+	cfg := readJSONFile(t, path)
+	cfg["mcpServers"].(map[string]any)["crm"].(map[string]any)["url"] = "http://127.0.0.1:1/mine"
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(path, data, 0o600)
+	before := len(fakeCalls(t, calls))
+
+	v = MCPServerView{}
+	call(t, c, "PUT", "/v1/mcp/crm", "", map[string]any{"url": "http://127.0.0.1:1/crm2"}, &v)
+	if len(v.Problems) != 1 || !strings.Contains(v.Problems[0], "Claude Code: crm was changed by hand since pierd wrote it; it is left as it is") {
+		t.Fatalf("problems = %v", v.Problems)
+	}
+	if e, _ := claudeServers(t, path)["crm"].(map[string]any); e["url"] != "http://127.0.0.1:1/mine" {
+		t.Fatalf("the entry changed by hand was rewritten: %v", e)
+	}
+	if e := codexServers(t, filepath.Join(home, ".codex"))["crm"]; e.URL != "http://127.0.0.1:1/crm2" {
+		t.Fatalf("codex's entry = %+v", e)
+	}
+	if status := call(t, c, "DELETE", "/v1/mcp/crm", "", nil, nil); status != 200 {
+		t.Fatalf("delete = %d", status)
+	}
+	if _, ok := claudeServers(t, path)["crm"]; !ok {
+		t.Fatal("the entry changed by hand was removed")
+	}
+	if _, ok := codexServers(t, filepath.Join(home, ".codex"))["crm"]; ok {
+		t.Fatal("codex's entry stayed")
+	}
+	for _, cl := range fakeCalls(t, calls)[before:] {
+		if cl.Tool == "claude" && (cl.Args[1] == "add" || cl.Args[1] == "remove") {
+			t.Errorf("pierd wrote over the person's change: %v", cl.Args)
+		}
+	}
+}
+
+// A CLI that repeats its arguments back when it refuses them never brings
+// the token into a problem or an answer.
+func TestMCPProblemsNeverCarryTheToken(t *testing.T) {
+	mcpTestHome(t)
+	t.Setenv("FAKE_CLAUDE_FAIL", "leaky")
+	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir() })
+	var v MCPServerView
+	status := call(t, c, "PUT", "/v1/mcp/leaky", "", map[string]any{"url": "http://127.0.0.1:1/mcp", "token": "sekrit-123", "agents": []string{"claude"}}, &v)
+	if status != 200 || len(v.Problems) != 1 || strings.Contains(v.Problems[0], "sekrit-123") || !strings.Contains(v.Problems[0], "[redacted]") {
+		t.Fatalf("put = %d %+v", status, v)
+	}
+	resp, err := c.DoWithHeader(context.Background(), "GET", "/v1/mcp?status=1", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Contains(string(raw), "sekrit-123") {
+		t.Fatalf("GET /v1/mcp carries the token: %s", raw)
+	}
+}
+
+// ?status=1 starts nothing of the account's (no `claude mcp list`): it reads
+// the configuration and shakes hands itself, with what each agent sends.
+// ?status=deep asks Claude Code's own list, and reads it even when the list
+// ends badly.
+func TestMCPStatusStartsNothingUnlessDeep(t *testing.T) {
+	_, calls := mcpTestHome(t)
+	srv, _ := mcpServerStub(t, "good")
+	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir() })
+	call(t, c, "PUT", "/v1/mcp/crm", "", map[string]any{"url": srv.URL + "/mcp", "token": "good", "headers": map[string]string{"X-Team": "blue"}}, nil)
+	status := func(q string) map[string]MCPAgentStatus {
+		var list struct{ Servers []MCPServerView }
+		if code := call(t, c, "GET", "/v1/mcp?status="+q, "", nil, &list); code != 200 || len(list.Servers) != 1 {
+			t.Fatalf("status=%s = %d %+v", q, code, list)
+		}
+		return list.Servers[0].Status
+	}
+	before := len(fakeCalls(t, calls))
+	if st := status("1"); st["claude"].State != "connected" || st["codex"].State != "connected" {
+		t.Fatalf("status = %+v", st)
+	}
+	for _, cl := range fakeCalls(t, calls)[before:] {
+		if cl.Tool == "claude" {
+			t.Errorf("a quick status ran claude: %v", cl.Args)
+		}
+	}
+	t.Setenv("FAKE_CLAUDE_LIST_EXIT", "1")
+	before = len(fakeCalls(t, calls))
+	if st := status("deep"); st["claude"].State != "connected" {
+		t.Fatalf("deep status = %+v", st)
+	}
+	listed := false
+	for _, cl := range fakeCalls(t, calls)[before:] {
+		listed = listed || cl.Tool == "claude" && strings.Join(cl.Args, " ") == "mcp list"
+	}
+	if !listed {
+		t.Error("a deep status did not ask claude mcp list")
+	}
+}
+
+// A server the box does not have is not found before any gate runs; a gate
+// still refuses a change with its own words.
+func TestMCPDeleteOfAnUnknownServerAnswersBeforeTheGate(t *testing.T) {
+	mcpTestHome(t)
+	cfg := filepath.Join(t.TempDir(), "hooks.json")
+	os.WriteFile(cfg, []byte(`{"hooks":[{"on":"before:mcp.change","run":"echo no MCP changes today; exit 1"}]}`), 0o600)
+	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir(); b.Hooks = &hooks.Runner{Path: cfg} })
+	if status := call(t, c, "DELETE", "/v1/mcp/nothere", "", nil, nil); status != 404 {
+		t.Errorf("delete of an unknown server = %d", status)
+	}
+	var resp struct{ Error string }
+	if status := call(t, c, "PUT", "/v1/mcp/crm", "", map[string]any{"url": "https://x.example.com"}, &resp); status != 403 || !strings.Contains(resp.Error, "no MCP changes today") {
+		t.Errorf("a refused change = %d %q", status, resp.Error)
+	}
+}
+
+// pierd lets a sync that is writing into the accounts finish before it
+// stops, for a moment at most.
+func TestMCPShutdownWaitsForARunningSync(t *testing.T) {
+	bx := &Box{}
+	start := time.Now()
+	bx.WaitMCP(time.Second)
+	if time.Since(start) > 500*time.Millisecond {
+		t.Error("waited with no sync running")
+	}
+	bx.mcp.mu.Lock()
+	start = time.Now()
+	bx.WaitMCP(300 * time.Millisecond)
+	if d := time.Since(start); d < 250*time.Millisecond || d > 2*time.Second {
+		t.Errorf("waited %s for a running sync, want its cap", d)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		bx.mcp.mu.Unlock()
+	}()
+	start = time.Now()
+	bx.WaitMCP(5 * time.Second)
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("waited %s after the sync ended", d)
 	}
 }

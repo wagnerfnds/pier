@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -104,6 +105,15 @@ type Box struct {
 	ghAuth ghAuthCache
 	// mcp is the sync of the box's MCP servers into its accounts (mcp.go).
 	mcp mcpState
+	// Log, when set, takes what pierd notes for the box's owner in its log
+	// (an MCP record it could not read).
+	Log *log.Logger
+}
+
+func (b *Box) logf(format string, args ...any) {
+	if b.Log != nil {
+		b.Log.Printf(format, args...)
+	}
 }
 
 // Mount registers the box's routes on s. They are reachable by paired
