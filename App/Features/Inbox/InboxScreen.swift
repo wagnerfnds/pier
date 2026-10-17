@@ -36,7 +36,10 @@ struct InboxScreen: View {
         let entries = healthCards.map(InboxEntry.box) + items.map(InboxEntry.agent)
         ScrollViewReader { proxy in
             List {
-                if regular, !entries.isEmpty { KeyLegend().listRowBackground(Color.clear).listRowSeparator(.hidden) }
+                if regular, !entries.isEmpty {
+                    KeyLegend(boxAction: healthCards.contains { action($0) != nil })
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                }
                 healthSection(healthCards)
                 section(items.filter { $0.kind == .needsYou }, title: "Perguntas e permissões", color: Theme.orange)
                 section(items.filter { $0.kind == .finished }, title: "Trabalho terminado", color: Theme.green)
@@ -300,9 +303,13 @@ struct InboxScreen: View {
             key(.return) {
                 switch current(entries) {
                 case .agent(let i)?: open(i)
-                case .box(let c)?: keyboardUsed = true; perform(c)
+                case .box(let c)?: keyboardUsed = true; focused = c.id; copyFix(c)
                 case nil: break
                 }
+            }
+            // ⌘↩ on a box's card: its Entrar or Instalar.
+            key(.return, modifiers: .command) {
+                if case .box(let c)? = current(entries), action(c) != nil { keyboardUsed = true; perform(c) }
             }
             key("r") {
                 keyboardUsed = true
@@ -315,8 +322,8 @@ struct InboxScreen: View {
         .accessibilityHidden(true)
     }
 
-    private func key(_ k: KeyEquivalent, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) { EmptyView() }.keyboardShortcut(k, modifiers: [])
+    private func key(_ k: KeyEquivalent, modifiers: EventModifiers = [], _ run: @escaping () -> Void) -> some View {
+        Button(action: run) { EmptyView() }.keyboardShortcut(k, modifiers: modifiers)
     }
 
     private func current(_ entries: [InboxEntry]) -> InboxEntry? { entries.first { $0.id == focused } ?? entries.first }
@@ -459,8 +466,10 @@ private struct InboxHealthCard: View {
     }
 }
 
-/// "J K mover · 1 2 3 responder · E arquivar · ↩ abrir · R escrever", above the cards on a wide screen.
+/// "J K mover · 1 2 3 responder · E arquivar · ↩ abrir · R escrever", above the cards on a wide screen, and "⌘↩ entrar
+/// ou instalar" while a box's card offers it.
 private struct KeyLegend: View {
+    var boxAction = false
     var body: some View {
         HStack(spacing: 14) {
             hint(["J", "K"], "mover")
@@ -468,6 +477,7 @@ private struct KeyLegend: View {
             hint(["E"], "arquivar")
             hint(["↩"], "abrir")
             hint(["R"], "escrever")
+            if boxAction { hint(["⌘", "↩"], "entrar ou instalar") }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: 760).frame(maxWidth: .infinity)

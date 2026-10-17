@@ -85,6 +85,7 @@ struct MockSignIns {
         [("claude", "Claude Code", "2.1.302 (Claude Code)"), ("codex", "Codex", "codex-cli 0.160.1"), ("gh", "GitHub CLI", "gh version 2.102.0 (2026-09-30)")].map { id, name, version in
             var t: JSON = ["id": id, "name": name, "command": id, "installed": installed(id)]
             if installed(id) { t["path"] = "/home/ubuntu/.local/bin/\(id)"; t["version"] = version }
+            if id == "gh", installed(id) { t["signed_in"] = !signedOut.contains("gh") }
             if installing[id] != nil { t["installing"] = true }
             return t
         }

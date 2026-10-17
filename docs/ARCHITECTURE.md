@@ -270,8 +270,9 @@ issue too. The Inbox lists them first ("A box precisa de você"), each card with
 command to run on the box and "Copiar"; "Ignorar por hoje" snoozes the card for a day (`LocalPrefs.snoozedHealth`), with
 the undo window. On a box that signs in and installs from the app (`logins`, `tools`), a sign-in card gets "Entrar" (the
 sign-in sheet below) and a missing GitHub CLI or agent "Instalar" (`BoxToolsStore`); which card gets which is
-`SignIn.action` (PierKit, tested), from the check's `tool` and `account`. Keys: Return does the card's Entrar / Instalar,
-else copies the fix; E ignores. Debug: `-uiTestHealth 1` makes the mock box report three problems, `-uiTestSignIn 1` the
+`SignIn.action` (PierKit, tested), from the check's `tool` and `account`. pierd warns about the GitHub CLI and its
+sign-in only on a box with a project on GitHub. Keys: Return copies the fix, ⌘Return is the card's Entrar / Instalar (the
+legend says so while a card has one), E ignores. Debug: `-uiTestHealth 1` makes the mock box report three problems, `-uiTestSignIn 1` the
 GitHub CLI missing and Codex signed out.
 
 ## Signing in and installing from the app
@@ -682,8 +683,9 @@ Revisar button is tapped by position in that test.
   default) registers the app as a login item once the box pairs (`LoginItem`, `SMAppService.mainApp`; also in Ajustes).
   "Tudo pronto!" then offers "Levar para o iPhone". Before it, a box that signs in from the app (`logins`) shows "Contas"
   (`OnboardingAccounts`): Claude Code, Codex and GitHub with where each stands (`SignIn.rows` over `/v1/tools`,
-  `/v1/accounts` and `/v1/doctor`, PierKit, tested) and Instalar, Entrar (`SignInSheet`) or ✓; "Pular por enquanto"
-  goes on, and an older box goes on to "Tudo pronto!" at once. "Num servidor": the same command, to run over SSH, then the link
+  `/v1/accounts` and `/v1/doctor`, gh's sign-in from the tools list, PierKit, tested) and Instalar, Entrar
+  (`SignInSheet`) or ✓; "Pular por enquanto" goes on. It waits, loading, while the box's info comes (through a relay that
+  can take a while; up to 90 s), and an older box goes on to "Tudo pronto!" at once. "Num servidor": the same command, to run over SSH, then the link
   (scanned on a phone, pasted on the Mac); "Outros jeitos de instalar" (`InstallHelpSheet`, also under Ajustes →
   Adicionar box) offers a prompt for the agent already running there and the commands (the script, npm, Homebrew) with
   Copiar. "No meu Mac" (the phone's default): the code the Mac's "Levar para o iPhone" shows.

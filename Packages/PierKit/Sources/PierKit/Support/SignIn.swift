@@ -114,12 +114,14 @@ public enum SignIn {
     }
 
     /// Claude Code, Codex and GitHub as the box has them: installed or not (`GET /v1/tools`), and signed in or not, an
-    /// agent by its default account (`GET /v1/accounts`), GitHub by doctor's "GitHub sign-in".
+    /// agent by its default account (`GET /v1/accounts`), GitHub by gh's own status in the tools list, else doctor's
+    /// "GitHub sign-in" (which a box without a project on GitHub reports as information only).
     public static func rows(tools: [BoxTool], accounts: [AgentAccount], doctor: [DoctorCheck]) -> [Row] {
         Self.tools.map { id in
             if let t = tools.first(where: { $0.id == id }) {
                 if t.installing { return Row(tool: id, status: .installing) }
                 if !t.installed { return Row(tool: id, status: t.error.map { .installFailed($0) } ?? .missing) }
+                if let signedIn = t.signedIn { return Row(tool: id, status: signedIn ? .signedIn : .signedOut) }
             }
             if id != "gh", let a = accounts.first(where: { $0.agent == id && $0.isDefault }) ?? accounts.first(where: { $0.agent == id && $0.builtin }) {
                 let status: Status = a.signedInKnown ? (a.signedIn ? .signedIn : .signedOut) : .unknown

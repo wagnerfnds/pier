@@ -3615,6 +3615,16 @@
         }
       }
     },
+    "Com o lingering ligado, o pierd continua depois do logout. O pierd install liga sozinho onde o sistema deixa; aqui, peça a quem administra a box para rodar o comando." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With lingering on, pierd keeps running after you log out. pierd install turns it on by itself where the system lets it; here, ask whoever runs the box to run the command."
+          }
+        }
+      }
+    },
     "Comando" : {
       "localizations" : {
         "en" : {
@@ -12281,6 +12291,16 @@
         }
       }
     },
+    "entrar ou instalar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sign in or install"
+          }
+        }
+      }
+    },
     "sem ambiente" : {
       "localizations" : {
         "en" : {
@@ -15619,16 +15639,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Paste the code here"
-          }
-        }
-      }
-    },
-    "Com o lingering ligado, o pierd continua depois do logout. Ele tentou ligar sozinho; se o sistema recusou, peça a quem administra a box para rodar o comando." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "With lingering on, pierd keeps running after you log out. It tried to turn it on by itself; if the system refused, ask whoever runs the box to run the command."
           }
         }
       }

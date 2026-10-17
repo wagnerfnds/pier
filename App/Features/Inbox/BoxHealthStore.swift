@@ -112,7 +112,7 @@ enum HealthWords {
         case .agentHooks: return S("Sem eles, o Pier não sabe quando o agente termina ou precisa de você.")
         case .noAgents: return S("Instale o Claude Code ou o Codex na box para criar tarefas.")
         case .service: return S("Se a box reiniciar, o Pier perde o contato até alguém rodar o pierd de novo.")
-        case .lingering: return S("Com o lingering ligado, o pierd continua depois do logout. Ele tentou ligar sozinho; se o sistema recusou, peça a quem administra a box para rodar o comando.")
+        case .lingering: return S("Com o lingering ligado, o pierd continua depois do logout. O pierd install liga sozinho onde o sistema deixa; aqui, peça a quem administra a box para rodar o comando.")
         case .listening: return S("Melhor ouvir só no endereço da tailnet: pierd install faz isso.")
         case .location: return S("O pierd ainda lista a pasta; remova ou mova o projeto de volta.")
         case .unreachable: return S("Confira a rede ou a VPN; o app tenta de novo sozinho.")

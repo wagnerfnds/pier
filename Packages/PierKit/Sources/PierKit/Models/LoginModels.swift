@@ -15,13 +15,18 @@ public struct BoxTool: Codable, Sendable, Hashable, Identifiable {
     public let installing: Bool
     public let error: String?
     public let log: String?
+    /// The GitHub CLI's sign-in to github.com, by its own status (gh only; nil when the box did not say).
+    public let signedIn: Bool?
 
     public init(id: String, name: String = "", command: String = "", installed: Bool = false, path: String? = nil, version: String? = nil,
-                installing: Bool = false, error: String? = nil, log: String? = nil) {
+                installing: Bool = false, error: String? = nil, log: String? = nil, signedIn: Bool? = nil) {
         self.id = id; self.name = name; self.command = command; self.installed = installed; self.path = path
-        self.version = version; self.installing = installing; self.error = error; self.log = log
+        self.version = version; self.installing = installing; self.error = error; self.log = log; self.signedIn = signedIn
     }
-    enum CodingKeys: String, CodingKey { case id, name, command, installed, path, version, installing, error, log }
+    enum CodingKeys: String, CodingKey {
+        case id, name, command, installed, path, version, installing, error, log
+        case signedIn = "signed_in"
+    }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -33,6 +38,7 @@ public struct BoxTool: Codable, Sendable, Hashable, Identifiable {
         installing = try c.decodeIfPresent(Bool.self, forKey: .installing) ?? false
         error = try c.decodeIfPresent(String.self, forKey: .error)
         log = try c.decodeIfPresent(String.self, forKey: .log)
+        signedIn = try c.decodeIfPresent(Bool.self, forKey: .signedIn)
     }
 }
 

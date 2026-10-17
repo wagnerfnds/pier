@@ -604,9 +604,14 @@ private struct OnboardingAccounts: View {
         }
     }
 
-    /// The box just paired that signs in from the app, once its info is in; none: on to "Tudo pronto!".
+    /// The box just paired that signs in from the app, once its info is in: one reached through a relay can take a
+    /// while, and the step shows its loading meanwhile. None that can (or none that answers): on to "Tudo pronto!".
     private func start() async {
-        for _ in 0..<40 where !model.boxes.contains(where: { $0.info != nil }) { try? await Task.sleep(for: .milliseconds(250)) }
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline, !Task.isCancelled, !model.boxes.contains(where: { $0.info != nil }),
+              model.boxes.contains(where: { $0.state == .connecting || $0.state.isOnline }) {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
         guard let conn = model.boxes.last(where: { $0.info?.has("logins") == true }) else { next(); return }
         box = conn.name
         await tools.load(box: conn.name, model: model)

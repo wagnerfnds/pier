@@ -134,5 +134,12 @@ import Testing
             DoctorCheck(area: "Agents", name: "GitHub sign-in", status: "ok", tool: "gh"),
         ])
         #expect(SignIn.allSet(signedIn))
+
+        // gh's own status in the tools list wins over doctor, which says only "information" on a box without a project
+        // on GitHub.
+        let ghOut: [BoxTool] = try Fixture.decode("tools_signed_out.json")
+        #expect(ghOut.last?.signedIn == false && ghOut.first?.signedIn == nil)
+        let rowsOut = SignIn.rows(tools: ghOut, accounts: accounts, doctor: [DoctorCheck(area: "Agents", name: "GitHub sign-in", status: "info", tool: "gh")])
+        #expect(rowsOut.last == SignIn.Row(tool: "gh", status: .signedOut))
     }
 }

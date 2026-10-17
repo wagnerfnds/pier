@@ -113,13 +113,15 @@ The app turns the `warn` / `fail` checks into Inbox cards (`BoxHealth` in PierKi
 locations, the "Agents" area has `<agent> hooks` (pierd's hooks installed) and `<agent> sign-in` (the CLI's credentials
 file, or an API key in pierd's environment; left out where that cannot be told), with `fix` the command to run on the
 box; an account added on the box has its own, `<agent> (<account name>) sign-in`, and GitHub's is `GitHub sign-in` (gh's
-own `gh auth status`; left out without gh). "Worktrees and sessions" has `gh`, a `warn` when the GitHub CLI is missing
-(pull requests and the GitHub list need it), and an agent the box lacks is an `info` line in "Agents" with `fix`
-`pierd tools install <id>`. `tool` names the CLI a check is about when the box installs it (2.13) or signs it in
-(2.10.1): `claude`, `codex` or `gh`; `account` the account a sign-in check is about (an id of `GET /v1/accounts`). The
-app puts Instalar or Entrar on those cards. On Linux, `survives logout` first turns lingering on itself, without sudo
-(`loginctl enable-linger`, at most once an hour; systemd's polkit rule lets a user do it where polkit runs), and warns
-only when that is refused, with `fix` `sudo loginctl enable-linger USER` for an admin.
+own `gh auth status`, kept ten minutes since it asks GitHub, forgotten when a sign-in to GitHub ends or gh is installed;
+left out without gh). "Worktrees and sessions" has `gh`, missing when the GitHub CLI is. Both warn only on a box with a
+project whose remote is on github.com, where pull requests and the GitHub list need them; elsewhere they are `info`, so
+no card. An agent the box lacks is an `info` line in "Agents" with `fix` `pierd tools install <id>`. `tool` names the
+CLI a check is about when the box installs it (2.13) or signs it in (2.10.1): `claude`, `codex` or `gh`; `account` the
+account a sign-in check is about (an id of `GET /v1/accounts`). The app puts Instalar or Entrar on those cards. The
+report changes nothing: on Linux `survives logout` warns while lingering is off, with `fix` `sudo loginctl enable-linger
+USER` for an admin (`pierd install` and `setup` turn it on themselves, without sudo, where systemd's polkit rule lets the
+user).
 
 ### 1.4 Reachability
 
@@ -485,6 +487,12 @@ status agrees (`claude auth status --json`, `codex login status`, `gh auth statu
 * `POST /v1/logins {tool: "claude"|"codex"|"gh", account?}` → 202:
 
   ```json
+  {"id":"da71a5bd807f","tool":"gh","state":"starting","needs_code":false,"session":"login-gh","started":"2026-10-17T00:46:14.808188Z"}
+  ```
+
+  and then, as `GET /v1/logins/{id}` reads it a moment later:
+
+  ```json
   {"id":"da71a5bd807f","tool":"gh","state":"open_link","url":"https://github.com/login/device","user_code":"1B8C-23C0",
    "needs_code":false,"session":"login-gh","started":"2026-10-17T00:46:14.808188Z"}
   ```
@@ -492,18 +500,22 @@ status agrees (`claude auth status --json`, `codex login status`, `gh auth statu
   `account`: for claude and codex, an id of `GET /v1/accounts` (the box's default when left out), whose folder the CLI
   gets (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`); none for gh, which keeps its own config. The commands: `claude auth login`
   (the subscription's sign-in, not the TUI), `codex login --device-auth`, `gh auth login --web --git-protocol https
-  --hostname github.com` (pierd answers its two questions: git through gh's credentials, and Enter to go on). No browser
+  --hostname github.com` (pierd answers its questions: yes to signing in again where an older gh asks, git through
+  gh's credentials, and Enter to go on). No browser
   opens on the box (`BROWSER`, `GH_BROWSER`): the app opens the link where the person is. A sign-in already running for
   the same account gives way to the new one. 424 `tool_missing` when the box lacks the CLI (2.13), 404 for an unknown
   account, 400 for an account of another agent. Gate `before:login.start {tool, account}`.
 * `state`: `starting`; `open_link` (the link is ready, and for Codex and GitHub the one-time code `user_code` to type on
-  its page); `enter_code` (Claude Code waits for the code its page shows: `needs_code`); `waiting` (the code went in);
-  `done`; `failed` (`error`: the CLI's last lines with any code typed or shown taken out, `canceled`, or that it took more
-  than 15 minutes, after which its session ends). `finished` is set with the last two.
+  its page when the screen reading found it: without it the page or the terminal still has it); `enter_code` (Claude Code
+  waits for the code its page shows: `needs_code`); `waiting` (the code went in); `done`; `failed` (`error`: the CLI's
+  last lines with the link and any code typed or shown taken out, `canceled`, or that it took more than 15 minutes, after
+  which its session ends). `finished` is set with the last two. A restarted pierd forgets its sign-ins and ends the
+  sessions they left.
 * `GET /v1/logins/{id}`; `GET /v1/logins` (those of the last hour, newest first). The app reads the one it shows every
   1.5 s, and at once on `login.changed`.
-* `POST /v1/logins/{id}/code {code}` types the code into Claude Code, then Enter: one line of up to 4096 characters (400
-  otherwise); 409 when the sign-in is not waiting for one. A code it does not take brings `enter_code` back with `error`.
+* `POST /v1/logins/{id}/code {code}` clears Claude Code's prompt (C-u), types the code, then Enter, which goes even if
+  the caller stopped waiting: one line of up to 4096 characters (400 otherwise); 409 when the sign-in is not waiting for
+  one. A code it does not take brings `enter_code` back with `error`.
 * `DELETE /v1/logins/{id}` cancels it (`failed`, `canceled`) and ends its session; a finished one stays as it was.
 * Event `login.changed {id, tool, account?, state}` on each change of state, never with the link or the code (events are
   kept in the journal). A sign-in done for an account also publishes `account.changed {id}`; GitHub's runs `gh auth
@@ -540,8 +552,10 @@ A worktree's dev server at a public URL through the box's relay (PROTOCOL.md §1
 
 ### 2.13 Installing the agents and the GitHub CLI (capability `tools`)
 
-* `GET /v1/tools` → `[{id, name, command, installed, path?, version?, installing?, error?, log?}]` for `claude` (Claude
-  Code), `codex` (Codex) and `gh` (the GitHub CLI), found as the person's shell finds them (3.1):
+* `GET /v1/tools` → `[{id, name, command, installed, path?, version?, installing?, error?, log?, signed_in?}]` for
+  `claude` (Claude Code), `codex` (Codex) and `gh` (the GitHub CLI), found as the person's shell finds them (3.1; one
+  not found has them looked for again first, at most every 30 s, so one installed by hand shows at once). `signed_in`
+  is gh's own sign-in to github.com, as doctor keeps it (1.3):
 
   ```json
   [{"id":"claude","name":"Claude Code","command":"claude","installed":true,"path":"/home/octocat/.local/bin/claude","version":"2.1.302 (Claude Code)"},
@@ -554,8 +568,8 @@ A worktree's dev server at a public URL through the box's relay (PROTOCOL.md §1
   (`CODEX_NON_INTERACTIVE=1`), else the binary of its latest GitHub release, checked against the SHA-256 GitHub keeps
   with it; the GitHub CLI from its latest release's archive, checked against `gh_<version>_checksums.txt`. Nothing whose
   checksum does not match is installed. Then pierd looks for the agents again (`agents.found`; `GET /v1/info` lists a new
-  one) and puts its hooks in a new agent's settings. `error` keeps why the last install failed until the tool is there;
-  `log` is that install's log. 400 for another tool. Gate `before:tools.install {tools}`. Events `tool.installed {tool,
+  one) and puts its hooks in a new agent's settings. `error` keeps why the last install failed until the tool is there
+  (or that a restart of pierd cut it short); `log` is that install's log. 400 for another tool. Gate `before:tools.install {tools}`. Events `tool.installed {tool,
   path, version}` and `tool.failed {tool, log}` (envelope `error`). `pierd tools install` and `pierd setup` run the same
   installs on the box.
 
