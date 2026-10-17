@@ -1,0 +1,131 @@
+name: Pier isolated Mac test
+run-name: "Mac chat ${{ inputs.baseline && 'baseline 1.1' || 'fix' }} · ${{ github.sha }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ui_tests:
+        description: Run the mock conversation history UI regression tests
+        type: boolean
+        default: true
+
+      baseline:
+        description: Compare the original 1.1 conversation with the same synthetic tests (no app artifact)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit-tests:
+    if: ${{ !inputs.baseline }}
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: PierKit unit tests
+        run: |
+          mkdir -p build/local-test/logs
+          swift test --package-path Packages/PierKit 2>&1 | tee build/local-test/logs/unit-tests.log
+      - name: Upload unit test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pier-unit-tests-${{ github.run_number }}
+          path: build/local-test/logs/unit-tests.log
+          retention-days: 7
+
+  mac-test:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use released conversation for comparison
+        if: ${{ inputs.baseline }}
+        run: |
+          git fetch --depth=1 origin tag pier-mac-v1.1
+          python3 Config/scripts/use-chat-baseline.py
+
+      - name: Build tools
+        run: |
+          mkdir -p build/local-test/logs
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen --version
+
+      - name: Restore Catalyst build cache
+        id: catalyst-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/local-test/SourcePackages
+            build/local-test/DerivedData
+          key: pier-catalyst-26.6-${{ inputs.baseline && 'baseline' || 'fix' }}-${{ github.sha }}
+          restore-keys: |
+            pier-catalyst-26.6-${{ inputs.baseline && 'baseline' || 'fix' }}-
+
+      - name: Build isolated optimized Debug app
+        run: bash Config/scripts/build-local-test.sh build
+
+      - name: Save compiled Catalyst cache
+        if: ${{ steps.catalyst-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/local-test/SourcePackages
+            build/local-test/DerivedData
+          key: ${{ steps.catalyst-cache.outputs.cache-primary-key }}
+
+      - name: Package app and debugging symbols
+        if: ${{ !inputs.baseline }}
+        run: bash Config/scripts/build-local-test.sh package
+
+      - name: Upload runnable app
+        if: ${{ !inputs.baseline }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pier-Teste-app-${{ github.run_number }}
+          path: |
+            build/local-test/Pier-Teste.app.zip
+            build/local-test/Pier-Teste.dSYM.zip
+            build/local-test/build-info.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Conversation history UI regression
+        if: ${{ inputs.ui_tests }}
+        run: bash Config/scripts/build-local-test.sh test
+
+      - name: Package UI test results
+        if: always()
+        run: |
+          if [ -d build/local-test/ChatHistory.xcresult ]; then
+            ditto -c -k --keepParent build/local-test/ChatHistory.xcresult build/local-test/ChatHistory.xcresult.zip
+          fi
+
+      - name: Upload UI test results and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pier-Teste-results-${{ inputs.baseline && 'baseline' || 'fix' }}-${{ github.run_number }}
+          path: |
+            build/local-test/ChatHistory.xcresult.zip
+            build/local-test/build-info.txt
+            build/local-test/logs/
+          if-no-files-found: error
+          retention-days: 7

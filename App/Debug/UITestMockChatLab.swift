@@ -12,6 +12,18 @@ struct MockChatLab {
     static let title = "Chat lab: rendering and streaming"
     static let streamMarker = "streamcheck-7f3a"
 
+    /// Opt-in regression fixtures: keep the existing 60-turn, unpaged lab unchanged for its measurements.
+    static var turnCount: Int {
+        let count = UserDefaults.standard.integer(forKey: "uiTestChatLabTurns")
+        return count > 0 ? min(count, 1_000) : 60
+    }
+    static var pageSize: Int? {
+        let size = UserDefaults.standard.integer(forKey: "uiTestChatLabPageSize")
+        // The server's initial transcript window holds up to 300 items. Older requests still honor their limit.
+        return size > 0 ? min(size, 300) : nil
+    }
+    static var tallTail: Bool { UserDefaults.standard.bool(forKey: "uiTestChatLabTallTail") }
+
     /// The reply being written, as `GET .../draft` answers it (nil when the agent writes nothing).
     var draft: String?
     /// Sends to the lab, to vary the streamed reply's first line.
@@ -29,11 +41,14 @@ struct MockChatLab {
         }
         var out: [[String: Any]] = []
         // `-uiTestChatLabTail <n>`: the record ends with reply n (screenshots of each kind of reply at the bottom).
-        let tail = UserDefaults.standard.string(forKey: "uiTestChatLabTail").flatMap { Int($0) } ?? 59 % replies.count
-        let shift = (tail - 59 % replies.count + replies.count) % replies.count
-        for turn in 0..<60 {
+        let last = turnCount - 1
+        let tail = UserDefaults.standard.string(forKey: "uiTestChatLabTail").flatMap { Int($0) } ?? last % replies.count
+        let shift = (tail - last % replies.count + replies.count) % replies.count
+        for turn in 0..<turnCount {
             let pick = (turn + shift) % replies.count
-            let reply = replies[pick]
+            var reply = replies[pick]
+            if tallTail, turn == last { reply += "\n\n" + tallReply }
+            if pageSize != nil || tallTail || turnCount != 60 { reply += "\n\nhistory-turn-\(turn + 1)" }
             out.append(item("user", ["text": prompts[pick] + (turn >= prompts.count ? " (\(turn / prompts.count + 1))" : "")]))
             out.append(item("tools", ["verb": "Read", "done": true, "items": [
                 ["id": "toolu_lab_\(off)_0", "verb": "Read", "target": "src/billing/totals.ts", "at": 1_791_408_804_607],
@@ -49,6 +64,45 @@ struct MockChatLab {
             out.append(item("text", ["text": reply]))
         }
         return out
+    }
+
+    /// Unlike the default mock (which returns the whole record), this models a truncated first read and real
+    /// `before` pages. Cursors are the items' offsets, including incremental reads after a streamed reply.
+    static func page(items: [[String: Any]], query: [String: String]) -> [String: Any]? {
+        guard let pageSize else { return nil }
+        let next = (items.last?["off"] as? Int ?? 0) + 1
+        var result: [String: Any] = ["source": "claude", "file": "mock-\(name)", "gen": "1.0", "next": next, "crew": []]
+        if let before = query["before"].flatMap(Int.init) {
+            let older = before == 0 ? items : items.filter { ($0["off"] as? Int ?? 0) < before }
+            let limit = min(pageSize, max(1, Int(query["limit"] ?? "") ?? pageSize))
+            let page = Array(older.suffix(limit))
+            result["items"] = page
+            result["more"] = older.count > page.count
+            result["start"] = page.first?["off"] as? Int ?? 0
+        } else {
+            let since = Int(query["since"] ?? "0") ?? 0
+            let page = since == 0 ? Array(items.suffix(pageSize)) : items.filter { ($0["off"] as? Int ?? 0) >= since }
+            result["items"] = page
+            result["truncated"] = since == 0 && items.count > page.count
+            result["start"] = page.first?["off"] as? Int ?? next
+        }
+        return result
+    }
+
+    /// A single reply with ~190 Markdown blocks. A bottom-anchored lazy row first estimated from its short siblings
+    /// must grow substantially once laid out. All text is invented, with no customer record or network needed.
+    private static var tallReply: String {
+        (0..<80).map { section in
+            let detail = String(repeating: "A synthetic paragraph wraps as the conversation column changes width. ", count: 1 + section % 4)
+            var block = "### Layout sample \(section + 1)\n\n\(detail)"
+            if section % 5 == 0 {
+                block += "\n\n```swift\nlet example = [1, 2, 3]\nlet total = example.reduce(0, +)\n```"
+            }
+            if section % 5 == 2 {
+                block += "\n\n- Short item\n- A longer item containing `inline code` and **emphasis**, wrapping independently.\n  - A nested synthetic detail."
+            }
+            return block
+        }.joined(separator: "\n\n")
     }
 
     static let prompts = [

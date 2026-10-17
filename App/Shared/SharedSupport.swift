@@ -6,6 +6,8 @@ import Security
 
 /// Constants and storage shared by the app and the widget extension (this folder is compiled into both targets).
 enum Shared {
+    /// Explicitly isolated, unprovisioned Mac test build. Production Info.plists never set this flag.
+    static let isLocalTest = Bundle.main.object(forInfoDictionaryKey: "PierLocalTest") as? Bool ?? false
     /// The app's bundle id, also from the widget extension (whose own id is `<app id>.widgets`). Every other identifier
     /// derives from it at build time (`PIER_BUNDLE_ID`, Config/Base.xcconfig).
     static let appBundleID: String = {
@@ -25,7 +27,8 @@ enum Shared {
 
     /// The App Group container (nil only in an unsigned/mis-provisioned build).
     static var containerURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
+        guard !isLocalTest else { return nil }
+        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
     }
 
     /// Application Support for the app's own files ("Pier"). The Mac app is not sandboxed, so this is the person's real
@@ -50,7 +53,7 @@ enum Shared {
         return base.appendingPathComponent(name)
     }
 
-    static var defaults: UserDefaults { UserDefaults(suiteName: appGroup) ?? .standard }
+    static var defaults: UserDefaults { isLocalTest ? .standard : (UserDefaults(suiteName: appGroup) ?? .standard) }
 
     // MARK: deep links
 
@@ -89,6 +92,7 @@ enum Shared {
 enum SharedKeychain {
     /// Resolved from Info.plist (`$(AppIdentifierPrefix)` is expanded at build time); nil when it is not a usable group.
     static var accessGroup: String? {
+        guard !Shared.isLocalTest else { return nil }
         guard let g = Bundle.main.object(forInfoDictionaryKey: "PierKeychainGroup") as? String,
               !g.contains("$("), !g.hasPrefix("."), g.hasSuffix(".shared") else { return nil }
         return g
@@ -118,6 +122,7 @@ enum SharedKeychain {
     /// already-paired phone keeps its pairing. The old group is the app's default (`<TeamID>.<app id>`),
     /// which an unqualified query still reaches. Safe to call on every launch.
     static func migrateLegacyIfNeeded() {
+        guard !Shared.isLocalTest else { return }
         guard let group = accessGroup else { return }
         let flag = "keychain.migratedToShared.v1"
         let ud = UserDefaults.standard

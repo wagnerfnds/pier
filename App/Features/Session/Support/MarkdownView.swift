@@ -121,17 +121,7 @@ struct MarkdownTable: View {
             TableGridLayout(columns: header.count, cap: Self.columnCap) {
                 ForEach(Array(([header] + rows).enumerated()), id: \.offset) { r, row in
                     ForEach(Array(row.enumerated()), id: \.offset) { c, cell in
-                        let align = c < alignments.count ? alignments[c] : .leading
-                        Text(MarkdownStyle.inline(cell))
-                            .font(r == 0 ? .footnote.weight(.semibold) : .footnote.monospacedDigit())
-                            .foregroundStyle(r == 0 ? Theme.textDim : Theme.text)
-                            .multilineTextAlignment(align == .trailing ? .trailing : align == .center ? .center : .leading)
-                            .selectable(selectable)
-                            .padding(.horizontal, 10).padding(.vertical, 7)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: align == .trailing ? .topTrailing : align == .center ? .top : .topLeading)
-                            // A plain rectangle: a style alone took the rounded shape the table's background is drawn in.
-                            .background { Rectangle().fill(r == 0 ? Theme.cardRaised : (r % 2 == 0 ? Theme.card.opacity(0.5) : .clear)) }
-                            .overlay(alignment: .bottom) { if r == 0 { Rectangle().fill(Theme.stroke).frame(height: 1) } }
+                        tableCell(cell, row: r, column: c)
                     }
                 }
             }
@@ -139,6 +129,27 @@ struct MarkdownTable: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.stroke))
+    }
+
+    /// Keep the cell's style decisions outside the nested builders so Swift can type-check the table independently.
+    private func tableCell(_ text: String, row: Int, column: Int) -> some View {
+        let align: MarkdownBlock.Alignment = column < alignments.count ? alignments[column] : .leading
+        let font: Font = row == 0 ? .footnote.weight(.semibold) : .footnote.monospacedDigit()
+        let foreground: Color = row == 0 ? Theme.textDim : Theme.text
+        let textAlignment: TextAlignment = align == .trailing ? .trailing : align == .center ? .center : .leading
+        let frameAlignment: SwiftUI.Alignment = align == .trailing ? .topTrailing : align == .center ? .top : .topLeading
+        let background: Color = row == 0 ? Theme.cardRaised : (row % 2 == 0 ? Theme.card.opacity(0.5) : .clear)
+
+        return Text(MarkdownStyle.inline(text))
+            .font(font)
+            .foregroundStyle(foreground)
+            .multilineTextAlignment(textAlignment)
+            .selectable(selectable)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
+            // A plain rectangle: a style alone took the rounded shape the table's background is drawn in.
+            .background { Rectangle().fill(background) }
+            .overlay(alignment: .bottom) { if row == 0 { Rectangle().fill(Theme.stroke).frame(height: 1) } }
     }
 }
 
