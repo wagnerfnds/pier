@@ -102,16 +102,13 @@ final class LocalPrefs {
     /// The compose draft lives apart from `data`: it changes on every keystroke, and every view reading any pref (the
     /// sidebar, the Home, the menu bar's payload, the Mac's main menu) would redraw with it. Saved with `data`.
     private(set) var composeDraft = ""
-    /// This device's marks (archived, seen, dismissed, snoozed) live apart from `data` too: one is written each time a
-    /// finished turn is looked at, and every view reading the organisation (the sidebar, the Home, the Mac's surface)
-    /// redrew with it. Saved with `data`, in the same file as ever.
-    private(set) var marks = Marks()
-    struct Marks: Equatable {
-        var closed: [String: Date] = [:]
-        var seen: [String: Date] = [:]
-        var dismissed: [String: Date] = [:]
-        var snoozedHealth: [String: Date] = [:]
-    }
+    /// This device's marks (archived, seen, dismissed, snoozed) live apart from `data` too, each on its own: one is
+    /// written each time a finished turn is looked at, and every view reading the organisation or the archive (the
+    /// sidebar, the Home, the Mac's surface) redrew with it. Saved with `data`, in the same file as ever.
+    private var closedMarks: [String: Date] = [:]
+    private var seenMarks: [String: Date] = [:]
+    private var dismissedMarks: [String: Date] = [:]
+    private var snoozedMarks: [String: Date] = [:]
     private var url: URL
     /// Writes the file a moment after the last change, off the main thread, one write after the other.
     @ObservationIgnored private let writer = PrefsWriter()
@@ -218,7 +215,7 @@ final class LocalPrefs {
         flush()
         url = Self.defaultURL
         data = Data()
-        marks = Marks()
+        (closedMarks, seenMarks, dismissedMarks, snoozedMarks) = ([:], [:], [:], [:])
         load()
         draftSave?.cancel()
         composeDraft = data.composeDraft
@@ -401,19 +398,19 @@ final class LocalPrefs {
 
     /// Marked as over and nothing happened since (a new turn reopens it by itself).
     func isClosed(box: String, session: Session) -> Bool {
-        guard let at = marks.closed["\(box)/\(session.name)"] else { return false }
+        guard let at = closedMarks["\(box)/\(session.name)"] else { return false }
         return at >= (session.stateSince ?? session.created)
     }
     func setClosed(_ closed: Bool, box: String, session: String) {
         let k = "\(box)/\(session)"
         if closed {
-            marks.closed[k] = Date()
+            closedMarks[k] = Date()
             // Keep the file small: forget marks older than two weeks.
             let cutoff = Date().addingTimeInterval(-14 * 86400)
-            marks.closed = marks.closed.filter { $0.value > cutoff }
+            closedMarks = closedMarks.filter { $0.value > cutoff }
         } else {
-            guard marks.closed[k] != nil else { return }
-            marks.closed[k] = nil
+            guard closedMarks[k] != nil else { return }
+            closedMarks[k] = nil
         }
         save()
     }
@@ -423,45 +420,45 @@ final class LocalPrefs {
     /// The person looked at this finished turn (the session screen, or the reply opened in the Inbox); the card stays
     /// until archived, but the badge no longer counts it. A newer turn is unseen again by itself.
     func isSeen(box: String, session: Session) -> Bool {
-        guard let at = marks.seen["\(box)/\(session.name)"] else { return false }
+        guard let at = seenMarks["\(box)/\(session.name)"] else { return false }
         return at >= (session.stateSince ?? session.created)
     }
     func markSeen(box: String, session: String) {
         let k = "\(box)/\(session)"
-        if let at = marks.seen[k], Date().timeIntervalSince(at) < 1 { return }
-        marks.seen[k] = Date()
-        marks.seen = Self.pruned(marks.seen)
+        if let at = seenMarks[k], Date().timeIntervalSince(at) < 1 { return }
+        seenMarks[k] = Date()
+        seenMarks = Self.pruned(seenMarks)
         save()
     }
 
     /// A question dismissed in the Inbox stays out until the agent asks again (a newer `state_since`).
     func isDismissed(box: String, session: Session) -> Bool {
-        guard let at = marks.dismissed["\(box)/\(session.name)"] else { return false }
+        guard let at = dismissedMarks["\(box)/\(session.name)"] else { return false }
         return at == (session.stateSince ?? session.created)
     }
     func setDismissed(_ dismissed: Bool, box: String, session: Session) {
         let k = "\(box)/\(session.name)"
-        marks.dismissed[k] = dismissed ? (session.stateSince ?? session.created) : nil
-        marks.dismissed = Self.pruned(marks.dismissed)
+        dismissedMarks[k] = dismissed ? (session.stateSince ?? session.created) : nil
+        dismissedMarks = Self.pruned(dismissedMarks)
         save()
     }
 
     /// A box health card "ignored for today": out of the Inbox until `until`.
     func isHealthSnoozed(_ id: String) -> Bool {
-        guard let until = marks.snoozedHealth[id] else { return false }
+        guard let until = snoozedMarks[id] else { return false }
         return until > Date()
     }
     func snoozeHealth(_ id: String, until: Date) {
-        marks.snoozedHealth[id] = until
-        marks.snoozedHealth = marks.snoozedHealth.filter { $0.value > Date() }
+        snoozedMarks[id] = until
+        snoozedMarks = snoozedMarks.filter { $0.value > Date() }
         save()
     }
 
     /// Forgets every Inbox mark (seen, dismissed, snoozed health cards): what a UI test run leaves behind.
     func resetInboxMarks() {
-        marks.seen = [:]
-        marks.dismissed = [:]
-        marks.snoozedHealth = [:]
+        seenMarks = [:]
+        dismissedMarks = [:]
+        snoozedMarks = [:]
         save()
     }
 
@@ -475,7 +472,7 @@ final class LocalPrefs {
 
     private func load() {
         guard let d = try? Foundation.Data(contentsOf: url), var v = try? JSONDecoder().decode(Data.self, from: d) else { return }
-        marks = Marks(closed: v.closed, seen: v.seen, dismissed: v.dismissed, snoozedHealth: v.snoozedHealth)
+        (closedMarks, seenMarks, dismissedMarks, snoozedMarks) = (v.closed, v.seen, v.dismissed, v.snoozedHealth)
         (v.closed, v.seen, v.dismissed, v.snoozedHealth) = ([:], [:], [:], [:])
         data = v
     }
@@ -512,7 +509,7 @@ final class LocalPrefs {
     private func writeNow() {
         var out = data
         out.composeDraft = composeDraft
-        (out.closed, out.seen, out.dismissed, out.snoozedHealth) = (marks.closed, marks.seen, marks.dismissed, marks.snoozedHealth)
+        (out.closed, out.seen, out.dismissed, out.snoozedHealth) = (closedMarks, seenMarks, dismissedMarks, snoozedMarks)
         writer.write(out, to: url)
         writer.mirror(widgetMirror)
     }

@@ -204,9 +204,7 @@ struct Sidebar: View {
         navRow(.tab(.home), "Início", "square.grid.2x2", id: "sidebar-home") {
             CountBadge(count: model.sessionsStore.needsYouCount, color: Theme.orange)
         }
-        navRow(.tab(.inbox), "Inbox", "tray", id: "sidebar-inbox") {
-            CountBadge(count: InboxStore.shared.unseenCount(model: model), color: Theme.accent)
-        }
+        navRow(.tab(.inbox), "Inbox", "tray", id: "sidebar-inbox") { InboxUnseenBadge() }
         navRow(.tab(.board), "Quadro", "rectangle.split.3x1", id: "sidebar-board") { EmptyView() }
         navRow(.tab(.projects), "Projetos", "folder", id: "sidebar-projects") { EmptyView() }
     }
@@ -299,9 +297,7 @@ struct Sidebar: View {
     @ViewBuilder private func status(of a: SidebarRules.LiveAgent) -> some View {
         switch a.column {
         case .needsYou: Text("Precisa de você").foregroundStyle(Theme.orange)
-        case .working:
-            if let step = signals.steps[a.id], !step.isEmpty { Text(step).foregroundStyle(Theme.textDim) }
-            else { Text("Trabalhando").foregroundStyle(Theme.accent) }
+        case .working: AgentStepLine(id: a.id)
         case .yourTurn: Text("Sua vez").foregroundStyle(Theme.green)
         default: Text("Pronto").foregroundStyle(Theme.textDim)
         }
@@ -1261,6 +1257,23 @@ private struct CountCapsule: View {
 }
 
 /// A row's count in its color (needs-you on Início, unseen on the Inbox); nothing at zero.
+/// The Inbox's unseen count, read in a view of its own: read by the sidebar's body, every change of an Inbox card (a
+/// screen read, a next step) redrew the whole sidebar.
+private struct InboxUnseenBadge: View {
+    @Environment(AppModel.self) private var model
+    var body: some View { CountBadge(count: InboxStore.shared.unseenCount(model: model), color: Theme.accent) }
+}
+
+/// A working agent's current step (from its screen), or "Trabalhando": in a view of its own, so a new step redraws this
+/// line and not the sidebar.
+private struct AgentStepLine: View {
+    let id: String
+    var body: some View {
+        if let step = SessionSignals.shared.steps[id], !step.isEmpty { Text(step).foregroundStyle(Theme.textDim) }
+        else { Text("Trabalhando").foregroundStyle(Theme.accent) }
+    }
+}
+
 private struct CountBadge: View {
     let count: Int
     let color: Color
