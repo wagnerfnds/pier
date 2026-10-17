@@ -416,17 +416,8 @@ func (t *Turns) newTurn(s *sessTrack, state, origin string) *Turn {
 	return tr
 }
 
-// set records the agent's state. Since is when it entered that state. An
-// agent at work reports every tool it runs (Started again): that moves Seq
-// (waits compare it) but not Since, or every list of sessions changed with
-// each tool and the time "working" started over. Any other state reported
-// again is a new episode (another question, another turn ended) and starts
-// its own Since.
 func (s *sessTrack) set(state string, e events.Event) {
-	if s.State != state || state != "running" {
-		s.Since = e.Time
-	}
-	s.State, s.Seq = state, e.Seq
+	s.State, s.Since, s.Seq = state, e.Time, e.Seq
 }
 
 func (s *sessTrack) end(tr *Turn, state string, e events.Event) {
