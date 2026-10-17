@@ -98,6 +98,7 @@ struct BoardScreen: View {
             }
         }
         .pierBackground()
+        .tracksOnScreen()
         .navigationTitle("Quadro")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $filter.text, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Buscar agentes"))

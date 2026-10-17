@@ -20,6 +20,7 @@ struct BoardCard: View {
         return parts.joined(separator: " · ")
     }
     private var live: Bool { column == .needsYou || column == .working }
+    @Environment(\.isOnScreen) private var onScreen
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -65,7 +66,8 @@ struct BoardCard: View {
 
     /// "⏱ 3min" in the state; Encerradas says why it is there.
     private var status: some View {
-        TimelineView(.periodic(from: .now, by: live ? 1 : 30)) { ctx in
+        // Every second while the Board is in front and the card is live, every 30 under a session.
+        TimelineView(.periodic(from: .now, by: live && onScreen ? 1 : 30)) { ctx in
             HStack(spacing: 4) {
                 if column == .working {
                     ProgressView().controlSize(.mini).tint(Theme.accent).scaleEffect(0.8).frame(width: 12, height: 12)
