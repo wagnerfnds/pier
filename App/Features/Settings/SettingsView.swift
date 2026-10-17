@@ -74,9 +74,17 @@ struct SettingsView: View {
                             .accessibilityIdentifier("settings-vars-\(conn.name)")
                             .listRowBackground(Theme.card)
                         }
+                        if conn.info?.has("mcp") == true {
+                            NavigationLink(value: BoxSettingsRoute(box: conn.name, page: .mcp)) {
+                                Label(model.boxes.count > 1 ? String(localized: "Servidores MCP em \(conn.name)") : String(localized: "Servidores MCP"),
+                                      systemImage: "point.3.connected.trianglepath.dotted")
+                            }
+                            .accessibilityIdentifier("settings-mcp-\(conn.name)")
+                            .listRowBackground(Theme.card)
+                        }
                     }
                 } header: { Text("Projetos") } footer: {
-                    Text("Onde os projetos ficam na box, os espaços que os separam, os ambientes isolados, as contas dos agentes e as variáveis que todo projeto recebe.")
+                    Text("Onde os projetos ficam na box, os espaços que os separam, os ambientes isolados, as contas dos agentes, os servidores MCP deles e as variáveis que todo projeto recebe.")
                 }
             }
             Section("Aparência") {

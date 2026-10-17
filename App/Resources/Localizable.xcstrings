@@ -15998,6 +15998,366 @@
           }
         }
       }
+    },
+    "Onde os projetos ficam na box, os espaços que os separam, os ambientes isolados, as contas dos agentes, os servidores MCP deles e as variáveis que todo projeto recebe." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Where projects live on the box, the spaces that keep them apart, isolated environments, the agents’ accounts, their MCP servers and the variables every project gets."
+          }
+        }
+      }
+    },
+    "Servidores MCP" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP servers"
+          }
+        }
+      }
+    },
+    "Servidores MCP em %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP servers on %@"
+          }
+        }
+      }
+    },
+    "Nenhum servidor MCP ainda." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No MCP servers yet."
+          }
+        }
+      }
+    },
+    "Adicionar servidor" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add server"
+          }
+        }
+      }
+    },
+    "Servidores" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servers"
+          }
+        }
+      }
+    },
+    "O pierd coloca cada servidor em todas as contas do Claude Code e do Codex da box, pelos próprios CLIs deles, e os agentes que começarem depois já o usam. Um servidor que você adicionou à mão com o mesmo nome fica como está." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pierd puts each server in every Claude Code and Codex account on the box, through their own CLIs, and agents that start afterwards use it. A server you added by hand with the same name is left as it is."
+          }
+        }
+      }
+    },
+    "Testar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test"
+          }
+        }
+      }
+    },
+    "Remover servidor" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove server"
+          }
+        }
+      }
+    },
+    "O servidor sai de todas as contas em que o pierd o colocou. Os agentes que já estão rodando continuam com ele até terminar." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server leaves every account pierd put it in. Agents already running keep it until they end."
+          }
+        }
+      }
+    },
+    "Ligado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On"
+          }
+        }
+      }
+    },
+    "Usar %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use %@"
+          }
+        }
+      }
+    },
+    "Com token" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With a token"
+          }
+        }
+      }
+    },
+    "Configurado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configured"
+          }
+        }
+      }
+    },
+    "Ainda não está nesta conta" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not in this account yet"
+          }
+        }
+      }
+    },
+    "Já existe um servidor seu com este nome" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You already have a server with this name"
+          }
+        }
+      }
+    },
+    "Não está instalado na box" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not installed on the box"
+          }
+        }
+      }
+    },
+    "Sem resposta" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No answer"
+          }
+        }
+      }
+    },
+    "https://mcp.exemplo.com/mcp" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://mcp.example.com/mcp"
+          }
+        }
+      }
+    },
+    "nome (ex.: crm)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "name (e.g. crm)"
+          }
+        }
+      }
+    },
+    "Já existe um servidor com este nome." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There is already a server with this name."
+          }
+        }
+      }
+    },
+    "Servidor" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server"
+          }
+        }
+      }
+    },
+    "O endereço MCP (HTTP) do serviço. O nome identifica o servidor para os agentes (as ferramentas dele viram mcp__nome__…): letras minúsculas, números, - e _." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The service’s MCP (HTTP) address. The name identifies the server to the agents (its tools become mcp__name__…): lowercase letters, digits, - and _."
+          }
+        }
+      }
+    },
+    "Token salvo: deixe vazio para manter" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved token: leave empty to keep it"
+          }
+        }
+      }
+    },
+    "Token (opcional)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token (optional)"
+          }
+        }
+      }
+    },
+    "Remover o token salvo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove the saved token"
+          }
+        }
+      }
+    },
+    "Token" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        }
+      }
+    },
+    "Vai como Authorization: Bearer e fica só na box: o Claude Code o guarda na configuração de cada conta, o Codex o lê de %@, que toda sessão recebe. O app nunca o mostra de volta." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent as Authorization: Bearer and kept on the box only: Claude Code stores it in each account’s configuration, Codex reads it from %@, which every session gets. The app never shows it back."
+          }
+        }
+      }
+    },
+    "X-Cabecalho" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "X-Header"
+          }
+        }
+      }
+    },
+    "Remover cabeçalho" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove header"
+          }
+        }
+      }
+    },
+    "Adicionar cabeçalho" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add header"
+          }
+        }
+      }
+    },
+    "Cabeçalhos extras (opcional)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extra headers (optional)"
+          }
+        }
+      }
+    },
+    "Só o Claude Code envia estes cabeçalhos (o Codex recebe só o token), e eles aparecem no app: não coloque segredos aqui." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only Claude Code sends these headers (Codex gets only the token), and they show in the app: keep secrets out of them."
+          }
+        }
+      }
+    },
+    "Em todas as contas da box de cada agente marcado." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In every account on the box of each agent ticked."
+          }
+        }
+      }
+    },
+    "Novo servidor MCP" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New MCP server"
+          }
+        }
+      }
+    },
+    "Servidor salvo. Os agentes que começarem agora já o usam." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server saved. Agents that start now use it."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

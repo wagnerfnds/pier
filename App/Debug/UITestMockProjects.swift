@@ -33,6 +33,13 @@ struct MockProjects {
     private var variables: (env: [String: String], notes: [String: String]) = (["STAGING_URL": "https://staging.example.com", "SENTRY_TOKEN": "sntrys_example"], ["STAGING_URL": "the staging API"])
     private var skills: Set<String> = ["pier-box"]
     private var links: [JSON] = []
+    /// The box's MCP servers (`/v1/mcp`), as pierd answers them: never a token, only `token_set`.
+    private var mcp: [JSON] = [
+        ["name": "crm", "transport": "http", "url": "https://mcp.example.com/mcp", "headers": ["X-Team": "app"], "token_set": true,
+         "token_var": "PIER_MCP_CRM_TOKEN", "agents": ["claude", "codex"], "enabled": true],
+        ["name": "docs", "transport": "http", "url": "https://docs.example.com/mcp", "token_set": false, "token_var": "PIER_MCP_DOCS_TOKEN",
+         "agents": ["claude"], "enabled": false],
+    ]
     /// Environments by location, and when each was applied (it reads "building" for 2 s).
     private var environments: [String: (env: JSON, at: Date)] = [:]
 
@@ -117,7 +124,7 @@ struct MockProjects {
         case (.post, 2, "accounts"):
             let agent = (req["agent"] as? String) ?? "claude"
             let id = "\(agent)-\(String(UUID().uuidString.prefix(8)).lowercased())"
-            accounts.append(["id": id, "agent": agent, "name": (req["name"] as? String) ?? "Conta", "dir": "/home/ubuntu/.pier/box/accounts/\(id)", "signed_in": false, "signed_in_known": true, "projects": [] as [Any], "limits_ready": true])
+            accounts.append(["id": id, "agent": agent, "name": (req["name"] as? String) ?? "Conta", "dir": "/home/ubuntu/.config/pier/box/accounts/\(id)", "signed_in": false, "signed_in_known": true, "projects": [] as [Any], "limits_ready": true])
             return (200, Self.json(accounts.last!))
         case (.patch, 3, "accounts"):
             if req["default"] as? Bool == true, let a = accountsJSON().first(where: { $0["id"] as? String == p[2] }) {
@@ -151,6 +158,12 @@ struct MockProjects {
             links.append(l)
             return (200, Self.json(l))
         case (.delete, 3, "shares"): links.removeAll { $0["name"] as? String == p[2] }; return (200, Self.json(["removed": p[2]]))
+        case (.get, 2, "mcp"): return (200, Self.json(["servers": mcp.map { mcpView($0, status: query["status"] == "1") }]))
+        case (.put, 3, "mcp"): return putMCP(p[2], req)
+        case (.delete, 3, "mcp"):
+            guard mcp.contains(where: { $0["name"] as? String == p[2] }) else { return (404, Self.json(["error": "no MCP server named \(p[2])", "code": "not_found"])) }
+            mcp.removeAll { $0["name"] as? String == p[2] }
+            return (200, Self.json(["removed": p[2]]))
         case (.get, 4, "locations") where p[3] == "environment": return (200, environmentJSON(p[2]))
         case (.put, 4, "locations") where p[3] == "environment":
             let empty = (req["runtime"] == nil) && ((req["containers"] as? [Any])?.isEmpty ?? true) && (req["compose"] as? Bool) != true
@@ -202,6 +215,62 @@ struct MockProjects {
             all[i]["projects"] = projectAccounts.filter { ($0.value[agent] ?? def ?? agent) == id }.map(\.key).sorted()
         }
         return all
+    }
+
+    /// A server as `GET /v1/mcp` shows it; with `status`, how each agent sees it: one with a token connects, one without is
+    /// refused (like a real server that wants one), a URL with "fail" in it does not answer, Codex only knows a stdio
+    /// server is configured.
+    private func mcpView(_ s: JSON, status: Bool) -> JSON {
+        guard status else { return s }
+        var out = s
+        let agents = (s["agents"] as? [String]) ?? []
+        var st: [String: JSON] = [:]
+        for agent in agents {
+            let account = agent == "claude" ? "Claude Code" : "Codex"
+            if (s["enabled"] as? Bool) != true {
+                st[agent] = ["state": "disabled"]
+            } else if (s["transport"] as? String) == "stdio" {
+                st[agent] = ["state": agent == "claude" ? "connected" : "configured", "account": account]
+            } else if ((s["url"] as? String) ?? "").contains("fail") {
+                st[agent] = ["state": "failed", "issue": "ECONNREFUSED: Unable to connect. Is the computer able to access the url?", "account": account]
+            } else if (s["token_set"] as? Bool) == true {
+                st[agent] = ["state": "connected", "account": account]
+            } else {
+                st[agent] = agent == "claude"
+                    ? ["state": "failed", "issue": "Dynamic Client Registration rejected (HTTP 401):", "account": account]
+                    : ["state": "needs_auth", "issue": "the server asks for a token (HTTP 401)", "account": account]
+            }
+        }
+        out["status"] = st
+        return out
+    }
+
+    /// `PUT /v1/mcp/{name}` as pierd takes it: the server replaced, its token kept unless the body has one ("" removes it).
+    private mutating func putMCP(_ name: String, _ req: JSON) -> (Int, Data) {
+        func refuse(_ msg: String) -> (Int, Data) { (400, Self.json(["error": msg, "code": "bad_request"])) }
+        guard MCPServers.isValidName(name) else { return refuse("a server's name is 1 to 40 of a-z, 0-9, - and _") }
+        let transport = (req["transport"] as? String) ?? "http"
+        let url = (req["url"] as? String) ?? ""
+        guard transport == "stdio" || MCPServers.isValidURL(url) else { return refuse("an http server needs its URL (http:// or https://)") }
+        let agents = ((req["agents"] as? [String]) ?? ["claude", "codex"]).filter { $0 == "claude" || $0 == "codex" }
+        guard !agents.isEmpty else { return refuse("pick at least one agent for \(name)") }
+        let old = mcp.first { $0["name"] as? String == name }
+        var s: JSON = ["name": name, "transport": transport, "agents": agents, "enabled": (req["enabled"] as? Bool) ?? true]
+        if transport == "http" {
+            s["url"] = url
+            s["token_var"] = MCPServers.tokenVariable(name)
+            if let h = req["headers"] as? [String: String], !h.isEmpty { s["headers"] = h }
+        } else {
+            s["command"] = req["command"] ?? ""
+            if let a = req["args"] as? [String], !a.isEmpty { s["args"] = a }
+            if let e = req["env"] as? [String: String], !e.isEmpty { s["env"] = e }
+        }
+        if let t = req["token"] as? String { s["token_set"] = !t.isEmpty } else { s["token_set"] = (old?["token_set"] as? Bool) ?? false }
+        if let i = mcp.firstIndex(where: { $0["name"] as? String == name }) { mcp[i] = s } else {
+            mcp.append(s)
+            mcp.sort { ($0["name"] as? String ?? "") < ($1["name"] as? String ?? "") }
+        }
+        return (200, Self.json(s))
     }
 
     private func skillsJSON() -> Data {
