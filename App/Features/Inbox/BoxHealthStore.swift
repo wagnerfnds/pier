@@ -104,11 +104,15 @@ enum HealthWords {
     /// What it means for the person, in one line; nil when the title says it all.
     static func body(_ c: BoxHealthStore.Card) -> String? {
         switch c.issue.kind {
+        case .agentSignIn(let agent) where c.issue.tool == "gh" || agent == "GitHub":
+            return S("Pull requests, a lista de repositórios e os repositórios privados precisam do GitHub CLI conectado.")
         case .agentSignIn: return S("Uma sessão nova pararia na tela de login do agente.")
+        case .tool(let name) where name == "gh":
+            return S("Pull requests e a lista de repositórios do GitHub usam o GitHub CLI (gh).")
         case .agentHooks: return S("Sem eles, o Pier não sabe quando o agente termina ou precisa de você.")
         case .noAgents: return S("Instale o Claude Code ou o Codex na box para criar tarefas.")
         case .service: return S("Se a box reiniciar, o Pier perde o contato até alguém rodar o pierd de novo.")
-        case .lingering: return S("Com o lingering ligado, o pierd continua depois do logout.")
+        case .lingering: return S("Com o lingering ligado, o pierd continua depois do logout. Ele tentou ligar sozinho; se o sistema recusou, peça a quem administra a box para rodar o comando.")
         case .listening: return S("Melhor ouvir só no endereço da tailnet: pierd install faz isso.")
         case .location: return S("O pierd ainda lista a pasta; remova ou mova o projeto de volta.")
         case .unreachable: return S("Confira a rede ou a VPN; o app tenta de novo sozinho.")
@@ -122,6 +126,7 @@ enum HealthWords {
     static func detail(_ c: BoxHealthStore.Card) -> String? {
         switch c.issue.kind {
         case .agentSignIn, .agentHooks, .noAgents, .service, .lingering, .revoked, .keyChanged: return nil
+        case .tool(let name) where name == "gh": return nil
         default: return c.issue.detail
         }
     }

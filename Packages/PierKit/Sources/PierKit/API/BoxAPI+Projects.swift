@@ -111,7 +111,8 @@ extension BoxAPI {
         _ = try await call(.delete, "/v1/accounts/\(Self.seg(id))")
     }
 
-    /// A terminal on the account's folder where the person signs in (open it as a session).
+    /// The account's sign-in, as a session to open as a terminal (a box with `logins` runs the CLI's own sign-in there,
+    /// which `startLogin` follows without one).
     public func loginAccount(id: String) async throws -> Session {
         try decode(try await call(.post, "/v1/accounts/\(Self.seg(id))/login").data)
     }

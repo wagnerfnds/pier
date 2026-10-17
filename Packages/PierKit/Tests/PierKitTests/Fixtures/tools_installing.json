@@ -1,0 +1,26 @@
+[
+  {
+    "command": "claude",
+    "id": "claude",
+    "installed": true,
+    "name": "Claude Code",
+    "path": "/home/ubuntu/.local/bin/claude",
+    "version": "2.1.302 (Claude Code)"
+  },
+  {
+    "command": "codex",
+    "id": "codex",
+    "installed": false,
+    "installing": true,
+    "log": "/home/ubuntu/.config/pier/box/logs/tools/codex.log",
+    "name": "Codex"
+  },
+  {
+    "command": "gh",
+    "id": "gh",
+    "installed": false,
+    "installing": true,
+    "log": "/home/ubuntu/.config/pier/box/logs/tools/gh.log",
+    "name": "GitHub CLI"
+  }
+]

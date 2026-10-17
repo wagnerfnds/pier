@@ -1,0 +1,10 @@
+{
+  "id": "da71a5bd807f",
+  "needs_code": false,
+  "session": "login-gh",
+  "started": "2026-10-17T00:46:14.808188Z",
+  "state": "open_link",
+  "tool": "gh",
+  "url": "https://github.com/login/device",
+  "user_code": "1B8C-23C0"
+}

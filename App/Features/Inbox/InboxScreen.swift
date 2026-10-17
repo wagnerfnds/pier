@@ -20,6 +20,8 @@ struct InboxScreen: View {
     @State private var visible = false
     /// What Copiar last put on the clipboard (the UI tests read it from a hidden label; they cannot read the clipboard).
     @State private var lastCopied = ""
+    /// A box card's Entrar: the sign-in sheet.
+    @State private var signIn: SignInRequest?
     @FocusState private var replyFocus: String?
     private let store = InboxStore.shared
     private let signals = SessionSignals.shared
@@ -50,6 +52,11 @@ struct InboxScreen: View {
             }
         }
         .background { shortcuts(entries) }
+        .sheet(item: $signIn) { r in
+            SignInSheet(request: r, openTerminal: { s in router.push(SessionRoute(box: r.box, session: s)) },
+                        onDone: { Task { await health.refresh(model: model, force: true) } })
+                .environment(model)
+        }
         #if DEBUG
         // UI tests: which card has the keyboard focus, and `-inboxResetArchive 1` undoes archive marks a run left behind.
         .overlay(alignment: .bottomLeading) {
@@ -105,7 +112,8 @@ struct InboxScreen: View {
             Section {
                 ForEach(cards) { c in
                     let on = focused == c.id
-                    InboxHealthCard(card: c, copy: { copyFix(c) }, snooze: { health.snooze(c, model: model) })
+                    InboxHealthCard(card: c, action: action(c), installing: installing(c), copy: { copyFix(c) },
+                                    perform: { perform(c) }, snooze: { health.snooze(c, model: model) })
                         .overlay {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .strokeBorder(Theme.accent, lineWidth: 2)
@@ -135,6 +143,35 @@ struct InboxScreen: View {
                 .frame(maxWidth: 760).frame(maxWidth: .infinity)
                 .padding(.horizontal, 4).padding(.vertical, 6)
             }
+        }
+    }
+
+    /// What a box's card can do right there: sign in or install, on a box that does it from the app (`SignIn.action`).
+    private func action(_ c: BoxHealthStore.Card) -> SignIn.Action? {
+        let info = model.connection(for: c.box)?.info
+        return SignIn.action(for: c.issue, logins: info?.has("logins") == true, tools: info?.has("tools") == true)
+    }
+
+    private func installing(_ c: BoxHealthStore.Card) -> Bool {
+        guard case .install(let ids)? = action(c) else { return false }
+        return ids.contains { BoxToolsStore.shared.installing($0, box: c.box) }
+    }
+
+    /// Entrar opens the sign-in sheet; Instalar has the box install it (the card goes once the box's report says so).
+    private func perform(_ c: BoxHealthStore.Card) {
+        focused = c.id
+        switch action(c) {
+        case .signIn(let tool, let account)?:
+            signIn = SignInRequest(box: c.box, tool: tool, account: account)
+        case .install(let ids)?:
+            guard !installing(c) else { return }
+            Task {
+                if let why = await BoxToolsStore.shared.install(ids, box: c.box, model: model) {
+                    model.toast = AppToast(text: why, symbol: "exclamationmark.triangle")
+                }
+            }
+        case nil:
+            copyFix(c)
         }
     }
 
@@ -263,7 +300,7 @@ struct InboxScreen: View {
             key(.return) {
                 switch current(entries) {
                 case .agent(let i)?: open(i)
-                case .box(let c)?: keyboardUsed = true; focused = c.id; copyFix(c)
+                case .box(let c)?: keyboardUsed = true; perform(c)
                 case nil: break
                 }
             }
@@ -340,11 +377,15 @@ extension BoxHealthStore.Card {
     var testID: String { "inbox-health-" + issue.id.replacingOccurrences(of: "/", with: ".").replacingOccurrences(of: " ", with: "-") }
 }
 
-/// What a box needs from the person: the problem in plain words, the command to run there (with Copiar) and a way to put
-/// it off for a day. Red for what blocks the box, amber for what weakens it.
+/// What a box needs from the person: the problem in plain words, the command to run there (with Copiar), Entrar or
+/// Instalar where the box signs in or installs from the app, and a way to put it off for a day. Red for what blocks the
+/// box, amber for what weakens it.
 private struct InboxHealthCard: View {
     let card: BoxHealthStore.Card
+    let action: SignIn.Action?
+    let installing: Bool
     let copy: () -> Void
+    let perform: () -> Void
     let snooze: () -> Void
     @State private var copied = false
 
@@ -391,6 +432,22 @@ private struct InboxHealthCard: View {
                     }
                 }
                 HStack(spacing: 8) {
+                    switch action {
+                    case .signIn?:
+                        Button(action: perform) { Label("Entrar", systemImage: "person.badge.key") }
+                            .buttonStyle(InboxPillStyle(color: Theme.accent))
+                            .accessibilityIdentifier("inbox-health-sign-in")
+                    case .install? where installing:
+                        HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("Instalando…") }
+                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.textDim)
+                            .accessibilityIdentifier("inbox-health-installing")
+                    case .install?:
+                        Button(action: perform) { Label("Instalar", systemImage: "arrow.down.circle") }
+                            .buttonStyle(InboxPillStyle(color: Theme.accent))
+                            .accessibilityIdentifier("inbox-health-install")
+                    case nil:
+                        EmptyView()
+                    }
                     Button(action: snooze) { Label("Ignorar por hoje", systemImage: "clock.badge.xmark") }
                         .buttonStyle(InboxPillStyle(color: Theme.textDim))
                         .accessibilityIdentifier("inbox-health-snooze")

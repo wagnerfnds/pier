@@ -15522,6 +15522,472 @@
           }
         }
       }
+    },
+    "%@ conectado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ connected"
+          }
+        }
+      }
+    },
+    "A box %@ não está conectada." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box %@ is not connected."
+          }
+        }
+      }
+    },
+    "A box instala o gh sozinha, sem sudo. Depois, entre na sua conta do GitHub. Enquanto isso, dá para clonar pelo link." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box installs gh by itself, with no sudo. Then sign in to your GitHub account. Meanwhile, you can clone by link."
+          }
+        }
+      }
+    },
+    "A box não está conectada." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box is not connected."
+          }
+        }
+      }
+    },
+    "A box perdeu este login (o pierd reiniciou?). Tente de novo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box lost this sign-in (did pierd restart?). Try again."
+          }
+        }
+      }
+    },
+    "Abra a página de login" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the sign-in page"
+          }
+        }
+      }
+    },
+    "Abra a página e digite o código." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the page and enter the code."
+          }
+        }
+      }
+    },
+    "Abrir a página de login" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the sign-in page"
+          }
+        }
+      }
+    },
+    "Abrir no terminal" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in the terminal"
+          }
+        }
+      }
+    },
+    "Cole aqui o código" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste the code here"
+          }
+        }
+      }
+    },
+    "Com o lingering ligado, o pierd continua depois do logout. Ele tentou ligar sozinho; se o sistema recusou, peça a quem administra a box para rodar o comando." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With lingering on, pierd keeps running after you log out. It tried to turn it on by itself; if the system refused, ask whoever runs the box to run the command."
+          }
+        }
+      }
+    },
+    "Conectado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected"
+          }
+        }
+      }
+    },
+    "Conferindo com o %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking with %@…"
+          }
+        }
+      }
+    },
+    "Conta %@ na box %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account %1$@ on the box %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conta %1$@ na box %2$@"
+          }
+        }
+      }
+    },
+    "Contas" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts"
+          }
+        }
+      }
+    },
+    "Copiar o código e abrir a página" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy the code and open the page"
+          }
+        }
+      }
+    },
+    "Código da página" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code from the page"
+          }
+        }
+      }
+    },
+    "Depois de criar, você entra na conta pelo navegador." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Once it is created, you sign in through the browser."
+          }
+        }
+      }
+    },
+    "Depois de entrar, a página mostra um código: cole aqui." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Once you sign in, the page shows a code: paste it here."
+          }
+        }
+      }
+    },
+    "Entrar no %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to %@"
+          }
+        }
+      }
+    },
+    "Entrar no GitHub" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to GitHub"
+          }
+        }
+      }
+    },
+    "Entre na sua conta do GitHub pelo navegador: a box guarda o login no gh dela." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to your GitHub account in the browser: the box keeps the sign-in in its gh."
+          }
+        }
+      }
+    },
+    "Entre no Claude Code, no Codex e no GitHub da box %@ para os agentes trabalharem. Tudo pelo navegador; dá para fazer depois em Ajustes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to Claude Code, Codex and GitHub on the box %@ so the agents can work. All in the browser; you can also do it later in Settings."
+          }
+        }
+      }
+    },
+    "Esperando você confirmar na página…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for you to confirm on the page…"
+          }
+        }
+      }
+    },
+    "Esta ferramenta não está instalada na box. Instale-a primeiro." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This tool is not installed on the box. Install it first."
+          }
+        }
+      }
+    },
+    "GitHub" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub"
+          }
+        }
+      }
+    },
+    "Instalado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installed"
+          }
+        }
+      }
+    },
+    "Instalando na box…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installing on the box…"
+          }
+        }
+      }
+    },
+    "Instalando o gh na box…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installing gh on the box…"
+          }
+        }
+      }
+    },
+    "Instalando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installing…"
+          }
+        }
+      }
+    },
+    "Instalar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install"
+          }
+        }
+      }
+    },
+    "Instalar o GitHub CLI" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install the GitHub CLI"
+          }
+        }
+      }
+    },
+    "Na box %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On the box %@"
+          }
+        }
+      }
+    },
+    "Na página, digite este código:" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On the page, enter this code:"
+          }
+        }
+      }
+    },
+    "No Linux, deixe o pierd rodando depois do logout (o setup já tenta, sem sudo)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On Linux, keep pierd running after you log out (setup already tries this, with no sudo)"
+          }
+        }
+      }
+    },
+    "Não deu para instalar: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not install it: %@"
+          }
+        }
+      }
+    },
+    "Não foi possível entrar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not sign in"
+          }
+        }
+      }
+    },
+    "Não instalado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not installed"
+          }
+        }
+      }
+    },
+    "Os agentes da box %@ já podem usar esta conta." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The agents on the box %@ can use this account now."
+          }
+        }
+      }
+    },
+    "Preparando o login na box…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Getting the sign-in ready on the box…"
+          }
+        }
+      }
+    },
+    "Pular por enquanto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skip for now"
+          }
+        }
+      }
+    },
+    "Pull requests e a lista de repositórios do GitHub usam o GitHub CLI (gh)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull requests and the GitHub repositories list use the GitHub CLI (gh)."
+          }
+        }
+      }
+    },
+    "Pull requests, a lista de repositórios e os repositórios privados precisam do GitHub CLI conectado." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull requests, the repositories list and private repositories need the GitHub CLI signed in."
+          }
+        }
+      }
+    },
+    "Se algo aqui não funcionar, o login continua no terminal da box, onde dá para copiar e colar." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If something here does not work, the sign-in goes on in the box's terminal, where you can copy and paste."
+          }
+        }
+      }
+    },
+    "Se o sistema recusar, quem administra a máquina roda" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If the system refuses, whoever runs the machine runs"
+          }
+        }
+      }
+    },
+    "Sem login" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not signed in"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

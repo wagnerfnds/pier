@@ -128,6 +128,16 @@ final class DotsAndOnboardingUITests: XCTestCase {
         field.typeText("pier://192.0.2.10:7444?code=\(String(repeating: "a", count: 52))&fp=\(String(repeating: "a", count: 52))")
         app.buttons["Parear"].tap()
 
+        // The box's accounts next: Claude Code, Codex and GitHub, each signed in on the mock box, so the step can go on.
+        let accounts = element("onboarding-accounts").waitForExistence(timeout: 10)
+        if !accounts { shot("onboarding-pair-failed") }
+        XCTAssertTrue(accounts, "pairing did not reach Contas")
+        for tool in ["claude", "codex", "gh"] {
+            XCTAssertTrue(element("onboarding-account-\(tool)").waitForExistence(timeout: 5), "Contas does not list \(tool)")
+        }
+        shot("onboarding-accounts")
+        app.buttons["onboarding-accounts-next"].tap()
+
         let done = element("onboarding-done").waitForExistence(timeout: 10)
         if !done { shot("onboarding-pair-failed") }
         XCTAssertTrue(done, "pairing did not end on Tudo pronto")

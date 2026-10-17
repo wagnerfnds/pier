@@ -75,6 +75,7 @@ enum ComposeErrorText {
             return String(localized: "O prompt passa do limite de 128 KB. Encurte o texto (ou envie um prompt curto e o resto depois).")
         }
         if code == "tmux_missing" { return String(localized: "A box não tem o tmux instalado, então não consegue iniciar agentes. Instale-o na box.") }
+        if code == "tool_missing" { return String(localized: "Esta ferramenta não está instalada na box. Instale-a primeiro.") }
         if code == "session_exists" || status == 409 && low.contains("session") { return String(localized: "Já existe uma sessão com esse nome. Tente de novo.") }
         if low.contains("already exists") || low.contains("already checked out") || low.contains("is already used") {
             return String(localized: "Já existe uma worktree ou branch com esse nome. Escolha outro nome.")
