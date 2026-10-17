@@ -87,8 +87,9 @@ type loginRun struct {
 	bin, path string
 	env       []string
 	cancel    context.CancelFunc
-	// gh's two questions are answered once: git through gh's credentials (yes), and Enter to go on.
-	gitAnswered, enterPressed bool
+	// gh's questions are answered once each: signing in again (yes), git through gh's credentials (yes), and Enter to
+	// go on.
+	reauthAnswered, gitAnswered, enterPressed bool
 	// codeSent and prompts: a code went in while Claude Code showed that many paste prompts. code is the last one
 	// typed, kept only to take it out of the error a failure quotes from the screen.
 	codeSent bool
@@ -167,12 +168,19 @@ func finished(l *loginRun, state, why string) {
 	if l.Finished != nil {
 		return
 	}
-	// The screen a failure quotes can show the code typed into it, or the one-time code: neither stays in the error.
-	for _, secret := range []string{l.code, l.UserCode} {
+	// The screen a failure quotes can show the code typed into it, the one-time code or the sign-in's link: none of
+	// them stays in the error.
+	for _, secret := range []string{l.code, l.UserCode, l.URL} {
 		if len(secret) >= 4 {
 			why = strings.ReplaceAll(why, secret, "…")
 		}
 	}
+	why = loginURL.ReplaceAllStringFunc(why, func(u string) string {
+		if strings.Contains(u, loginURLHint[l.Tool]) {
+			return "…"
+		}
+		return u
+	})
 	now := time.Now().UTC()
 	l.State, l.Error, l.Finished = state, why, &now
 	if l.cancel != nil {
@@ -188,8 +196,9 @@ type loginScreen struct {
 	// Prompts counts Claude Code's "Paste code here" prompts: one more after a code went in means it asks again.
 	Prompts int
 	// GitQuestion: gh asks whether git should use its credentials. PressEnter: gh waits for Enter before it opens a
-	// browser (on the box, none: GH_BROWSER) and starts asking GitHub whether the code was entered.
-	GitQuestion, PressEnter bool
+	// browser (on the box, none: GH_BROWSER) and starts asking GitHub whether the code was entered. Reauth: an older gh
+	// already signed in asks whether to sign in again.
+	GitQuestion, PressEnter, Reauth bool
 }
 
 var (
@@ -198,6 +207,7 @@ var (
 	pastePrompt = regexp.MustCompile(`(?i)paste code here`)
 	gitQuestion = regexp.MustCompile(`(?i)authenticate git with your github credentials\?\s*\(y/n\)`)
 	pressEnter  = regexp.MustCompile(`(?i)press enter to open`)
+	reauth      = regexp.MustCompile(`(?i)do you want to re-?authenticate\?\s*\(y/n\)`)
 )
 
 // loginURLHint is in the link each CLI shows, to tell it from any other.
@@ -226,6 +236,7 @@ func readLoginScreen(tool, screen string) loginScreen {
 	sc.Prompts = len(pastePrompt.FindAllStringIndex(screen, -1))
 	sc.GitQuestion = gitQuestion.MatchString(screen)
 	sc.PressEnter = pressEnter.MatchString(screen)
+	sc.Reauth = reauth.MatchString(screen)
 	return sc
 }
 
@@ -239,6 +250,11 @@ func (l *loginRun) advance(sc loginScreen) (keys []string) {
 		l.UserCode = sc.Code
 	}
 	if l.Tool == "gh" {
+		// Signing in again is what the person asked for.
+		if sc.Reauth && !l.reauthAnswered {
+			l.reauthAnswered = true
+			keys = append(keys, "y", "Enter")
+		}
 		if sc.GitQuestion && !l.gitAnswered {
 			l.gitAnswered = true
 			keys = append(keys, "Enter")
@@ -249,13 +265,14 @@ func (l *loginRun) advance(sc loginScreen) (keys []string) {
 		}
 	}
 	if l.Tool != "claude" {
-		if l.URL != "" && l.UserCode != "" {
+		// The link is enough to go on: a code that was not read is on the page or in "Abrir no terminal".
+		if l.URL != "" {
 			l.State = LoginOpenLink
 		}
 		return keys
 	}
 	switch {
-	case l.codeSent && sc.Prompts > l.prompts:
+	case l.codeSent && l.prompts > 0 && sc.Prompts > l.prompts:
 		// It asks again: the code did not take.
 		l.codeSent = false
 		l.State, l.Error = LoginEnterCode, "Claude Code did not take that code; copy it again from the page"
@@ -384,7 +401,7 @@ func (b *Box) startLogin(r *http.Request, tool, account string) (Login, Session,
 		}
 		env = append(env, "GH_BROWSER=true", "GH_NO_UPDATE_NOTIFIER=1")
 	}
-	f, ok := agentFound(t.Command)
+	f, ok := b.toolFound(ctx, t.Command)
 	if !ok {
 		return Login{}, Session{}, httpError{http.StatusFailedDependency, t.Name + " " + errToolMissing.Error() + "; install it first (POST /v1/tools/install)"}
 	}
@@ -429,6 +446,35 @@ func (b *Box) publishLogin(origin string, l Login) {
 		data["account"] = l.Account
 	}
 	b.Events.Publish(events.Event{Type: "login.changed", Box: b.Name, Origin: origin, Data: data})
+}
+
+// EndStaleSignIns ends the sign-in sessions a previous pierd left: a restart forgets its sign-ins, so nothing would
+// follow them, and their CLIs would wait for a code until someone killed them.
+func (b *Box) EndStaleSignIns(ctx context.Context) {
+	all, err := b.Sessions.List(ctx)
+	if err != nil {
+		return
+	}
+	for _, s := range all {
+		if strings.HasPrefix(s.Name, "login-") && signInCommand(s.Command) {
+			b.endLoginSession(DefaultOrigin, s.Name)
+		}
+	}
+}
+
+// signInCommand says whether a session's command is a sign-in's: this pierd's, or the terminal an older one opened on
+// Claude Code's /login or Codex's device sign-in.
+func signInCommand(command string) bool {
+	for _, args := range loginCommand {
+		if strings.HasSuffix(command, " "+args) {
+			return true
+		}
+	}
+	switch command {
+	case "claude", "claude /login", "codex login --device-auth":
+		return true
+	}
+	return false
 }
 
 // endLoginSession ends a sign-in's session and says so, as ending any session does: the session lists and the turn
@@ -518,15 +564,25 @@ func (b *Box) finishLogin(ctx context.Context, origin, id string, status int, sc
 			}
 		}
 	}
-	if state == LoginDone && run.Tool == "gh" {
-		// git push over HTTPS through gh's credentials, as the person would set it up.
+	// What the sign-in is now decides what follows: it may have been canceled while the CLI was asked.
+	after, _ := b.updateLogin(origin, id, func(l *loginRun) { finished(l, state, why) })
+	b.endLoginSession(origin, run.Session)
+	if run.Tool == "gh" {
+		b.ghAuth.forget()
+	}
+	if after.State != LoginDone {
+		return
+	}
+	if run.Tool == "gh" {
+		// git push over HTTPS through gh's credentials, as the person would set it up. The sign-in's own context
+		// ended with it.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		cmd := exec.CommandContext(ctx, run.bin, "auth", "setup-git", "--hostname", "github.com")
 		cmd.Env = loginEnv(run)
 		cmd.Run()
 	}
-	b.updateLogin(origin, id, func(l *loginRun) { finished(l, state, why) })
-	b.endLoginSession(origin, run.Session)
-	if state == LoginDone && run.Account != "" {
+	if run.Account != "" {
 		// Its account reads as signed in now.
 		b.Events.Publish(events.Event{Type: "account.changed", Box: b.Name, Origin: origin, Data: map[string]any{"id": run.Account}})
 	}
@@ -619,12 +675,19 @@ func (b *Box) loginCode(w http.ResponseWriter, r *http.Request) error {
 		return httpError{http.StatusConflict, "this sign-in is not waiting for a code"}
 	}
 	prompts := readLoginScreen(run.Tool, b.Sessions.loginScreenText(r.Context(), run.Session)).Prompts
+	// Whatever was typed at the prompt before goes first (C-u), then the code.
+	if err := b.Sessions.pressKeys(r.Context(), run.Session, false, "C-u"); err != nil {
+		return err
+	}
 	if err := b.Sessions.pressKeys(r.Context(), run.Session, true, literalChunks(code)...); err != nil {
 		return err
 	}
-	// The prompt takes the paste before Enter.
+	// Once the code went in, its Enter goes too, even if the app stopped waiting for the answer. The prompt takes the
+	// paste before Enter.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	time.Sleep(100 * time.Millisecond)
-	if err := b.Sessions.pressKeys(r.Context(), run.Session, false, "Enter"); err != nil {
+	if err := b.Sessions.pressKeys(ctx, run.Session, false, "Enter"); err != nil {
 		return err
 	}
 	l, _ := b.updateLogin(origin(r), id, func(l *loginRun) {

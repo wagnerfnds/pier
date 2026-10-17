@@ -16,7 +16,8 @@ import (
 // 2.1 `claude auth login`), codex.txt (Codex 0.160 `codex login --device-auth`), gh-question.txt and gh-code-mac.txt
 // (gh 2.102 `gh auth login --web --git-protocol https`, before and after its first question, on a Mac where it copies
 // the code) were captured from the real CLIs in throwaway config folders; gh-code-linux.txt is the same screen where
-// gh has no clipboard, as its source (internal/authflow) prints it.
+// gh has no clipboard, and gh-reauth.txt an older gh's question when it is signed in already, as gh's source prints
+// them.
 func loginFixture(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", "logins", name))
@@ -95,6 +96,25 @@ func TestLoginStates(t *testing.T) {
 	if keys := c.advance(readLoginScreen("codex", loginFixture(t, "codex.txt"))); len(keys) != 0 || c.State != LoginOpenLink || c.UserCode != "0Z7Z-OCWM5" {
 		t.Fatalf("codex: keys %v, %+v", keys, c.Login)
 	}
+	// A code in a shape the screen reading does not know: the link alone goes on, the code is on the page.
+	odd := &loginRun{Login: Login{Tool: "codex", State: LoginStarting}}
+	if odd.advance(readLoginScreen("codex", strings.Replace(loginFixture(t, "codex.txt"), "0Z7Z-OCWM5", "zz-9", 1))); odd.State != LoginOpenLink || odd.UserCode != "" {
+		t.Fatalf("codex without a code read: %+v", odd.Login)
+	}
+
+	// An older gh, signed in already, asks whether to sign in again: yes, that is what the person asked for.
+	re := &loginRun{Login: Login{Tool: "gh", State: LoginStarting}}
+	if keys := re.advance(readLoginScreen("gh", loginFixture(t, "gh-reauth.txt"))); strings.Join(keys, " ") != "y Enter" {
+		t.Fatalf("gh's re-authenticate question: keys %v", keys)
+	}
+	if keys := re.advance(readLoginScreen("gh", loginFixture(t, "gh-reauth.txt"))); len(keys) != 0 {
+		t.Fatalf("answered twice: %v", keys)
+	}
+	// A code that went in before Claude Code showed its prompt is not taken for one it refused.
+	early := &loginRun{Login: Login{Tool: "claude", State: LoginWaiting, NeedsCode: true, URL: "https://claude.com/cai/oauth/authorize?x"}, codeSent: true, prompts: 0}
+	if early.advance(readLoginScreen("claude", claudeScreen)); early.State != LoginWaiting || early.Error != "" {
+		t.Fatalf("a code sent before the prompt: %+v", early.Login)
+	}
 }
 
 // fakeCLIs puts stand-ins for claude, codex and gh on a PATH of their own (with tmux beside them, and nothing else, so
@@ -108,6 +128,9 @@ func fakeCLIs(t *testing.T, which ...string) (state string) {
 	}
 	bin, state := t.TempDir(), t.TempDir()
 	os.Symlink(tmux, filepath.Join(bin, "tmux"))
+	if git, err := exec.LookPath("git"); err == nil {
+		os.Symlink(git, filepath.Join(bin, "git"))
+	}
 	scripts := map[string]string{
 		"claude": `case "$1 $2" in
 "auth login")
@@ -433,7 +456,30 @@ func TestFailedSignInKeepsTheCodeOutOfItsError(t *testing.T) {
 	waitLogin(t, c, l.ID, func(l Login) bool { return l.State == LoginEnterCode })
 	call(t, c, "POST", "/v1/logins/"+l.ID+"/code", "", map[string]string{"code": "spent#state"}, nil)
 	l = waitLogin(t, c, l.ID, func(l Login) bool { return l.Finished != nil })
-	if l.State != LoginFailed || !strings.Contains(l.Error, "invalid_grant") || strings.Contains(l.Error, "spent#state") {
+	if l.State != LoginFailed || !strings.Contains(l.Error, "invalid_grant") || strings.Contains(l.Error, "spent#state") || strings.Contains(l.Error, "oauth/authorize") {
 		t.Fatalf("failed = %+v", l)
+	}
+}
+
+// A restarted pierd ends the sign-ins a previous one left waiting, and nothing else.
+func TestStaleSignInsEndAtStart(t *testing.T) {
+	fakeCLIs(t, "codex")
+	var bx *Box
+	servedBox(t, func(b *Box) { bx = b })
+	ctx := context.Background()
+	codex, _ := exec.LookPath("codex")
+	for name, command := range map[string]string{"login-codex": shellQuote(codex) + " login --device-auth", "login-notes": "sleep 30", "work": "sleep 30"} {
+		if _, err := bx.Sessions.Create(ctx, name, "", t.TempDir(), command, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bx.EndStaleSignIns(ctx)
+	if !sessionGone(t, bx, "login-codex") {
+		t.Error("a sign-in left from before stayed")
+	}
+	for _, name := range []string{"login-notes", "work"} {
+		if _, err := bx.Sessions.Get(ctx, name); err != nil {
+			t.Errorf("%s went too: %v", name, err)
+		}
 	}
 }

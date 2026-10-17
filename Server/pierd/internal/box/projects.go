@@ -429,7 +429,12 @@ func cloneRepo(ctx context.Context, src repoSource, dest, logPath string) error 
 	gitClone := "git clone -- " + shellQuote(src.URL) + " " + shellQuote(dest)
 	script := gitClone
 	if src.Slug != "" {
-		script = "if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then gh repo clone " +
+		// The gh pierd finds (one it installed in ~/.local/bin too), else the login shell's.
+		ghBin := "gh"
+		if f, ok := agentFound("gh"); ok {
+			ghBin = shellQuote(f.Path)
+		}
+		script = "if command -v " + ghBin + " >/dev/null 2>&1 && " + ghBin + " auth status >/dev/null 2>&1; then " + ghBin + " repo clone " +
 			shellQuote(src.Slug) + " " + shellQuote(dest) + "; else " + gitClone + "; fi"
 	}
 	shArgs, shVar := shInLogin(script)

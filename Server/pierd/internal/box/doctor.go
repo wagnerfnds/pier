@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
+	"pier/pierd/internal/agentpath"
 	"pier/pierd/internal/doctor"
 	"pier/pierd/internal/groups"
 	"pier/pierd/internal/integrations"
@@ -58,7 +60,7 @@ func (b *Box) Doctor(ctx context.Context) []doctor.Check {
 		}
 		checks = append(checks, b.accountSignInChecks()...)
 	}
-	checks = append(checks, ghChecks(ctx)...)
+	checks = append(checks, b.ghChecks(ctx)...)
 	checks = append(checks, b.eventChecks()...)
 	locs, err := b.Locations.List(ctx)
 	if err != nil {
@@ -107,16 +109,70 @@ func (b *Box) accountSignInChecks() []doctor.Check {
 }
 
 // ghChecks report the GitHub CLI, which pull requests, the GitHub list and private clones run through, and whether it
-// is signed in, by its own `gh auth status`.
-func ghChecks(ctx context.Context) []doctor.Check {
-	f, ok := agentFound("gh")
+// is signed in. They warn only on a box with a project on GitHub: elsewhere a missing or signed-out gh is information,
+// not a card that could only be put off a day at a time.
+func (b *Box) ghChecks(ctx context.Context) []doctor.Check {
+	level := doctor.Info
+	if b.usesGitHub(ctx) {
+		level = doctor.Warn
+	}
+	f, ok := b.toolFound(ctx, "gh")
 	if !ok {
-		return []doctor.Check{{Area: "Worktrees and sessions", Name: "gh", Status: doctor.Warn,
+		return []doctor.Check{{Area: "Worktrees and sessions", Name: "gh", Status: level,
 			Detail: "not installed; pull requests and the GitHub list need it, and the Pier app can install it",
 			Fix:    "pierd tools install gh", Tool: "gh"}}
 	}
 	checks := []doctor.Check{{Area: "Worktrees and sessions", Name: "gh", Status: doctor.OK, Detail: f.Path, Tool: "gh"}}
 	c := doctor.Check{Area: "Agents", Name: "GitHub sign-in", Status: doctor.OK, Detail: "signed in", Tool: "gh"}
+	switch in, known := b.ghSignedIn(ctx, f); {
+	case !known:
+		c.Status, c.Detail = doctor.Info, "gh auth status did not answer in time"
+	case !in:
+		c.Status, c.Detail = level, "gh is not signed in on this box: pull requests, the GitHub list and private repositories need it"
+		c.Fix = "gh auth login --web --git-protocol https"
+	}
+	return append(checks, c)
+}
+
+// usesGitHub says whether a project on the box has its remote on github.com.
+func (b *Box) usesGitHub(ctx context.Context) bool {
+	locs, err := b.Locations.List(ctx)
+	if err != nil {
+		return false
+	}
+	for _, l := range locs {
+		if strings.Contains(strings.ToLower(l.Remote), "github.com") {
+			return true
+		}
+	}
+	return false
+}
+
+// ghAuthCache keeps what `gh auth status` said for a while: it asks GitHub, so every doctor report and tools list would
+// wait on the network. A sign-in to GitHub, or gh installed from the app, forgets it.
+type ghAuthCache struct {
+	mu        sync.Mutex
+	at        time.Time
+	in, known bool
+}
+
+const ghAuthTTL = 10 * time.Minute
+
+func (c *ghAuthCache) forget() {
+	c.mu.Lock()
+	c.at = time.Time{}
+	c.mu.Unlock()
+}
+
+// ghSignedIn says whether the gh at f is signed in to github.com, by its own status; known is false when it did not
+// answer in time (asked again next time).
+func (b *Box) ghSignedIn(ctx context.Context, f agentpath.Found) (in, known bool) {
+	c := &b.ghAuth
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.at.IsZero() && time.Since(c.at) < ghAuthTTL {
+		return c.in, c.known
+	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, f.Path, "auth", "status", "--hostname", "github.com")
@@ -124,15 +180,12 @@ func ghChecks(ctx context.Context) []doctor.Check {
 	if f.PATH != "" {
 		cmd.Env = append(cmd.Env, "PATH="+f.PATH)
 	}
-	switch err := cmd.Run(); {
-	case err == nil:
-	case ctx.Err() != nil:
-		c.Status, c.Detail = doctor.Info, "gh auth status did not answer in time"
-	default:
-		c.Status, c.Detail = doctor.Warn, "gh is not signed in on this box: pull requests, the GitHub list and private repositories need it"
-		c.Fix = "gh auth login --web --git-protocol https"
+	err := cmd.Run()
+	if err != nil && ctx.Err() != nil {
+		return false, false
 	}
-	return append(checks, c)
+	c.in, c.known, c.at = err == nil, true, time.Now()
+	return c.in, true
 }
 
 // processChecks say how sessions are cleaned up here.

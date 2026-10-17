@@ -514,7 +514,7 @@ func (b *Box) handleExec(w http.ResponseWriter, r *http.Request) error {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	shArgs, shVar := shInLogin(envBinFirst + req.Command)
+	shArgs, shVar := shInLogin(localBinLast + envBinFirst + req.Command)
 	cmd := groups.CommandContext(ctx, shell, shArgs...)
 	cmd.Dir = dir
 	cmd.Env = append(append(os.Environ(), b.envForDir(ctx, dir)...), shVar)

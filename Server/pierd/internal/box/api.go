@@ -98,8 +98,10 @@ type Box struct {
 	// internal/installer (tests); tools are the installs since pierd started.
 	ToolInstaller func(ctx context.Context, id string, out io.Writer) error
 	tools         toolJobs
-	// logins are the sign-ins run from the app (logins.go).
+	// logins are the sign-ins run from the app (logins.go); ghAuth what gh
+	// last said of its sign-in (doctor.go).
 	logins loginStore
+	ghAuth ghAuthCache
 }
 
 // Mount registers the box's routes on s. They are reachable by paired

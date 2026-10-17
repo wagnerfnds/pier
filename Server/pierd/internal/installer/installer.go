@@ -523,16 +523,18 @@ func extract(archive string, isZip bool, match func(string) bool, dst string) er
 	}
 }
 
-// writeExecutable writes r to dst through a file beside it, so a running copy of the old one is never cut short.
+// writeExecutable writes r to dst through a file of its own beside it, renamed over dst once whole: a running copy of
+// the old one is never cut short, and two installs at once (the app's and `pierd tools install`) never write into the
+// same file.
 func writeExecutable(dst string, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	tmp := dst + ".pierd-new"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	f, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".pierd-*")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
 	n, err := io.Copy(f, io.LimitReader(r, maxDownload+1))
 	if cerr := f.Close(); err == nil {
 		err = cerr

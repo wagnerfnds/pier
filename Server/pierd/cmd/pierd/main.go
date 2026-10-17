@@ -367,6 +367,7 @@ func serve(b boxHome, args []string) error {
 	go bx.Samples.Run(ctx)
 	go bx.SyncSkills()
 	go bx.StartShares(ctx)
+	go bx.EndStaleSignIns(ctx)
 	bx.Mount(s)
 	if err := startPush(ctx, b, s, bx, bus, logger); err != nil {
 		// Push is an extra: pierd serves without it, and says why.

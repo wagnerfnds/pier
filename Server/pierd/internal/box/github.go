@@ -54,19 +54,32 @@ var (
 	ghOwner      = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`)
 )
 
-// gh runs the GitHub CLI through the user's login shell, where it is on
-// PATH, and returns its standard output.
+// gh runs the GitHub CLI and returns its standard output: the gh pierd finds
+// as the person's terminal would (agentpath: ~/.local/bin, where pierd
+// installs it, included), else the one the user's login shell has on PATH.
+// The same gh doctor and the sign-in see, so one installed from the app
+// works here at once.
 func gh(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	quoted := make([]string, len(args))
-	for i, a := range args {
-		quoted[i] = shellQuote(a)
+	quiet := []string{"GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1"}
+	var cmd *exec.Cmd
+	if f, ok := agentFound("gh"); ok {
+		cmd = groups.CommandContext(ctx, f.Path, args...)
+		cmd.Env = append(os.Environ(), quiet...)
+		if f.PATH != "" {
+			cmd.Env = append(cmd.Env, "PATH="+f.PATH)
+		}
+	} else {
+		quoted := make([]string, len(args))
+		for i, a := range args {
+			quoted[i] = shellQuote(a)
+		}
+		script := "command -v gh >/dev/null 2>&1 || exit 127; exec gh " + strings.Join(quoted, " ")
+		shArgs, shVar := shInLogin(script)
+		cmd = groups.CommandContext(ctx, loginShell(), shArgs...)
+		cmd.Env = append(append(os.Environ(), shVar), quiet...)
 	}
-	script := "command -v gh >/dev/null 2>&1 || exit 127; exec gh " + strings.Join(quoted, " ")
-	shArgs, shVar := shInLogin(script)
-	cmd := groups.CommandContext(ctx, loginShell(), shArgs...)
-	cmd.Env = append(os.Environ(), shVar, "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
