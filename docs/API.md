@@ -581,35 +581,49 @@ keeps the list in `$PIER_HOME/box/mcp.json` (mode 0600: the tokens are in it) an
 Code and Codex account (2.10) through the agents' own CLIs, which keep their files whole while agents run: `claude mcp
 add --scope user` on each Claude account (its folder's `.claude.json`; the built-in account's is `~/.claude.json`),
 `codex mcp add` on each `CODEX_HOME`. That happens when a server is saved, when an account is added and when pierd
-starts (an entry removed by hand comes back). pierd records what it wrote (`mcp-written.json`) and only ever removes
-that: a server the person added by hand stays, even one of the same name (that account is then left alone, and
-`problems` says so). Agents already running keep the servers they started with.
+starts (an entry removed by hand comes back); pierd lets a sync finish before it stops (10 s at most). Agents already
+running keep the servers they started with.
 
-* `GET /v1/mcp[?status=1]` → `{servers: [{name, transport, url?, command?, args?, headers?, token_set, token_var?, env?,
-  agents, enabled, problems?, status?}]}`. A token never comes back: `token_set` says whether there is one. `problems`
-  are what the last sync could not do, one line per account. `status=1` adds, by agent, how its default account sees the
-  server, `{state, issue?, account}`: Claude Code's from `claude mcp list` (it connects to every server the account
-  has; `issue` is in its own words), Codex's from `codex mcp list --json`, which only says what is configured, plus
-  pierd's own MCP `initialize` with the bearer token for an http server. `state` is `connected`, `failed`,
-  `needs_auth`, `configured` (Codex with a stdio server), `disabled`, `missing` (not in the account's configuration),
-  `taken` (a server of that name the person added), `unavailable` (the agent's CLI is not on the box), `pending` or
-  `unknown`. It takes up to about 20 seconds.
+pierd records each entry it writes (`mcp-written.json`) the moment the CLI is done, and only ever removes or rewrites an
+entry that is still as it wrote it. A server the person added by hand stays, even one of the same name, and so does an
+entry of pierd's they changed by hand: that account is left alone and `problems` says so. An entry exactly as pierd would
+write it counts as pierd's even when the record lacks it (pierd stopped between a write and its record; a record it
+cannot read is kept as `mcp-written.json.bad` and said in pierd's log).
+
+* `GET /v1/mcp[?status=1|deep]` → `{servers: [{name, transport, url?, command?, args?, headers?, token_set, token_var?,
+  env?, agents, enabled, problems?, status?}]}`. A token never comes back: `token_set` says whether there is one.
+  `problems` are what the last sync could not do, one line per account, with tokens and variables' values taken out.
+  `status` adds, by agent, how its default account sees the server, `{state, issue?, account}`. `status=1` starts
+  nothing of the account's: it reads the account's configuration (Claude Code's `.claude.json`, `codex mcp list
+  --json`) and makes pierd's own MCP `initialize` with each http server, sending what that agent sends (Claude Code the
+  token and the headers, Codex the token). `status=deep` asks Claude Code's own `claude mcp list` instead (read even
+  when it ends badly), which starts every server the account has, the person's own too, and takes up to about 20
+  seconds: only for an explicit check. `state` is `connected`, `failed`, `needs_auth`, `configured` (a stdio server:
+  only the deep check starts one), `disabled`, `missing` (not in the account's configuration), `taken` (a server of
+  that name the person added), `changed` (pierd's entry, changed by hand since), `unavailable` (the agent's CLI is not
+  on the box), `pending` or `unknown`.
 * `PUT /v1/mcp/{name}` with `{transport?: "http", url, headers?, token?, agents?, enabled?}` or `{transport: "stdio",
   command, args?, env?, agents?, enabled?}` adds or replaces a server, writes it into the accounts and answers it as
-  `GET` shows it. Names: `[a-z0-9_-]{1,40}`, and no two that share a token variable (`my-server`, `my_server`).
-  `token` left out keeps the stored one, `""` removes it; it goes out as `Authorization: Bearer <token>`, so `headers`
-  may not hold `Authorization`. `agents` defaults to both, `enabled` to true; a server turned off leaves every account
-  and stays on the list. `DELETE /v1/mcp/{name}` takes it off the list and out of the accounts (404 `not_found` for a
-  name the box does not have). Event `mcp.changed {names, removed?}` (never a token or a URL); gate
+  `GET` shows it (with this sync's `problems`). Names: `[a-z0-9_-]{1,40}`, and no two that share a token variable
+  (`my-server`, `my_server`). `token` left out keeps the stored one, `""` removes it; it goes out as `Authorization:
+  Bearer <token>`, so `headers` may not hold `Authorization`. The token is printable ASCII without spaces, a header's
+  value printable ASCII (at most 20 headers, 8 KB each; a body up to 1 MB). `agents` defaults to both, `enabled` to
+  true; a server turned off leaves every account and stays on the list. A Codex that writes the entry and then waits
+  for a sign-in (a server that offers OAuth) keeps it, and `problems` says to run `codex mcp login <name>` on the box.
+  `DELETE /v1/mcp/{name}` takes it off the list and out of the accounts; a name the box does not have is 404
+  `not_found`, before any gate. Event `mcp.changed {names, removed?}` (never a token or a URL); gate
   `before:mcp.change` (`{name, enabled, agents}`, or `{name, removed: true}`).
 * **Tokens**: Claude Code keeps the token in its entry's header, as its CLI stores one. Codex's entry names a variable
   instead (`bearer_token_env_var`, `PIER_MCP_<NAME>_TOKEN` with the name upper-cased and `-` as `_`, the server's
   `token_var`), which pierd gives every session it starts (worktrees, chats, home terminals), so the token is never
   written into Codex's configuration. Codex's CLI takes no other headers: `headers` reach Claude Code only. A stdio
   server takes its secrets in `env` (written into each agent's configuration as given, and shown back like the box's
-  variables), not in `token`.
+  variables), not in `token`. The token passes through `claude mcp add`'s arguments, and through tmux's when a session
+  starts, as the box's variables do: on a box shared with other users, mount `/proc` with `hidepid=2` so they cannot
+  read other people's command lines.
 * The app's quick helpers (titles, commit and PR drafts, next steps, Falar's router: `claude -p --model haiku` through
-  `exec`, `AIDraft.claudeArgs`) run with `--strict-mcp-config`, so none of them starts the account's MCP servers.
+  `exec`, `AIDraft.claudeArgs`) run with `--strict-mcp-config` when the box's Claude Code knows the flag
+  (`AIDraft.strictMCPProbe`), so none of them starts the account's MCP servers.
 
 ---
 
@@ -1356,7 +1370,7 @@ against a live box with `pierctl selftest` and against captured fixtures (`Tests
 `BoxAPI` adds `pairInvite()`, the Home commands (`BoxAPI+Home.swift`), the tools and sign-ins (`BoxAPI+Logins.swift`:
 `tools()`, `installTools(_:)`, `startLogin(tool:account:)`, `login(id:)`, `logins()`, `sendLoginCode(id:code:)`,
 `cancelLogin(id:)`; 2.10.1, 2.13), the routes of 2.8–2.12 and 2.14 (`BoxAPI+Projects.swift`: projects, environments,
-accounts, variables, skills, public links, and `mcpServers(status:)`, `setMCPServer(name:_:)`, `removeMCPServer(name:)`)
+accounts, variables, skills, public links, and `mcpServers(status:deep:)`, `setMCPServer(name:_:)`, `removeMCPServer(name:)`)
 and `events(since:onState:)`. `PushClient`
 covers `/v1/push/*` (PUSH.md). `events` reconnects with backoff (1 s doubling to 30 s, ±20 % jitter), resumes with
 `?since=<max seq>`, skips keepalives and undecodable lines, and ends only on non-retryable errors (revoked, pin

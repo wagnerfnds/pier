@@ -382,10 +382,11 @@ opened in the app, the real one, where the link and the code are copied and past
 2.10), make it the default) and its variables with a
 note each, plus the skills that tell the agents about them (`BoxVariablesScreen`). **Servidores MCP** (`MCPServersScreen`,
 boxes with `mcp`) lists the MCP servers pierd writes into every Claude Code and Codex account through the agents' own
-CLIs (only its own entries ever come out again); a token goes to the box and never comes back (Codex reads it from
-`PIER_MCP_<NAME>_TOKEN`, which every session gets), and Testar shows how each agent's default account sees the server
-(docs/API.md 2.14). The app's own `claude -p` helpers run with `--strict-mcp-config`, so they start none of those
-servers. A project picks its agents' account
+CLIs (only its own entries, still as it wrote them, ever change or come out again); a token goes to the box and never
+comes back (Codex reads it from `PIER_MCP_<NAME>_TOKEN`, which every session gets), and Testar shows how each agent's
+default account sees the server, from pierd's own handshake, starting nothing of the account's (docs/API.md 2.14). The
+app's own `claude -p` helpers run with `--strict-mcp-config` where the box's Claude Code knows it, so they start none
+of those servers. A project picks its agents' account
 (`ProjectAccountsSection`, on the project's screen and in a worktree's Detalhes; `AccountsCache` loads them). The Home's
 **Limites de uso** (`LimitsWidget`) shows each account's 5-hour and weekly use and switches the box's default with a tap.
 A worktree's Detalhes makes a dev server's **public link** through the box's relay (docs/API.md 2.10–2.12,

@@ -45,7 +45,7 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `PUT /v1/locations/{name}/accounts` | `accounts.go` `putLocationAccounts` | App `setProjectAccounts()`: ProjectAccountsSection |
 | `GET`/`PUT /v1/env` | `skills.go` `getEnv`/`putEnv` (rewrites the skills) | App `boxVariables()`/`setBoxVariables()`: BoxVariablesScreen |
 | `GET /v1/skills`, `PUT`/`DELETE /v1/skills/{id}` | `skills.go` | App `skills()`/`setSkill()`: BoxVariablesScreen |
-| `GET /v1/mcp[?status=1]`, `PUT`/`DELETE /v1/mcp/{name}` (capability `mcp`; gate `before:mcp.change`) | `mcp.go` (the list in `mcp.json`, written into every account through `claude mcp` / `codex mcp`; also at startup and when an account is added) | App `mcpServers()`/`setMCPServer()`/`removeMCPServer()`: MCPServersScreen |
+| `GET /v1/mcp[?status=1\|deep]`, `PUT`/`DELETE /v1/mcp/{name}` (capability `mcp`; gate `before:mcp.change`) | `mcp.go` (the list in `mcp.json`, written into every account through `claude mcp` / `codex mcp`, each write recorded in `mcp-written.json`; also at startup and when an account is added; `status=1` reads the accounts' configuration and shakes hands itself, `deep` runs `claude mcp list`) | App `mcpServers()`/`setMCPServer()`/`removeMCPServer()`: MCPServersScreen (Testar: `status=1`) |
 | `GET`/`POST /v1/shares`, `DELETE /v1/shares/{name}` | `shares.go` (through `relay.Listener.Publish`) | App `publicLinks()`… : WorktreeDetails |
 | `GET /v1/github/repos[?owner=]` | `github.go` `listGitHubRepos` (the box's gh) | App `gitHubRepos()`: GitHubReposScreen |
 | `GET /v1/locations/{name}/branches` | `helpers.go` `listBranches` | App `branches()`: ComposeModel, WorktreeParts |

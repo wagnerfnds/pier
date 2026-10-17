@@ -181,7 +181,8 @@ submitted, not just typed: pierd waits for its input box to show the prompt, pre
 The MCP servers added in the app (Ajustes › Servidores MCP; `PUT /v1/mcp/{name}`) are kept in `$PIER_HOME/box/mcp.json`
 (mode 0600, tokens included) and written into every Claude Code and Codex account on the box through the agents' own
 CLIs (`claude mcp add --scope user`, `codex mcp add`): when one is saved, when an account is added and when pierd
-starts. pierd records what it wrote (`mcp-written.json`) and only ever removes that, never a server added by hand.
+starts. pierd records each entry the moment it is written (`mcp-written.json`) and only ever removes or rewrites one
+that is still as it wrote it: never a server added by hand, nor one of its own changed by hand since.
 Codex reads a server's token from `PIER_MCP_<NAME>_TOKEN`, which pierd gives every session it starts, so the token is
 not written into Codex's `config.toml`.
 
