@@ -3,9 +3,9 @@ import PierKit
 
 /// The mock box's tools and sign-ins (`-uiTestMock 1`, and the demo): Claude Code, Codex and the GitHub CLI installed and
 /// signed in (`-uiTestSignIn 1`: the GitHub CLI missing and Codex signed out, for the onboarding's "Contas" step and the
-/// Inbox's Instalar / Entrar), installs that take 3 s (`POST /v1/tools/install`), and sign-ins that go as pierd's do
-/// (`/v1/logins`): a device sign-in (Codex, GitHub) shows its link and code, then the "person" enters it on the page a few
-/// seconds later; Claude Code shows its link and waits for the code pasted back, then finishes.
+/// Inbox's Instalar / Entrar), installs that take 3 s (`POST /v1/tools/install`), and sign-ins like pierd's (`/v1/logins`):
+/// a device sign-in (Codex, GitHub) shows its link and code, then the "person" enters it on the page a few seconds later
+/// (open_link, waiting, done); Claude Code shows its link and waits for the code pasted back, then finishes.
 struct MockSignIns {
     typealias JSON = [String: Any]
 
@@ -23,8 +23,9 @@ struct MockSignIns {
 
     private static let installTime: TimeInterval = 3
     private static let openAfter: TimeInterval = 1
-    /// A device sign-in: when the person has typed the code on the page.
-    private static let enteredAfter: TimeInterval = 6
+    /// A device sign-in: when the person has typed the code on the page (waiting), and when it is done.
+    private static let enteredAfter: TimeInterval = 4
+    private static let doneAfter: TimeInterval = 6
     /// Claude Code: how long it takes after the code went in.
     private static let confirmAfter: TimeInterval = 1.5
 
@@ -59,7 +60,8 @@ struct MockSignIns {
             if let c = r.codeAt { return now.timeIntervalSince(c) >= Self.confirmAfter ? "done" : "waiting" }
             return t >= Self.openAfter ? "enter_code" : "starting"
         }
-        if t >= Self.openAfter + Self.enteredAfter { return "done" }
+        if t >= Self.openAfter + Self.doneAfter { return "done" }
+        if t >= Self.openAfter + Self.enteredAfter { return "waiting" }
         return t >= Self.openAfter ? "open_link" : "starting"
     }
 
