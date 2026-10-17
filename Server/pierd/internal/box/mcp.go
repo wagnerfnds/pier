@@ -1121,7 +1121,7 @@ func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer, deep bool) map
 		if !wanted {
 			continue
 		}
-		a := b.defaultAccount(agent)
+		a, _ := b.defaultAccount(agent)
 		accounts[agent] = a
 		cli, ok := agentFound(agent)
 		if !ok {
@@ -1190,18 +1190,6 @@ func (b *Box) mcpStatus(ctx context.Context, servers []MCPServer, deep bool) map
 		}
 	}
 	return out
-}
-
-// defaultAccount is the account an agent's chats and home terminals use:
-// the box's default for it, else its own folder.
-func (b *Box) defaultAccount(agent string) Account {
-	if id := b.loadAccounts().Defaults[agent]; id != "" {
-		if a, ok := b.account(id); ok && a.Agent == agent {
-			return a
-		}
-	}
-	a, _ := b.account(agent)
-	return a
 }
 
 // claudeMCPLine is the status at the end of a line of `claude mcp list`

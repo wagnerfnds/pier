@@ -32,9 +32,9 @@ type fakeCall struct {
 	Args []string `json:"args"`
 }
 
-// fakeAgentCLIs puts the stand-in claude and codex first on PATH and
+// fakeMCPCLIs puts the stand-in claude and codex first on PATH and
 // answers the file their calls are recorded in.
-func fakeAgentCLIs(t *testing.T) string {
+func fakeMCPCLIs(t *testing.T) string {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
@@ -335,7 +335,7 @@ func mcpTestHome(t *testing.T) (home, log string) {
 	t.Setenv("HOME", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
-	return home, fakeAgentCLIs(t)
+	return home, fakeMCPCLIs(t)
 }
 
 func readJSONFile(t *testing.T, path string) map[string]any {
