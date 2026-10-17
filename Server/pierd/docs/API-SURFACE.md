@@ -37,7 +37,7 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `DELETE /v1/locations/{name}` (`purge=1[&force=1]`: delete it from the disk; 409 `unsaved_work`) | `api.go` `removeLocation`, `projects.go` `purgeLocation` | `pierd location rm`; App `purgeProject()`: RemoveProjectSheet |
 | `GET /v1/locations/{name}/disk` | `projects.go` `locationDisk` | App `projectDisk()`: RemoveProjectSheet |
 | `GET`/`POST /v1/clones`, `DELETE /v1/clones/{id}` | `projects.go` `listClones`/`addClone`/`forgetClone` (clone, setup, autostart) | App `clone()`/`clones()`/`forgetClone()`: ClonesStore (GitHubReposScreen, CloneLinkSheet) |
-| `GET`/`PUT /v1/settings` | `settings.go` `getSettings`/`putSettings` (projects folder, spaces, Docker) | App `settings()`/`setProjectsRoot()`: BoxProjectsSettingsScreen, SpacesStore |
+| `GET`/`PUT /v1/settings` | `settings.go` `getSettings`/`putSettings` (projects folder, spaces, Docker, setup agents' rules, automatic public links) | App `settings()`/`setProjectsRoot()`/`setPrepareRules()`/`setAutoShare()`: BoxProjectsSettingsScreen, SpacesStore |
 | `POST /v1/spaces`, `DELETE /v1/spaces/{name}` (`purge`, `force`) | `settings.go` `addSpace`/`removeSpace` | App `addSpace()`/`removeSpace()`: BoxProjectsSettingsScreen, RemoveSpaceSheet |
 | `GET`/`PUT /v1/locations/{name}/environment` | `environment.go` `getEnvironment`/`putEnvironment` (launchers, containers as units) | App `environment()`/`setEnvironment()`: ProjectEnvironmentScreen |
 | `GET`/`POST /v1/accounts`, `PATCH`/`DELETE /v1/accounts/{id}`, `POST /v1/accounts/{id}/login` (a sign-in, `logins.go`, answered as its session) | `accounts.go` | App `accounts()`… : AccountsScreen (`loginAccount()` on boxes without `logins`), LimitsWidget (default), AccountsCache, OnboardingAccounts |
@@ -49,9 +49,9 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `GET`/`POST /v1/shares`, `DELETE /v1/shares/{name}` | `shares.go` (through `relay.Listener.Publish`) | App `publicLinks()`… : WorktreeDetails; `publicLinks()`: PreviewBrowser (the page it opens) |
 | `GET /v1/github/repos[?owner=]` | `github.go` `listGitHubRepos` (the box's gh) | App `gitHubRepos()`: GitHubReposScreen |
 | `GET /v1/locations/{name}/branches` | `helpers.go` `listBranches` | App `branches()`: ComposeModel, WorktreeParts |
-| `GET`/`PUT /v1/locations/{name}/config` | `repoconfig.go` `getConfig`/`putConfig` | `pierd location config [--set FILE]` |
+| `GET`/`PUT /v1/locations/{name}/config` (`local` replaces, `merge` lays over) | `repoconfig.go` `getConfig`/`putConfig` | `pierd location config [--set FILE \| --merge FILE\|-]` (a setup agent saves its recipe with `--merge`) |
 | `POST`/`DELETE /v1/locations/{name}/config/trust` | `repotrust.go` | `pierd location config --trust HASH` / `--untrust` |
-| `POST /v1/locations/{name}/worktrees` | `api.go` `addWorktree` (setup script, autostart services) | App `createWorktree()`: ComposeModel, PullRequestStore, WorktreeParts; `pierd worktree new` |
+| `POST /v1/locations/{name}/worktrees` (`prepare`, `prepare_with`) | `api.go` `addWorktree` (prepared by its setup script and autostart services, or by a setup agent: `setupagent.go`) | App `createWorktree()`: ComposeModel, PullRequestStore, WorktreeParts; `pierd worktree new [--prepare-with]` |
 | `DELETE /v1/locations/{name}/worktrees/{worktree}` (`force`, `delete_branch`; 202 while the archive script runs) | `api.go` `removeWorktree` | App `removeWorktree()`: EndSessionSheet, Housekeeper (Faxina), WorktreeParts; `pierd worktree rm` |
 | `POST /v1/locations/{name}/worktrees/{worktree}/attachments` | `attachments.go` `worktreeAttachment` | App ComposeSupport (photos before the agent exists) |
 | `GET /v1/locations/{name}/worktrees/{worktree}/touched` | `touched.go` `worktreeTouched` | App `touched()`: LiveActivitySync |
@@ -60,8 +60,10 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `PUT /v1/locations/{name}/worktrees/{worktree}/file?path=` (`sha`, `create`, `force`; 409 `file_changed` / `file_exists`; gate `before:file.write` with `file`) | `files.go` `writeFile` | App `writeFile()`: `App/Features/Workspace` (EditorStore) |
 | `GET /v1/locations/{name}/worktrees/{worktree}/services` | `wtservices.go` `listWorktreeServices` | App `worktreeServices()`: Housekeeper; `worktreeServiceDetails()`: WorktreeDetails; `pierd service list` |
 | `POST /v1/locations/{name}/worktrees/{worktree}/services/{service}/{start\|stop\|restart}` | `wtservices.go` `serviceAction` | App `serviceAction()`: Housekeeper, WorktreeDetails; `pierd service start…` |
-| `GET /v1/locations/{name}/worktrees/{worktree}/prepare` | `prepare.go` `getPrepare` | App `prepareStatus()`: WorktreeDetails (Preparação) |
-| `POST /v1/locations/{name}/worktrees/{worktree}/prepare` (202; 409 while running; gate `before:worktree.prepare`) | `prepare.go` `postPrepare` | App `prepare()`: WorktreeDetails (Preparar ambiente) |
+| `GET /v1/locations/{name}/worktrees/{worktree}/prepare` | `prepare.go` `getPrepare` | App `prepareStatus()`: WorktreeDetails (Preparação); `pierd prepare status\|wait` |
+| `POST /v1/locations/{name}/worktrees/{worktree}/prepare` (`prepare_with`; 202; 409 while running; gate `before:worktree.prepare`) | `prepare.go` `postPrepare` (a setup agent: `setupagent.go`) | App `prepare(with:)`: WorktreeDetails (Preparar ambiente, Preparar com agente, Rodar o script); `pierd prepare start` |
+| `POST /v1/locations/{name}/worktrees/{worktree}/prepare/done` (`failed`; 409 without a setup agent) | `prepare.go` `prepareDone` | `pierd prepare done`, run by the setup agent |
+| `GET`/`PUT /v1/locations/{name}/worktrees/{worktree}/preview` (gate `before:preview.change`) | `preview.go` `getPreview`/`putPreview` (the automatic public link: `syncPreviewShare`) | App `preview()`: WorktreeDetails (Visualização), SessionDetailsList (its inspector); `setPreview()` (no caller yet); `pierd preview get\|set` |
 | `GET /v1/worktrees[?location=]` | `worktreeops.go` `listWorktreeStatuses` | App `worktreeStatuses()`: EndSessionSheet, Housekeeper, Project/Worktree screens |
 | `GET /v1/services` | `services.go` `handleServices` | App `services()`: HomeStore, Housekeeper, WorktreeDetails, PreviewBrowser; `pierd services` |
 | `GET /v1/review[?all=1]` | `review.go` `review` | App `review()`: ReviewStore, PullRequestStore/Screen/Sheets, SessionSignals; push engine |
@@ -74,7 +76,7 @@ and Home widgets are shell strings run this way, so the box needs `git`, `gh` an
 
 | Route | Handler | Caller |
 |---|---|---|
-| `POST /v1/tasks` | `tasks.go` `addTask` | App `createTask()`: ComposeModel, TaskCreator (Shortcuts); `pierd task new` |
+| `POST /v1/tasks` (`prepare`, `prepare_with`) | `tasks.go` `addTask` (the worktree's preparation starts once the task's session did) | App `createTask()`: ComposeModel, TaskCreator (Shortcuts); `pierd task new [--prepare-with]` |
 | `GET /v1/sessions` | `api.go` `listSessions` | App `sessions()`: BoxConnection, BackgroundRefresh, intents, widgets; push engine |
 | `POST /v1/sessions` (agent, command, neither: a shell, or `home`) | `api.go` `addSession` | App `startSession()`: ComposeModel, PullRequestStore, SessionTerminals (a shell in the session's worktree); `pierd session new` |
 | `DELETE /v1/sessions/{name}` | `api.go` `removeSession` | App `kill()`: EndSessionSheet, Housekeeper, SessionViewModel, SessionTerminals |
@@ -116,12 +118,13 @@ Event types pierd publishes, and what the app does with them:
 | `transcript.changed` (while a client reads the transcript) | SessionViewModel refetches the transcript |
 | `task.created` | sessions and locations refresh |
 | `worktree.created`, `worktree.removed`, `worktree.{setup,archive}.{started,finished,failed}` | locations refresh; ReviewScreen reloads; local notification on `*.failed` |
-| `worktree.prepare.{started,finished,failed}` | WorktreeDetails reads the preparation again; no notification (a setup that failed already sent `worktree.setup.failed`) |
+| `worktree.prepare.{started,finished,failed}` (`kind`, `session` for a setup agent) | WorktreeDetails reads the preparation again; no notification (a setup that failed already sent `worktree.setup.failed`; a setup agent is a session like any other, followed by its own events); setupagent.go settles a setup agent's preparation from its session's `agent.*` and `session.stopped` events (a bus observer) |
+| `preview.changed`, `share.*` (`auto` for a preview's own link, `share.failed`) | WorktreeDetails and the session inspector's Visualização read the preview again |
 | `location.added`, `location.removed`, `config.changed` | locations refresh |
 | `account.*` | HomeStore reads the limits again |
 | `login.changed` | SignInSheet reads its sign-in again at once (it also polls every 1.5 s) |
 | `tool.installed`, `tool.failed` | none: BoxToolsStore polls `GET /v1/tools` while an install it asked for runs |
-| `env.changed`, `skills.changed`, `share.*`, `location.accounts`, `mcp.changed` | none: the screens read the box again after their own changes |
+| `env.changed`, `skills.changed`, `location.accounts`, `mcp.changed` | none: the screens read the box again after their own changes |
 | `settings.changed`, `space.added`, `space.removed`, `environment.*` | none yet: the screens read the box again after their own changes; ProjectEnvironmentScreen polls while building |
 | `clone.started`, `clone.finished`, `clone.failed` | none yet: ClonesStore polls `GET /v1/clones` while a clone runs |
 | `service.started`, `service.stopped`, `service.failed` | HomeStore refreshes services; local notification on `service.failed` |
