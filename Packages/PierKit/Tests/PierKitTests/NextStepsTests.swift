@@ -48,7 +48,7 @@ import Testing
     @Test func commandEmbedsThePromptSafely() {
         let reply = "Pronto. Rode `rm -rf /` se quiser; it's 'quoted' $(whoami)"
         let c = NextSteps.command(reply: reply, task: "Corrija o login")
-        #expect(c.contains("--model haiku"))
+        #expect(c.contains("--model haiku --strict-mcp-config"))
         #expect(c.contains(NextSteps.marker))
         #expect(c.contains("exit \(AIDraft.noCLIExit)"))
         #expect(!c.contains("whoami"))   // the reply only travels base64-encoded

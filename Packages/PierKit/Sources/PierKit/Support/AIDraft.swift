@@ -9,6 +9,11 @@ public enum AIDraft {
         public var body: String
     }
 
+    /// What the small-model helpers (this one, `AITitle`, `NextSteps`, `TalkRouter`) run `claude` with: a one-shot
+    /// answer from Haiku that starts none of the box's MCP servers (`--strict-mcp-config` without `--mcp-config`).
+    /// Without it, every title or suggestion would start each server the account has (docs/API.md §2.13).
+    public static let claudeArgs = "-p --model haiku --strict-mcp-config"
+
     /// Exit code when no `claude` CLI is found on the box.
     public static let noCLIExit: Int32 = 3
 
@@ -50,7 +55,7 @@ public enum AIDraft {
         printf '\\n## New files\\n'; git ls-files --others --exclude-standard | head -40; \
         printf '\\n## Diff stat\\n'; git diff "$MB" --stat 2>/dev/null | tail -60; \
         printf '\\n## Diff\\n'; git diff "$MB" 2>/dev/null | head -c 60000; } \
-        | PIER_HOOKS_QUIET=1 "$CL" -p --model haiku 2>&1
+        | PIER_HOOKS_QUIET=1 "$CL" \(AIDraft.claudeArgs) 2>&1
         """
     }
 

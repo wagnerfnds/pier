@@ -1,0 +1,97 @@
+{
+  "servers": [
+    {
+      "name": "crm",
+      "transport": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "X-Team": "green"
+      },
+      "token_set": true,
+      "token_var": "PIER_MCP_CRM_TOKEN",
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "enabled": true,
+      "status": {
+        "claude": {
+          "state": "connected",
+          "account": "Claude Code"
+        },
+        "codex": {
+          "state": "connected",
+          "account": "Codex"
+        }
+      }
+    },
+    {
+      "name": "handmade",
+      "transport": "http",
+      "url": "https://tools.example.com/mcp",
+      "token_set": true,
+      "token_var": "PIER_MCP_HANDMADE_TOKEN",
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "enabled": true,
+      "problems": [
+        "Claude Code: already has a server named handmade that pierd did not add; it is left as it is",
+        "Codex: already has a server named handmade that pierd did not add; it is left as it is"
+      ],
+      "status": {
+        "claude": {
+          "state": "taken",
+          "issue": "a server of this name that pierd did not add",
+          "account": "Claude Code"
+        },
+        "codex": {
+          "state": "taken",
+          "issue": "a server of this name that pierd did not add",
+          "account": "Codex"
+        }
+      }
+    },
+    {
+      "name": "search",
+      "transport": "http",
+      "url": "https://search.example.com/mcp",
+      "token_set": true,
+      "token_var": "PIER_MCP_SEARCH_TOKEN",
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "enabled": true,
+      "status": {
+        "claude": {
+          "state": "failed",
+          "issue": "Dynamic Client Registration rejected (HTTP 401):",
+          "account": "Claude Code"
+        },
+        "codex": {
+          "state": "needs_auth",
+          "issue": "the server refused the token (HTTP 401)",
+          "account": "Codex"
+        }
+      }
+    },
+    {
+      "name": "staging",
+      "transport": "http",
+      "url": "https://staging.example.com/mcp",
+      "token_set": false,
+      "token_var": "PIER_MCP_STAGING_TOKEN",
+      "agents": [
+        "codex"
+      ],
+      "enabled": false,
+      "status": {
+        "codex": {
+          "state": "disabled"
+        }
+      }
+    }
+  ]
+}

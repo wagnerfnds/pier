@@ -33,7 +33,7 @@ import Testing
     @Test func commandEmbedsThePromptAndFindsTheCLI() {
         let c = AITitle.command(prompt: "Responda apenas com o resultado de 2+2; it's `rm -rf` $(x)")
         #expect(c.hasPrefix(": \(AITitle.marker);"))
-        #expect(c.contains("--model haiku"))
+        #expect(c.contains("--model haiku --strict-mcp-config"))
         #expect(c.contains("exit 3"))
         #expect(c.contains("$HOME/.local/bin/claude"))
         #expect(!c.contains("rm -rf` $(x)"))   // the prompt only travels base64-encoded
@@ -59,7 +59,7 @@ import Testing
         let script = """
         #!/bin/sh
         input=$(cat)
-        case "$*" in *"-p --model haiku"*) ;; *) echo "bad args: $*"; exit 9;; esac
+        case "$*" in *"-p --model haiku --strict-mcp-config"*) ;; *) echo "bad args: $*"; exit 9;; esac
         [ -n "$PIER_SESSION$PIER_WORKTREE_PATH" ] && { echo "leaked $PIER_SESSION$PIER_WORKTREE_PATH"; exit 8; }
         [ "$(pwd -P)" = "$(cd "$HOME" && pwd -P)" ] || { echo "not in home: $(pwd)"; exit 7; }
         case "$input" in *"Corrigir o login"*) echo '"Corrigir login no Safari."';; *) echo "no prompt"; exit 6;; esac

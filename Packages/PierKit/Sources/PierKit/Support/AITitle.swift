@@ -34,7 +34,7 @@ public enum AITitle {
         [ -z "$CL" ] && { echo "claude CLI not found on the box" >&2; exit \(noCLIExit); }; \
         for v in $(env | sed -n -e 's/^\\(PIER_[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset "$v"; done; \
         cd "$HOME" 2>/dev/null; \
-        printf %s '\(GitActions.b64(full))' | base64 -d | PIER_HOOKS_QUIET=1 "$CL" -p --model haiku 2>&1
+        printf %s '\(GitActions.b64(full))' | base64 -d | PIER_HOOKS_QUIET=1 "$CL" \(AIDraft.claudeArgs) 2>&1
         """
     }
 

@@ -53,7 +53,7 @@ public enum NextSteps {
         for c in "$HOME/.local/bin/claude" "$HOME/.claude/local/claude" /usr/local/bin/claude /opt/homebrew/bin/claude "$HOME/.npm-global/bin/claude"; do \
         [ -z "$CL" ] && [ -x "$c" ] && CL="$c"; done; \
         [ -z "$CL" ] && { echo "claude CLI not found on the box" >&2; exit \(AIDraft.noCLIExit); }; \
-        printf %s '\(GitActions.b64(prompt(reply: reply, task: task)))' | base64 -d | PIER_HOOKS_QUIET=1 "$CL" -p --model haiku 2>&1 \(marker)
+        printf %s '\(GitActions.b64(prompt(reply: reply, task: task)))' | base64 -d | PIER_HOOKS_QUIET=1 "$CL" \(AIDraft.claudeArgs) 2>&1 \(marker)
         """
     }
 

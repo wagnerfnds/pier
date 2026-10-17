@@ -1,0 +1,47 @@
+{
+  "servers": [
+    {
+      "name": "crm",
+      "transport": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "X-Team": "green"
+      },
+      "token_set": true,
+      "token_var": "PIER_MCP_CRM_TOKEN",
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "enabled": true
+    },
+    {
+      "name": "docs",
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "docs-mcp"
+      ],
+      "token_set": false,
+      "env": {
+        "DOCS_REGION": "eu"
+      },
+      "agents": [
+        "codex"
+      ],
+      "enabled": true
+    },
+    {
+      "name": "staging",
+      "transport": "http",
+      "url": "https://staging.example.com/mcp",
+      "token_set": false,
+      "token_var": "PIER_MCP_STAGING_TOKEN",
+      "agents": [
+        "codex"
+      ],
+      "enabled": false
+    }
+  ]
+}

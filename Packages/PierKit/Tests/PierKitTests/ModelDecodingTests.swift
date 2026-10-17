@@ -56,6 +56,7 @@ import Testing
             "location_disk.json": d(ProjectDisk.self), "location_purged.json": d(ProjectPurge.self), "location_unsaved.json": d(BoxError.self),
             "services_detail.json": d([WorktreeServiceDetail].self),
             "accounts.json": d([AgentAccount].self), "box_env.json": d(BoxVariables.self), "skills.json": d([BoxSkill].self), "shares.json": d([PublicLink].self),
+            "mcp.json": d(MCPServerList.self), "mcp_status.json": d(MCPServerList.self), "mcp_server.json": d(MCPServer.self),
             "settings.json": d(BoxSettings.self), "settings_unset.json": d(BoxSettings.self),
             "environment.json": d(EnvironmentView.self), "environment_none.json": d(EnvironmentView.self), "space_not_empty.json": d(BoxError.self),
             "doctor_signin.json": d([DoctorCheck].self), "tools.json": d([BoxTool].self), "tools_installing.json": d([BoxTool].self), "tools_signed_out.json": d([BoxTool].self),
