@@ -275,7 +275,7 @@ struct MCPServerSheet: View {
                         Toggle("Remover o token salvo", isOn: $removeToken).onChange(of: removeToken) { if removeToken { token = "" } }
                     }
                 } header: { Text("Token") } footer: {
-                    Text("Vai como Authorization: Bearer e fica só na box: o Claude Code o guarda na configuração de cada conta, o Codex o lê de \(MCPServers.tokenVariable(name.isEmpty ? "nome" : name)), que toda sessão recebe. O app nunca o mostra de volta.")
+                    Text("Vai como Authorization: Bearer e fica só na box: o Claude Code o guarda na configuração de cada conta, o Codex o lê de \(MCPServers.isValidName(name) ? MCPServers.tokenVariable(name) : "PIER_MCP_<NAME>_TOKEN"), que toda sessão recebe. O app nunca o mostra de volta.")
                 }
                 .listRowBackground(Theme.card)
 
