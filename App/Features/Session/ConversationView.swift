@@ -34,8 +34,8 @@ struct ConversationView: View {
     /// than the screen was opened again from the sidebar. Older rows stay lazy on iOS. The iPhone keeps its own lazy
     /// end row: with the group, a conversation two screens tall opened at its top there.
     private var measuresTail: Bool {
-        #if targetEnvironment(macCatalyst)
-        if #available(iOS 18, *) { return true }
+        #if targetEnvironment(macCatalyst) || os(macOS)
+        if #available(iOS 18, macOS 15, *) { return true }
         return false
         #else
         if #available(iOS 18, *) { return sizeClass == .regular }
@@ -91,7 +91,7 @@ struct ConversationView: View {
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(DragGesture(minimumDistance: 8).onEnded { _ in
                 // iOS 17 (no scroll geometry): a drag that left the bottom out of view detaches.
-                if #available(iOS 18, *) { return }
+                if #available(iOS 18, macOS 15, *) { return }
                 scrolledUp = true
                 Task {
                     try? await Task.sleep(for: .milliseconds(450))
@@ -170,12 +170,12 @@ struct ConversationView: View {
         if vm.store.items.isEmpty, vm.store.pending.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning, !vm.starting, !vm.showsStartingPrompt { emptyNote }
         Color.clear.frame(height: 1).id("bottom")
             .onAppear {
-                if #available(iOS 18, *) { return }
+                if #available(iOS 18, macOS 15, *) { return }
                 bottomVisible = true
                 scrollState.requestFollow()
             }
             .onDisappear {
-                if #available(iOS 18, *) { return }
+                if #available(iOS 18, macOS 15, *) { return }
                 bottomVisible = false
             }
     }
@@ -243,7 +243,7 @@ struct ConversationView: View {
             .foregroundStyle(Theme.textDim)
             .disabled(vm.loadingOlder)
             .onAppear {
-                if #available(iOS 18, *) { return }
+                if #available(iOS 18, macOS 15, *) { return }
                 if scrolledUp { Task { await loadOlder(proxy) } }
             }
             .onChange(of: scrolledUp) { _, up in if up { Task { await loadOlder(proxy) } } }
@@ -333,6 +333,7 @@ struct PulsingDot: View {
     }
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 private struct PulseLayer: UIViewRepresentable {
     let color: UIColor
     func makeUIView(context: Context) -> PulseView { PulseView() }
@@ -363,6 +364,7 @@ private struct PulseLayer: UIViewRepresentable {
         }
     }
 }
+#endif
 
 /// Conversation-style view of an agent with no record the box can read (or a plain terminal program): the last thing on
 /// its screen, rendered calmly, with a way into the terminal.
@@ -454,8 +456,8 @@ private struct ConversationStack<Content: View>: View {
     init(@ViewBuilder content: () -> Content) { self.content = content() }
 
     var body: some View {
-        #if targetEnvironment(macCatalyst)
-        if #available(iOS 18, *) {
+        #if targetEnvironment(macCatalyst) || os(macOS)
+        if #available(iOS 18, macOS 15, *) {
             VStack(alignment: .leading, spacing: 14) { content }
         } else {
             // The older visibility fallback depends on lazy row appearance.
@@ -476,8 +478,8 @@ private struct ConversationRowAccessibility: ViewModifier {
     @State private var isNearViewport = false
 
     func body(content: Content) -> some View {
-        #if targetEnvironment(macCatalyst)
-        if #available(iOS 18, *) {
+        #if targetEnvironment(macCatalyst) || os(macOS)
+        if #available(iOS 18, macOS 15, *) {
             content
                 .onGeometryChange(for: Bool.self) { proxy in
                     let frame = proxy.frame(in: .scrollView(axis: .vertical))
@@ -502,8 +504,8 @@ private struct ConversationRowAccessibility: ViewModifier {
 /// Catalyst follows explicitly after loading/layout. The mobile lazy list keeps its initial-position anchor as well.
 private struct InitialConversationAnchor: ViewModifier {
     func body(content: Content) -> some View {
-        #if targetEnvironment(macCatalyst)
-        if #available(iOS 18, *) {
+        #if targetEnvironment(macCatalyst) || os(macOS)
+        if #available(iOS 18, macOS 15, *) {
             content
         } else {
             content.defaultScrollAnchor(.bottom)
@@ -648,7 +650,7 @@ private struct FollowScrollPosition: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if #available(iOS 18, *) {
+        if #available(iOS 18, macOS 15, *) {
             content.onScrollGeometryChange(for: Spot.self) { g in
                 Spot(fromBottom: Double((g.contentSize.height - g.visibleRect.maxY).rounded()),
                      fromTop: Double((g.visibleRect.minY / 20).rounded() * 20),

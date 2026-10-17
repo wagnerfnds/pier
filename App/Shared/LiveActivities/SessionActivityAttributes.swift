@@ -1,5 +1,5 @@
 import Foundation
-#if !targetEnvironment(macCatalyst)
+#if os(iOS) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 import PierKit
@@ -115,7 +115,7 @@ struct SessionActivityAttributes: Codable {
     var url: URL { Shared.sessionURL(box: box, name: session) }
 }
 
-#if !targetEnvironment(macCatalyst)
+#if os(iOS) && !targetEnvironment(macCatalyst)
 extension SessionActivityAttributes: ActivityAttributes {}
 #endif
 

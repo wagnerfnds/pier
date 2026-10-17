@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// Every answer waits a moment before it goes out, with "Desfazer" in a toast at the bottom (Esc / ⌘Z on a keyboard).
 /// One place for the whole app: the needs-you card, the composer and the board use it, and so can any other feature.

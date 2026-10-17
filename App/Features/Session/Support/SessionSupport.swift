@@ -200,6 +200,7 @@ enum Motion {
     static let endless = !UITestMock.enabled || UserDefaults.standard.bool(forKey: "chatPerfProbe")
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 /// The light of `ShimmerText`: a soft band of the text color crossing the view every 2.2 s.
 private struct ShimmerSweep: UIViewRepresentable {
     @Environment(\.colorScheme) private var colorScheme
@@ -258,3 +259,4 @@ private struct ShimmerSweep: UIViewRepresentable {
         }
     }
 }
+#endif

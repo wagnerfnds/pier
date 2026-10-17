@@ -18,6 +18,7 @@ struct IdentifiedURL: Identifiable {
     var id: String { url.absoluteString }
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> SFSafariViewController {
@@ -28,6 +29,7 @@ struct SafariView: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ vc: SFSafariViewController, context: Context) {}
 }
+#endif
 
 /// "atualizado há 3 min", ticking.
 struct UpdatedAgo: View {

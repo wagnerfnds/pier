@@ -202,7 +202,9 @@ final class PreviewBrowserModel {
         let config = WKWebViewConfiguration()
         // The default persistent store: a page's login and settings stay, as in Safari.
         config.websiteDataStore = .default()
+        #if os(iOS)
         config.allowsInlineMediaPlayback = true
+        #endif
         let web = WKWebView(frame: .zero, configuration: config)
         web.allowsBackForwardNavigationGestures = true
         #if DEBUG
@@ -255,7 +257,7 @@ final class PreviewBrowserModel {
     }
 
     /// `c` is in a window: the web view goes in it, and a page it held before it was let go of comes back.
-    fileprivate func attach(_ c: PreviewWebContainer) {
+    func attach(_ c: PreviewWebContainer) {
         containers.removeAll { $0.view == nil || $0.view === c }
         containers.append(WeakContainer(view: c))
         let fresh = webView == nil
@@ -263,7 +265,11 @@ final class PreviewBrowserModel {
         if web.superview !== c {
             web.removeFromSuperview()
             web.frame = c.bounds
+            #if os(iOS)
             web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            #else
+            web.autoresizingMask = [.width, .height]
+            #endif
             c.addSubview(web)
         }
         // After the update that put the view in its window: the bar's state changes with what follows.
@@ -274,7 +280,7 @@ final class PreviewBrowserModel {
     }
 
     /// `c` left its window, or went: another container still in one (the screen under one popped) takes the web view.
-    fileprivate func left(_ c: PreviewWebContainer) {
+    func left(_ c: PreviewWebContainer) {
         containers.removeAll { $0.view == nil || $0.view === c }
         guard let web = webView, web.superview === c || web.superview == nil,
               let other = containers.last(where: { $0.view?.window != nil })?.view else { return }
@@ -359,6 +365,7 @@ private final class PreviewBrowserDelegate: NSObject, WKNavigationDelegate, WKUI
     }
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 /// Where a browser's web view goes. The web view is the worktree's, kept while the app runs: the newest container in a
 /// window takes it (a browser shows in one place at a time), and one leaving gives it back to another still in one.
 final class PreviewWebContainer: UIView {
@@ -393,6 +400,7 @@ private struct PreviewWebView: UIViewRepresentable {
         c.browser = nil
     }
 }
+#endif
 
 // MARK: - the view
 

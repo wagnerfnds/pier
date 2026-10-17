@@ -1,6 +1,10 @@
 import SwiftUI
 import PhotosUI
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import PierKit
 
 /// Name helpers (slug of the first words, `-2`, `-3` when taken).

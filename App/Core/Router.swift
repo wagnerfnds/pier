@@ -202,7 +202,7 @@ final class Router {
         }
         if let link = try? PairingLink.parse(url.absoluteString) {
             // A link that names this Mac comes from pierd here (`pierd setup` opens it): it pairs without asking.
-            #if targetEnvironment(macCatalyst)
+            #if targetEnvironment(macCatalyst) || os(macOS)
             let here = ThisDevice.isHere(link)
             #else
             let here = false

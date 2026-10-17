@@ -1,5 +1,9 @@
 #if DEBUG
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import PierKit
 
 /// `-navPerfProbe 1`: walks the app through the screens people move between (the Home, sessions of the paired boxes,
@@ -93,7 +97,12 @@ private final class StepRecorder: NSObject {
 
     func start() {
         t0 = CACurrentMediaTime()
+        #if os(iOS)
         let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        #else
+        // The native Mac app (macOS 14): a display link comes from a screen, here the main one.
+        guard let l = NSScreen.main?.displayLink(target: self, selector: #selector(tick(_:))) else { return }
+        #endif
         l.add(to: .main, forMode: .common)
         link = l
     }

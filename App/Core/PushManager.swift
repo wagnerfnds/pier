@@ -1,5 +1,9 @@
 import Foundation
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import WidgetKit
 import PierKit
 
@@ -172,7 +176,7 @@ final class PushManager {
 
     /// iOS 26+: the widgets' push token (`WidgetCenter.currentPushInfo`); the extension's handler also writes it to the App Group.
     nonisolated private static func pullWidgetToken() async {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             if let info = await WidgetCenter.shared.currentPushInfo {
                 let hex = pushTokenHex(info.token)
                 PushStateStore.update { $0.widgetToken = hex }

@@ -208,7 +208,7 @@ extension PanelScreenView {
         if let v = screens[screen] { return v }
         let v: any PanelScreenView
         switch screen {
-        case .inbox: v = InboxScreen()
+        case .inbox: v = InboxPanelScreen()
         case .agents: v = AgentsScreen()
         case .agent(let id): v = AgentScreen(id: id)
         case .compose(let chat): v = ComposeScreen(chat: chat)

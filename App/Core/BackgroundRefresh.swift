@@ -3,7 +3,9 @@ import BackgroundTasks
 import PierKit
 
 /// BGAppRefreshTask: polls /v1/sessions on every paired box and notifies on new waiting/finished.
+#if os(iOS)
 private final class TaskBox: @unchecked Sendable { let task: BGAppRefreshTask; init(task: BGAppRefreshTask) { self.task = task } }
+#endif
 
 enum BackgroundRefresh {
     /// `<bundle id>.refresh`, as listed in Info.plist (`BGTaskSchedulerPermittedIdentifiers`).
@@ -12,7 +14,7 @@ enum BackgroundRefresh {
     /// iPhone/iPad only. The Mac app follows the boxes while it is open and has no app refresh (there BGTaskScheduler also
     /// blocks launch when the executable is started outside LaunchServices).
     static func register() {
-        #if !targetEnvironment(macCatalyst)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
             guard let task = task as? BGAppRefreshTask else { return }
             schedule()
@@ -24,7 +26,7 @@ enum BackgroundRefresh {
     }
 
     static func schedule() {
-        #if !targetEnvironment(macCatalyst)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         let req = BGAppRefreshTaskRequest(identifier: identifier)
         req.earliestBeginDate = Date(timeIntervalSinceNow: 5 * 60)
         try? BGTaskScheduler.shared.submit(req)

@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// Ajustes ⟶ Aparência: follow the system (default), or always light / dark. Kept in `UserDefaults` (so a `-appearance
 /// light` launch argument works too) and applied to the whole app: `.preferredColorScheme` on the root and the windows'
@@ -26,6 +30,7 @@ enum Appearance: String, CaseIterable, Identifiable {
         }
     }
 
+    #if os(iOS)
     private var style: UIUserInterfaceStyle {
         switch self {
         case .system: .unspecified
@@ -41,4 +46,14 @@ enum Appearance: String, CaseIterable, Identifiable {
             for w in scene.windows { w.overrideUserInterfaceStyle = style }
         }
     }
+    #else
+    /// The native Mac app: the application's appearance, which every window, sheet and alert follows.
+    @MainActor func apply() {
+        switch self {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+    #endif
 }

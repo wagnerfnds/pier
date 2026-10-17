@@ -152,6 +152,85 @@ targets:
           - UTTypeIdentifier: "$(PIER_BUNDLE_ID).sidebar-item"
             UTTypeDescription: Pier sidebar item
             UTTypeConformsTo: [public.data]
+  # Spike (Track 7), never shipped: the same app as a native macOS app (SwiftUI + AppKit, no Catalyst), built beside the
+  # Catalyst one to measure the two against each other on the mock box. It compiles PierKit and App/ (what it leaves
+  # out is listed under `excludes`), with the shims and the Mac-only files of Mac/PierMac. Isolated like the local test
+  # build (`PierLocalTest`: no App Group, iCloud, push or login item; no pier:// scheme, so links still open the real
+  # app) and signed to run locally only.
+  PierMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: App
+        excludes:
+          # iOS only: the car, the UIKit app delegate and entry point (Mac/PierMac has its own), the iOS plist and
+          # entitlements.
+          - "CarPlay/**"
+          - "AppDelegate.swift"
+          - "PierApp.swift"
+          - "Resources/Info.plist"
+          - "Resources/*.entitlements"
+          # UIKit through and through; Mac/PierMac has an AppKit version of each (the editor a plain stand-in).
+          - "Features/Workspace/CodeEditor.swift"
+          - "Features/Dots/ModifierKeys.swift"
+          - "Debug/ChatPerfProbe.swift"
+          - "Debug/WindowSnapshot.swift"
+      - path: Mac/PierMac
+        excludes: ["Info.plist"]
+      # The menu bar item, the edge tab and its side panel in the app's own process (the Catalyst app loads this code
+      # as the PierMenuBar plugin bundle), with the edge surface's pure rules compiled in as the plugin compiles them.
+      - path: Mac/PierMenuBar
+      - path: Packages/PierKit/Sources/PierKit/Support/EdgeSurface.swift
+    dependencies:
+      - package: PierKit
+        product: PierKit
+      - package: GhosttyKit
+        product: GhosttyTerminal
+      - sdk: ScreenCaptureKit.framework
+      - sdk: IOKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PIER_BUNDLE_ID).native
+        PRODUCT_NAME: PierMac
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "1.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    info:
+      path: Mac/PierMac/Info.plist
+      properties:
+        CFBundleDisplayName: Pier Native
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: pt-BR
+        CFBundleLocalizations: [pt-BR, en]
+        LSApplicationCategoryType: public.app-category.developer-tools
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+        # The spike keeps nothing of the installed app's: its own defaults and files, no App Group or keychain group.
+        PierLocalTest: true
+        PierKeychainService: "$(PIER_KEYCHAIN_SERVICE).native"
+        NSCameraUsageDescription: "A câmera lê o QR code de pareamento exibido pelo pierd."
+        NSMicrophoneUsageDescription: "O microfone é usado para ditar pedidos aos agentes em Falar."
+        NSSpeechRecognitionUsageDescription: "O reconhecimento de fala transforma o que você diz em Falar em texto, no próprio aparelho."
+        NSLocalNetworkUsageDescription: "O Pier se conecta às suas boxes de desenvolvimento na rede local."
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
+          NSAllowsLocalNetworking: true
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER).sidebar-item"
+            UTTypeDescription: Pier sidebar item
+            UTTypeConformsTo: [public.data]
   PierUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -291,5 +370,12 @@ schemes:
       targets:
         - name: PierUITests
           parallelizable: false
+    run:
+      config: Debug
+  # The native macOS spike (Track 7), on its own: building it never builds the Catalyst app or its extensions.
+  PierMac:
+    build:
+      targets:
+        PierMac: all
     run:
       config: Debug

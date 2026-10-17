@@ -1,6 +1,10 @@
 import Foundation
 import MetricKit
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import os
 
 /// Field diagnostics the person can send us (Ajustes › Diagnóstico): the reports the system hands the app through
@@ -183,6 +187,8 @@ enum Diagnostics {
         let info = Bundle.main.infoDictionary ?? [:]
         #if targetEnvironment(macCatalyst)
         let platform = "Mac Catalyst"
+        #elseif os(macOS)
+        let platform = "macOS"
         #else
         let platform = "iOS"
         #endif
@@ -201,7 +207,7 @@ enum Diagnostics {
         #if targetEnvironment(simulator)
         if let id = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return "\(id) (simulator)" }
         #endif
-        #if targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst) || os(macOS)
         let key = "hw.model"
         #else
         let key = "hw.machine"
@@ -306,7 +312,7 @@ final class MetricReports: NSObject, MXMetricManagerSubscriber, Sendable {
         if payload.cpuExceptionDiagnostics?.isEmpty == false { kinds.append("cpu") }
         if payload.crashDiagnostics?.isEmpty == false { kinds.append("crash") }
         if payload.diskWriteExceptionDiagnostics?.isEmpty == false { kinds.append("disk") }
-        #if !targetEnvironment(macCatalyst)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         if payload.appLaunchDiagnostics?.isEmpty == false { kinds.append("launch") }
         #endif
         return kinds
@@ -326,7 +332,7 @@ final class MainThreadWatch: Sendable {
     private static let period: TimeInterval = 0.25
     private static let threshold: TimeInterval = 0.5
     private static let kept = 100
-    #if targetEnvironment(macCatalyst)
+    #if targetEnvironment(macCatalyst) || os(macOS)
     private static let pausesInBackground = false
     #else
     private static let pausesInBackground = true

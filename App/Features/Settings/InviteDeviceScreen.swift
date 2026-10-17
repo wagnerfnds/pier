@@ -19,7 +19,7 @@ struct InviteDeviceScreen: View {
     }
 
     static var title: String {
-        #if targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst) || os(macOS)
         S("Levar para o iPhone")
         #else
         UIDevice.current.userInterfaceIdiom == .pad ? S("Levar para o iPhone") : S("Parear outro aparelho")

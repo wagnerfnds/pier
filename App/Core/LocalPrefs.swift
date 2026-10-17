@@ -1,6 +1,10 @@
 import Foundation
 import PierKit
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// The person's organisation of projects (sections, renames, hidden) and this device's own marks. JSON in Application
 /// Support; the organisation is also kept in iCloud's key-value store (`SyncedOrganization`), so every device of the

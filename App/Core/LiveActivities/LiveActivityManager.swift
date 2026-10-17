@@ -1,5 +1,5 @@
 import Foundation
-#if !targetEnvironment(macCatalyst)
+#if os(iOS) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 import PierKit
@@ -9,7 +9,7 @@ extension Notification.Name {
     static let pierTaskCreated = Notification.Name("pier.taskCreated")
 }
 
-#if targetEnvironment(macCatalyst)
+#if targetEnvironment(macCatalyst) || os(macOS)
 /// Mac: ActivityKit is unavailable in Mac Catalyst, so there are no Live Activities. Same surface as the iOS manager, never
 /// enabled (the session menu hides its toggle) and doing nothing.
 @MainActor @Observable

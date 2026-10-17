@@ -51,7 +51,7 @@ struct PierCommands: Commands {
             Button("Abrir rápido…") { workspace?.quickOpen() }
                 .keyboardShortcut("o", modifiers: [.command, .shift]).disabled(workspace == nil)
             Button("Falar com os agentes…") { TalkCenter.shared.open() }.keyboardShortcut(.space, modifiers: [.command, .shift])
-            #if targetEnvironment(macCatalyst)
+            #if targetEnvironment(macCatalyst) || os(macOS)
             // "Point at it": a part of the screen, then the words (Falar with the picture attached).
             Button("Apontar na tela…") { MenuBarBridge.shared.pointAt() }.keyboardShortcut("a", modifiers: [.command, .shift])
             #endif

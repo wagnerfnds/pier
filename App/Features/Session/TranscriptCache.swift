@@ -1,7 +1,11 @@
 import CryptoKit
 import Foundation
 import PierKit
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// The conversations read lately, so a session opens on what it showed last time and only asks the box for what is new
 /// (`since` / `gen`): reopening a chat, the Mac panel and the window showing the same agent, or the app launched again

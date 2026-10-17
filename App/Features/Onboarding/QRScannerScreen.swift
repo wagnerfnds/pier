@@ -1,5 +1,5 @@
 // iPhone/iPad only: the Mac pairs by pasting (or opening) the pier:// link.
-#if !targetEnvironment(macCatalyst)
+#if os(iOS) && !targetEnvironment(macCatalyst)
 import SwiftUI
 import PierKit
 import AVFoundation

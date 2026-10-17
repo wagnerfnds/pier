@@ -1,4 +1,4 @@
-#if targetEnvironment(macCatalyst)
+#if targetEnvironment(macCatalyst) || os(macOS)
 import ServiceManagement
 import os
 

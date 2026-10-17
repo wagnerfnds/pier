@@ -802,6 +802,7 @@ private struct InboxPillStyle: ButtonStyle {
     }
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 /// ↓ / ↑ for the Inbox: a key command that asks for priority over the system's own use of the arrows (list focus and
 /// keyboard scrolling), on a hidden view that holds the first responder while the Inbox has the keys.
 private struct ArrowKeys: UIViewRepresentable {
@@ -841,3 +842,4 @@ final class ArrowKeyView: UIView {
 
     @objc private func arrow(_ c: UIKeyCommand) { onArrow?(c.input == UIKeyCommand.inputDownArrow ? 1 : -1) }
 }
+#endif

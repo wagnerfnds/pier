@@ -491,7 +491,7 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
 }
 
 /// Markdown in a non-editable text view, sized to its text.
-final class MarkdownView: NSView {
+final class PanelMarkdownView: NSView {
     private let text = NSTextView()
     private var attributed = NSAttributedString()
     override var isFlipped: Bool { true }

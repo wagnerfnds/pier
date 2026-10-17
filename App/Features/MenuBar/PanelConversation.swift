@@ -1,5 +1,5 @@
 // Mac only: the agent's conversation in the side panel, as rows the AppKit plugin draws (Mac/PierMenuBar).
-#if targetEnvironment(macCatalyst)
+#if targetEnvironment(macCatalyst) || os(macOS)
 import Foundation
 import PierKit
 

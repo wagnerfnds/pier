@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import PierKit
 
 // The session screen's terminal tabs: beside the conversation, the plain terminals of the session's worktree, each a
@@ -973,6 +977,7 @@ private struct TerminalSurface: View {
     }
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 /// The command line's field: one line, monospaced, and what is typed reaches the shell as typed (no autocorrection,
 /// capitals, smart quotes or dashes: a `"` must stay a `"`, which a SwiftUI field on the Mac does not promise). Return runs
 /// `onSubmit` and keeps the keyboard. With a hardware keyboard ⌃C goes to the shell, and so do ↑, ↓ and Esc on an empty
@@ -1099,6 +1104,7 @@ final class CommandTextField: UITextField {
         if !rest.isEmpty { super.pressesCancelled(rest, with: event) }
     }
 }
+#endif
 
 // MARK: - opening the first
 

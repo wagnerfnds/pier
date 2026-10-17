@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// Colors and small building blocks copied from the app's design system so the extension looks the same (calm; a dark
 /// and a light palette). Every token follows the appearance: widgets and Live Activities the system's.
@@ -35,8 +39,14 @@ extension Color {
 
     /// One color per appearance, resolved by the trait collection (so `.preferredColorScheme` and the system both reach it).
     static func adaptive(light: Color, dark: Color) -> Color {
+        #if os(iOS)
         let l = UIColor(light), d = UIColor(dark)
         return Color(UIColor { $0.userInterfaceStyle == .dark ? d : l })
+        #else
+        // The native Mac app: resolved by the appearance (NSApp's, a window's, or the one `.preferredColorScheme` sets).
+        let l = NSColor(light), d = NSColor(dark)
+        return Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? d : l })
+        #endif
     }
 
     init(light: UInt32, dark: UInt32) {

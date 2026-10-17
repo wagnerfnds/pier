@@ -1,5 +1,5 @@
 import AppIntents
-#if !targetEnvironment(macCatalyst)
+#if os(iOS) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 import Foundation
@@ -159,7 +159,7 @@ enum PendingDeepLink {
 /// next refresh). No Live Activities on the Mac.
 enum SessionActivityBridge {
     static func answered(box: String, session: String) async {
-        #if !targetEnvironment(macCatalyst)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         for a in Activity<SessionActivityAttributes>.activities where a.attributes.box == box && a.attributes.session == session {
             var s = a.content.state
             guard s.phase == .waiting else { continue }

@@ -1,6 +1,10 @@
 import SwiftUI
 import Network
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import PierKit
 
 struct PairOutcome {
@@ -285,7 +289,7 @@ final class AppModel {
     #endif
 
     func clientName() -> String {
-        #if targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst) || os(macOS)
         // UIDevice says just "Mac" here: the host name tells the person's Macs apart ("mac-de-octocats-macbook-pro").
         let host = ProcessInfo.processInfo.hostName.replacingOccurrences(of: ".local", with: "")
         return PierName.fromHostname(host.isEmpty ? "mac" : "mac-de-\(host)", fallback: "mac")
@@ -363,7 +367,7 @@ final class AppModel {
     }
 
     private func transition(_ c: BoxConnection, _ s: Session, _ to: AgentState?) {
-        #if targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst) || os(macOS)
         // This Mac tells the person's iPhone and iPad through their iCloud when the box has no push of its own
         // (CloudAlerts). Never the made-up boxes' (the demo's, a UI test's mock) unless a test asks.
         if !(c.raw is MockBox) || UserDefaults.standard.bool(forKey: "cloudAlertsFromMock") {
@@ -419,7 +423,7 @@ final class AppModel {
             startStatsLoop()
             push.foreground()
             Task { await notifications.refreshStatus() }
-            #if !targetEnvironment(macCatalyst)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             // What a Mac relays through iCloud (CloudAlerts) reaches this phone or iPad: subscribed on the first
             // foreground that can (an iCloud account, the record type known to CloudKit once a Mac saved an alert).
             Task { await CloudAlerts.shared.subscribeIfNeeded() }
@@ -428,7 +432,7 @@ final class AppModel {
             isActive = false
             // The Mac keeps running with its window closed or hidden: the edge tab, the menu bar, the notifications
             // and the alerts for the person's iPhone and iPad (CloudAlerts) still follow every box, so its streams stay.
-            #if !targetEnvironment(macCatalyst)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             hub.stopAll()
             #endif
             statsTask?.cancel()

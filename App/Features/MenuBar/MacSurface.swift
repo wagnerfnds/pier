@@ -1,6 +1,6 @@
 // Mac only: the edge surface (the tab at the screen's edge, its toolbar and the Inbox card) is drawn by the AppKit plugin
 // (Mac/PierMenuBar); this is its data and its actions on the app's side, reached through `MenuBarBridge`.
-#if targetEnvironment(macCatalyst)
+#if targetEnvironment(macCatalyst) || os(macOS)
 import SwiftUI
 import PierKit
 

@@ -142,7 +142,7 @@ import AppKit
 }
 
 /// The Inbox screen: the card's content hosted by the side panel.
-final class InboxScreen: NSView, PanelScreenView, PanelDataSink {
+final class InboxPanelScreen: NSView, PanelScreenView, PanelDataSink {
     var onAction: ((String) -> Void)? { didSet { controller.onContentChanged = { [weak self] in self?.onAction?("panel:relayout") } } }
     var title: String { strings["menuInbox"] ?? "Inbox" }
     let reads: Set<String> = ["cards", "current", "pending", "receipt", "dictation"]

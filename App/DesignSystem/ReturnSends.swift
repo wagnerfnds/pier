@@ -1,6 +1,10 @@
 import GameController
 import SwiftUI
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 extension View {
     /// Return sends where a keyboard is at hand: on the Mac, and on an iPad with a hardware keyboard, as Messages does.
@@ -44,6 +48,7 @@ final class HardwareKeyboard {
     }
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 /// Whether the text being typed is still being composed by an input method: marked text in the field that has the
 /// keyboard (UIKit's `markedTextRange`), which SwiftUI does not expose. Where that field cannot be found, a Japanese,
 /// Chinese or Korean input mode counts as composing, so their Return keeps confirming.
@@ -77,3 +82,4 @@ enum FirstResponder {
 extension UIResponder {
     @objc fileprivate func pierReportFirstResponder() { FirstResponder.found = self }
 }
+#endif

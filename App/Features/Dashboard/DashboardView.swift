@@ -44,7 +44,7 @@ struct DashboardView: View {
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
         }
-        #if targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst) || os(macOS)
         .scrollIndicators(.never)   // with a mouse the Mac keeps the bar on screen; the wheel and trackpad still scroll
         #endif
         .task {
@@ -92,7 +92,7 @@ struct DashboardView: View {
         .sheet(isPresented: $customizing) { HomeCustomizeSheet(layout: layout) }
         .sheet(item: $web) { SafariView(url: $0.url).ignoresSafeArea() }
         .environment(\.openURL, OpenURLAction { url in
-            #if targetEnvironment(macCatalyst)
+            #if targetEnvironment(macCatalyst) || os(macOS)
             return .systemAction    // the Mac opens pages in the default browser
             #else
             guard ["http", "https"].contains(url.scheme?.lowercased()) else { return .systemAction }

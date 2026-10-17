@@ -21,7 +21,7 @@ struct OnboardingView: View {
     @State private var showPaste = false
     @State private var showInstallHelp = false
     @State private var place = PairPlace.default
-    #if targetEnvironment(macCatalyst)
+    #if targetEnvironment(macCatalyst) || os(macOS)
     /// "Neste Mac": Pier opens when the Mac starts (LoginItem), turned on once the box here pairs.
     @AppStorage("onboarding.openAtLogin") private var openAtLogin = true
     #endif
@@ -46,7 +46,7 @@ struct OnboardingView: View {
         .frame(maxWidth: 560)   // a readable column on iPad and Mac windows
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pierBackground()
-        #if !targetEnvironment(macCatalyst)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         .fullScreenCover(isPresented: $showScanner) {
             QRScannerScreen { text in
                 showScanner = false
@@ -72,7 +72,7 @@ struct OnboardingView: View {
             go(.pair)
         }
         .onChange(of: model.hasBoxes) { _, has in
-            #if targetEnvironment(macCatalyst)
+            #if targetEnvironment(macCatalyst) || os(macOS)
             if has, place == .thisMac, openAtLogin { LoginItem.set(true) }
             #endif
             // The box's accounts next ("Contas"), which goes on by itself to "Tudo pronto!" on a box that cannot sign in from here.
@@ -128,7 +128,7 @@ struct OnboardingView: View {
         switch place {
         case .thisMac:
             CopyCommandButton(command: PierLinks.installCommand, primary: true)
-            #if targetEnvironment(macCatalyst)
+            #if targetEnvironment(macCatalyst) || os(macOS)
             Toggle("Abrir o Pier quando o Mac ligar", isOn: $openAtLogin)
                 .font(.subheadline).foregroundStyle(Theme.textDim)
                 .accessibilityIdentifier("onboarding-open-at-login")
@@ -137,7 +137,7 @@ struct OnboardingView: View {
                 .font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
                 .accessibilityIdentifier("onboarding-paste")
         case .server:
-            #if targetEnvironment(macCatalyst)
+            #if targetEnvironment(macCatalyst) || os(macOS)
             Button { showPaste = true } label: { Label("Colar link", systemImage: "doc.on.clipboard") }
                 .buttonStyle(PrimaryButtonStyle())
                 .accessibilityIdentifier("onboarding-paste")
@@ -382,7 +382,7 @@ private struct OnboardingPair: View {
                 case .server:
                     Step(n: 1, text: "No servidor, por SSH, rode:")
                     CommandBox(command: PierLinks.installCommand)
-                    #if targetEnvironment(macCatalyst)
+                    #if targetEnvironment(macCatalyst) || os(macOS)
                     Step(n: 2, text: "Ele mostra um link pier://. Copie e cole aqui.")
                     #else
                     Step(n: 2, text: "Ele mostra um QR code. Escaneie aqui.")
@@ -661,7 +661,7 @@ private struct OnboardingDone: View {
                 }
                 notificationsRow
                 Divider().overlay(Theme.stroke)
-                #if targetEnvironment(macCatalyst)
+                #if targetEnvironment(macCatalyst) || os(macOS)
                 // The phone next: the box here shows a code for it ("Levar para o iPhone").
                 Button { invite = true } label: {
                     item(symbol: "iphone.gen3", color: Theme.accent, title: S("Levar para o iPhone"),

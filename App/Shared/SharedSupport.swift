@@ -35,7 +35,7 @@ enum Shared {
     /// ~/Library/Application Support: the Mac uses the bundle id there instead of a generic name.
     static let supportDirectory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        #if targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst) || os(macOS)
         return base.appendingPathComponent(appBundleID, isDirectory: true)
         #else
         return base.appendingPathComponent("Pier", isDirectory: true)
@@ -44,7 +44,7 @@ enum Shared {
 
     /// A file inside the App Group container; falls back to Application Support so unsigned builds keep working.
     static func fileURL(_ name: String) -> URL {
-        #if targetEnvironment(macCatalyst)
+        #if targetEnvironment(macCatalyst) || os(macOS)
         let base = containerURL ?? supportDirectory
         #else
         let base = containerURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -99,13 +99,13 @@ enum SharedKeychain {
     }
 
     static func store() -> any KeyValueStore {
-        #if DEBUG && targetEnvironment(macCatalyst)
+        #if DEBUG && (targetEnvironment(macCatalyst) || os(macOS))
         if let dir = unsignedMacStore { return FileStore(directory: dir) }
         #endif
         return KeychainStore(service: Shared.keychainService, accessGroup: accessGroup)
     }
 
-    #if DEBUG && targetEnvironment(macCatalyst)
+    #if DEBUG && (targetEnvironment(macCatalyst) || os(macOS))
     /// A Debug Mac build run without its entitlements (`CODE_SIGNING_ALLOWED=NO`: no provisioning profile for the Mac yet)
     /// gets -34018 from every keychain call. It keeps the identity and pairings in 0600 files instead, like pierctl, so
     /// pairing can be tried before the Mac is provisioned. Signed and Release builds always use the keychain.

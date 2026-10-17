@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// A state dot that moves without the main thread: Core Animation runs the pulse in the render server. A SwiftUI
 /// `repeatForever` animation re-renders the view graph every display frame (120 Hz on the Mac), and the sidebar shows
@@ -36,6 +40,7 @@ struct PulseDot: View {
     }
 }
 
+#if os(iOS)   // UIKit; the native Mac app's own is in Mac/PierMac
 private struct PulseHalo: UIViewRepresentable {
     let color: UIColor
     let style: PulseDot.Style
@@ -116,3 +121,4 @@ private struct PulseHalo: UIViewRepresentable {
         }
     }
 }
+#endif

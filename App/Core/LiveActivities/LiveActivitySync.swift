@@ -1,5 +1,5 @@
 import Foundation
-#if !targetEnvironment(macCatalyst)
+#if os(iOS) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 import PierKit
@@ -30,7 +30,7 @@ enum LiveActivitySync {
 
     /// No Live Activities on the Mac (ActivityKit is unavailable in Mac Catalyst): nothing to keep in step.
     static func sync(_ sources: [Source], knownBoxes: Set<String>, refreshStep: Bool) async {
-        #if !targetEnvironment(macCatalyst)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         for activity in Activity<SessionActivityAttributes>.activities where activity.activityState == .active || activity.activityState == .stale {
             let attrs = activity.attributes
             let current = activity.content.state

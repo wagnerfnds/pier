@@ -1,12 +1,22 @@
 import Foundation
 import CoreGraphics
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
-/// The Mac (Catalyst with the Mac idiom) gets denser, pointer-sized layouts; iPad and iPhone keep touch sizes.
+/// The Mac (Catalyst with the Mac idiom, or the native Mac app) gets denser, pointer-sized layouts; iPad and iPhone keep
+/// touch sizes.
 enum Platform {
+    #if os(iOS)
     static let isMac = ProcessInfo.processInfo.isMacCatalystApp
     /// An iPhone, which keeps one pane at a time even when a big one in landscape reports a regular width.
     @MainActor static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+    #else
+    static let isMac = true
+    @MainActor static var isPhone: Bool { false }
+    #endif
 }
 
 /// Sizes of the sidebar and the project workspace: the Mac's are its own sidebars' (13 pt text in 26 pt rows), the

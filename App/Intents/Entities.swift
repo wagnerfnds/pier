@@ -135,7 +135,7 @@ extension SessionEntity: IndexedEntity {
 enum SpotlightIndexer {
     /// Re-indexes projects and live sessions (iOS 18+); best effort.
     static func reindex() async {
-        guard #available(iOS 18.0, *) else { return }
+        guard #available(iOS 18.0, macOS 15.0, *) else { return }
         guard let projects = try? await IntentCatalog.projects(), let sessions = try? await IntentCatalog.sessions() else { return }
         let index = CSSearchableIndex.default()
         try? await index.deleteAppEntities(ofType: ProjectEntity.self)

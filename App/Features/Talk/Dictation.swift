@@ -65,7 +65,7 @@ final class Dictation {
             state = .unavailable; return
         }
         do {
-            #if !targetEnvironment(macCatalyst)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .measurement, options: .duckOthers)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -134,7 +134,7 @@ final class Dictation {
         engine = nil; request = nil; task = nil
         level = 0
         if state != .denied && state != .unavailable { state = .idle }
-        #if !targetEnvironment(macCatalyst)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
     }

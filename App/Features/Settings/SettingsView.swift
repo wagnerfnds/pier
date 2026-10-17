@@ -110,7 +110,7 @@ struct SettingsView: View {
                 Text("Atualiza a main de cada projeto e limpa worktrees, serviços e sessões que sobraram. Para rodar sozinha, crie uma automação no app Atalhos com “Faxina nas boxes”.")
             }
             UndoSettingsSection()
-            #if targetEnvironment(macCatalyst)
+            #if targetEnvironment(macCatalyst) || os(macOS)
             MacSurfaceSettingsSection()
             #endif
             Section {
@@ -135,7 +135,7 @@ struct SettingsView: View {
                     Button("Permitir notificações") { Task { await model.notifications.requestAuthorization() } }
                         .listRowBackground(Theme.card)
                 }
-                #if !targetEnvironment(macCatalyst)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 // Siri reads the agents' messages and takes the car's spoken replies only once allowed.
                 switch model.notifications.siri {
                 case .authorized:
@@ -156,7 +156,7 @@ struct SettingsView: View {
                     .listRowBackground(Theme.card)
                 }
                 #endif
-                #if targetEnvironment(macCatalyst)
+                #if targetEnvironment(macCatalyst) || os(macOS)
                 Toggle("Abrir o Pier quando o Mac ligar", isOn: Binding(get: { openAtLogin }, set: { on in
                     if LoginItem.set(on) { openAtLogin = LoginItem.isOn }
                 }))
@@ -211,7 +211,7 @@ struct SettingsView: View {
     }
 }
 
-#if targetEnvironment(macCatalyst)
+#if targetEnvironment(macCatalyst) || os(macOS)
 /// Ajustes → Mac: the edge surface (the tab at the screen's edge with the toolbar and the Inbox card), the ⌥ double tap
 /// and "point at it", with the macOS permissions each one needs and where to grant them.
 struct MacSurfaceSettingsSection: View {

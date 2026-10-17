@@ -1,8 +1,13 @@
 // Mac only: the menu bar item and the edge surface (the tab at the screen's edge, its toolbar and the Inbox card) live in
 // an AppKit plugin bundle (Mac/PierMenuBar, embedded in Contents/PlugIns by the PierMenuBar target in project.yml),
-// since a Catalyst app cannot use AppKit itself.
-#if targetEnvironment(macCatalyst)
+// since a Catalyst app cannot use AppKit itself. The native Mac app (the PierMac spike) compiles the plugin's code in
+// and creates it directly: the same calls, no bundle to load.
+#if targetEnvironment(macCatalyst) || os(macOS)
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import PierKit
 
 /// The plugin's Objective-C surface (PierMenuBarPlugin in Mac/PierMenuBar). Selectors must match: `start:`,
@@ -51,6 +56,7 @@ import PierKit
         guard plugin == nil else { return }
         self.model = model
         surface.model = model
+        #if targetEnvironment(macCatalyst)
         guard let url = Bundle.main.builtInPlugInsURL?.appendingPathComponent("PierMenuBar.bundle"),
               let bundle = Bundle(url: url) else { NSLog("PierMenuBar: bundle missing in PlugIns"); return }
         do { try bundle.loadAndReturnError() } catch { NSLog("PierMenuBar: load failed: %@", String(describing: error)); return }
@@ -59,6 +65,9 @@ import PierKit
         guard obj.responds(to: NSSelectorFromString("updateSurface:")) else { NSLog("PierMenuBar: unexpected plugin API"); return }
         // Both sides declare the protocol separately, so a cast would not match; the selectors do.
         let p = unsafeBitCast(obj, to: PierMenuBarPluginAPI.self)
+        #else
+        let p: PierMenuBarPluginAPI = PierMenuBarPlugin()
+        #endif
         plugin = p
         p.start { [weak self] action in MainActor.assumeIsolated { self?.handle(action) } }
         // An action changed the surface's own state (not observed): every part is read again, at once.
@@ -313,10 +322,12 @@ import PierKit
         guard let model else { return }
         let router = model.router
         // The window may have been closed: ask for it again (not for what stays on the surface).
+        #if targetEnvironment(macCatalyst)
         if !action.hasPrefix("surface:") && !action.hasPrefix("card:") && !action.hasPrefix("shot:") && action != "optiontap",
            !UIApplication.shared.connectedScenes.contains(where: { $0.activationState != .unattached }) {
             UIApplication.shared.requestSceneSessionActivation(nil, userActivity: nil, options: nil, errorHandler: nil)
         }
+        #endif
         switch action {
         case "app": break
         case "talk", "optiontap":
