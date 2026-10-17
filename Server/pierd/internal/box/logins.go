@@ -445,13 +445,23 @@ func (b *Box) runLogin(ctx context.Context, origin, id string) {
 		if !ok || run.Finished != nil {
 			return
 		}
+		if time.Now().After(deadline) {
+			b.updateLogin(origin, id, func(l *loginRun) {
+				finished(l, LoginFailed, fmt.Sprintf("the sign-in took more than %d minutes; start it again", int(loginTimeout.Minutes())))
+			})
+			b.Sessions.Kill(context.Background(), run.Session)
+			return
+		}
 		dead, status, err := b.Sessions.paneExit(ctx, run.Session)
 		if ctx.Err() != nil {
 			return
 		}
-		if err != nil {
+		if errors.Is(err, ErrUnknownSession) {
 			b.updateLogin(origin, id, func(l *loginRun) { finished(l, LoginFailed, "the sign-in's session ended before it was done") })
 			return
+		}
+		if err != nil {
+			continue // tmux did not answer this time: the next look will tell
 		}
 		screen := b.Sessions.loginScreenText(ctx, run.Session)
 		if dead {
@@ -466,13 +476,6 @@ func (b *Box) runLogin(ctx context.Context, origin, id string) {
 		})
 		if len(keys) > 0 {
 			b.Sessions.pressKeys(ctx, run.Session, false, keys...)
-		}
-		if time.Now().After(deadline) {
-			b.updateLogin(origin, id, func(l *loginRun) {
-				finished(l, LoginFailed, fmt.Sprintf("the sign-in took more than %d minutes; start it again", int(loginTimeout.Minutes())))
-			})
-			b.Sessions.Kill(context.Background(), run.Session)
-			return
 		}
 	}
 }

@@ -391,3 +391,21 @@ func TestSignInsCanceledReplacedAndFromTheAccountsRoute(t *testing.T) {
 		t.Fatalf("an unknown sign-in = %d", status)
 	}
 }
+
+// A sign-in nobody finishes ends on its own (15 minutes, as long as the device codes last) and takes its session with it.
+func TestSignInTimesOut(t *testing.T) {
+	fakeCLIs(t, "codex")
+	defer func(d time.Duration) { loginTimeout = d }(loginTimeout)
+	loginTimeout = 1500 * time.Millisecond
+	var bx *Box
+	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir(); bx = b })
+	var l Login
+	call(t, c, "POST", "/v1/logins", "", map[string]string{"tool": "codex"}, &l)
+	l = waitLogin(t, c, l.ID, func(l Login) bool { return l.Finished != nil })
+	if l.State != LoginFailed || !strings.Contains(l.Error, "took more than") {
+		t.Fatalf("timed out = %+v", l)
+	}
+	if !sessionGone(t, bx, l.Session) {
+		t.Error("the session of a sign-in that timed out stayed")
+	}
+}
