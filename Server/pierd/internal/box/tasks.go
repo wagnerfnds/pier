@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"pier/pierd/internal/events"
@@ -113,6 +115,11 @@ var modelWord = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)
 // plain name, or one the agent has no flag for, is refused.
 func AgentCommandWith(p AgentPreset, prompt, model, effort string) (string, error) {
 	cmd := p.Command
+	if agentOf(cmd) == "claude" && !strings.Contains(cmd, "dangerously-skip-permissions") && claudeBypassOffered() {
+		// Bypass among the modes Shift+Tab cycles through, so the app's mode
+		// menu can reach it; the session still starts in its default mode.
+		cmd += " " + claudeBypassFlag
+	}
 	if model != "" {
 		if !modelWord.MatchString(model) || strings.HasPrefix(model, "-") {
 			return "", badRequest("%q is not a model name", model)
@@ -147,6 +154,36 @@ func AgentCommandWith(p AgentPreset, prompt, model, effort string) (string, erro
 		return cmd + " " + p.PromptFlag + " " + shellQuote(prompt), nil
 	}
 	return cmd + " " + shellQuote(prompt), nil
+}
+
+// claudeBypassFlag lets a Claude Code session be switched to bypass
+// permissions (no questions) without starting in it.
+const claudeBypassFlag = "--allow-dangerously-skip-permissions"
+
+// claudeVersion reads the version `claude --version` printed: "2.1.302
+// (Claude Code)".
+var claudeVersion = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
+
+// claudeBypassOffered says Claude Code sessions start with claudeBypassFlag:
+// the Claude Code on this box knows it (2.1 or newer, as its --version
+// says; an older one, or one whose version pierd could not read, would not
+// start with a flag it does not know), and pierd does not run as root,
+// where Claude Code refuses to start with it at all.
+func claudeBypassOffered() bool {
+	if os.Geteuid() == 0 {
+		return false
+	}
+	f, ok := agentFound("claude")
+	if !ok {
+		return false
+	}
+	m := claudeVersion.FindStringSubmatch(strings.TrimSpace(f.Version))
+	if m == nil {
+		return false
+	}
+	major, _ := strconv.Atoi(m[1])
+	minor, _ := strconv.Atoi(m[2])
+	return major > 2 || major == 2 && minor >= 1
 }
 
 // maxPromptArg is the longest first prompt an agent can be started with:
@@ -215,9 +252,21 @@ func wrapperWord(f string) bool {
 	return ok && k != "" && !strings.ContainsAny(k, "/ ")
 }
 
+// signInSession says a session is the terminal pierd opened for someone to
+// sign an agent account in (POST /v1/accounts/{id}/login): named
+// login-<account>, at no location, with no preset. It runs the agent's CLI,
+// but nobody works there: it is a terminal, which the app opens as one (a
+// real terminal, where the code to sign in can be copied and pasted).
+func signInSession(name, location, preset string) bool {
+	return strings.HasPrefix(name, "login-") && location == "" && preset == ""
+}
+
 // agentFor is the agent a session runs: its preset when pierd started it
-// with one, else what its command looks like.
+// with one, else what its command looks like; none for a sign-in terminal.
 func agentFor(s Session) string {
+	if signInSession(s.Name, s.Location, s.Preset) {
+		return ""
+	}
 	if s.Preset != "" {
 		for _, p := range builtinAgents {
 			if p.ID == s.Preset {

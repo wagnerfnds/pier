@@ -101,7 +101,7 @@ public final class EventStreamer: Sendable {
         guard let b = e as? PierError else { return e is DecodingError }
         switch b {
         case .transport, .timeout, .tls, .rateLimited: return false
-        case .api(let status, _, _): return !(status >= 500 || status == 408)
+        case .api(let status, _, _, _): return !(status >= 500 || status == 408)
         case .unauthorized, .pinMismatch, .protocolViolation, .pairingRejected, .invalidLink, .linkExpired, .decoding, .storage: return true
         }
     }

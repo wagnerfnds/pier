@@ -28,12 +28,15 @@ struct SessionScreen: View {
     private var session: Session { vm.session }
     private var boxSession: BoxSession { BoxSession(box: route.box, session: session) }
     /// A shell (no agent) on a box that streams terminals: a live terminal, typed into directly (LiveTerminal.swift).
-    private var liveShell: Bool { !session.isAgent && LiveTerminal.supported(box: route.box, model: model) }
+    /// The terminal an account signs in at is one too, whatever an older box says runs in it: the link and the code
+    /// are copied and pasted there.
+    private var isShell: Bool { !session.isAgent || session.isSignIn }
+    private var liveShell: Bool { isShell && LiveTerminal.supported(box: route.box, model: model) }
     /// A shell whose box has not said yet whether it streams terminals (its info still loading): neither the live
     /// terminal nor the command line yet, so nothing shows and goes away again. A box out of reach gets the command
     /// line (and its screen as last read).
     private var shellPending: Bool {
-        guard !session.isAgent, let conn = model.connection(for: route.box) else { return false }
+        guard isShell, let conn = model.connection(for: route.box) else { return false }
         return conn.info == nil && conn.state == .connecting
     }
 

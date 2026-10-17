@@ -412,9 +412,9 @@ final class MockBox: PierTransport, @unchecked Sendable {
         let (status, data) = lock.withLock { handle(method, path, body) }
         if status >= 400 {
             // As the real transport reads pierd's errors: the message and the code apart.
-            struct Payload: Decodable { let error: String?; let code: String? }
+            struct Payload: Decodable { let error: String?; let code: String?; let kept: Bool? }
             let p = try? JSONDecoder().decode(Payload.self, from: data)
-            throw PierError.api(status: status, message: p?.error ?? String(decoding: data, as: UTF8.self), code: p?.code)
+            throw PierError.api(status: status, message: p?.error ?? String(decoding: data, as: UTF8.self), code: p?.code, kept: p?.kept ?? false)
         }
         return (status, data)
     }
@@ -442,8 +442,14 @@ final class MockBox: PierTransport, @unchecked Sendable {
         if let r = pairInviteRoute(method, p) { return r }   // "Levar para o iPhone" (block at the end of the file)
         if let r = workspace.route(method, p, query, body) { return r }   // a worktree's files (UITestMockWorkspace.swift)
         if method == .post, p.count == 4, p[1] == "accounts", p[3] == "login" {
-            // The terminal where the person signs in.
-            let s = Self.session("login-\(p[2])", location: "", dir: "/home/ubuntu", state: "ready", title: "Entrar")
+            // The terminal where the person signs in: a terminal, no agent, as pierd lists it (the app opens it as one),
+            // in a folder of pierd's own, with the CLI at its sign-in (UITestMockTerminals.swift).
+            let name = "login-\(p[2])", dir = "/home/ubuntu/.config/pier/box/sign-in"
+            let command = p[2].hasPrefix("codex") ? "codex login --device-auth" : "claude /login"
+            sessions.removeAll { $0["name"] as? String == name }
+            terminals.remove(name)
+            terminals.start(name, ref: "", dir: dir, command: command)
+            let s: JSON = ["name": name, "dir": dir, "command": command, "created": Self.iso(), "attached": 0, "exited": false]
             sessions.insert(s, at: 0)
             return (200, Self.json(s))
         }

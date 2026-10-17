@@ -375,6 +375,7 @@ func (b *Box) runClone(from string, cl Clone, src repoSource, setup, adopt bool)
 		fail(err)
 		return
 	}
+	b.trustLocationDir(loc.Name, loc.Path)
 	b.Events.Publish(events.Event{Type: "location.added", Box: b.Name, Origin: from, Data: map[string]any{"location": loc.Name, "path": loc.Path}})
 	how := "none"
 	var services []string

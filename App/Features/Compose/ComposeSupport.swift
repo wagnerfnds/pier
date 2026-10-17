@@ -64,7 +64,7 @@ enum ComposeErrorText {
         if let e = error as? BoxError { status = e.status; text = e.error; code = e.code }
         else if let e = error as? PierError {
             switch e {
-            case .api(let s, let m, let c): status = s; text = m; code = c
+            case .api(let s, let m, let c, _): status = s; text = m; code = c
             case .unauthorized: return String(localized: "A box não reconhece mais este aparelho. Pareie novamente.")
             case .transport, .timeout, .tls: return String(localized: "Não foi possível falar com a box. Confira a rede e tente de novo.")
             default: return e.localizedDescription

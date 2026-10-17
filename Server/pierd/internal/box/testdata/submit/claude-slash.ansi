@@ -1,0 +1,50 @@
+  58
+  59                           
+  60                             
+                                                                                                                                
+[38;5;246m✻[39m [38;5;246mWorked for 2s · done 9:29 PM
+[39m    
+[38;5;246m[48;5;237m❯ [38;5;231mLine one of a pasted note[39m                                                                                                                                                                             
+  [38;5;231mLine two of a pasted note[39m                                                                                                                                                                             
+  [38;5;231mLine three of a pasted note[39m                                                                                                                                                                           
+
+[38;5;231m[49m⏺[39m I see a three-line pasted note but no instructions with it. What would you like me to do with it?                                                                                                     
+
+[38;5;246m✻[39m [38;5;246mCogitated for 2s · done 9:29 PM[39m                                                                                                                                                                       
+
+[38;5;246m[48;5;237m❯ [38;5;231mLine 1 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 2 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 3 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 4 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 5 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 6 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 7 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 8 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 9 of a longer pasted log[39m                                                                                                                                                                         
+  [38;5;231mLine 10 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 11 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 12 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 13 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 14 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 15 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 16 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 17 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 18 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 19 of a longer pasted log[39m                                                                                                                                                                        
+  [38;5;231mLine 20 of a longer pasted log[39m                                                                                                                                                                        
+
+[38;5;231m[49m⏺[39m You pasted a 20-line log, but every line is a placeholder ("Line N of a longer pasted log"). There are no errors, timestamps or other content in it, so there's nothing to analyze. Paste the real    
+  log, or tell me what you need, and I'll take a look.
+
+[38;5;246m✻[39m [38;5;246mBrewed for 3s · done 9:29 PM[39m                                                                                                                                                                          
+
+[38;5;246m[48;5;237m❯ [38;5;231mReply with the single word OK and nothing else.[39m                                                                                                                                                       
+[49m                                                                                                                                                                                                        
+  [38;5;153m❯ /[1mmodel[0m[38;5;153m                                       Set the AI [1mmodel[0m[38;5;153m for Claude Code (currently Opus 5.5)[39m                                                                                                  
+  [38;5;246m  /auto-mode-setup                             Teach auto mode about your environment, plus optional rule tweaks
+[39m  [38;5;246m  /code-review                                 Review the current diff, or a PR number/branch/path target, for correctness bugs (plus reuse/simplification/efficiency cleanups where the [1m[39mmodel[0m[38;5;246m's[39m      
+                                                 [38;5;246mreview recipe covers them) at the given effort level (low|medium|high|xhigh|max: from few high-confidence findings up to many, some of them uncertai…
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m❯ [38;5;153m/model
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;220m⏵⏵ auto mode on[38;5;246m (shift+tab to cycle)[39m                   

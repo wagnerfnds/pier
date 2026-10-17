@@ -317,12 +317,16 @@ enum MacSurfaceSettings {
         guard let vm = vm(for: id) else { return }
         stopDictation()
         let card = item(id)
-        let started = vm.scheduleSend(text, withAttachments: false) { [weak self] sent, error in
+        let started = vm.scheduleSend(text, withAttachments: false) { [weak self] outcome, error in
             guard let self else { return }
-            if sent {
+            switch outcome {
+            case .sent:
                 if let card, let model = self.model { self.store.markAnswered(card, model: model) }
-            } else {
+            case .failed:
                 self.agentFailed(id, text: text, error: error)
+            case .leftOnBox:
+                // Still typed in the agent's own box: only the reason shows, the words stay there.
+                self.agentFailed(id, text: "", error: error)
             }
         }
         if started { onChange?() }
@@ -335,7 +339,8 @@ enum MacSurfaceSettings {
     private func agentFailed(_ id: String, text: String, error: String?) {
         let token = UUID().uuidString
         let earlier = agentFailure.flatMap { $0.id == id ? $0.text : nil }
-        agentFailure = (id, token, earlier.map { $0 + " " + text } ?? text, error ?? S("A mensagem não foi enviada."))
+        let words = text.isEmpty ? earlier ?? "" : earlier.map { $0 + " " + text } ?? text
+        agentFailure = (id, token, words, error ?? S("A mensagem não foi enviada."))
         onChange?()
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))

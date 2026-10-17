@@ -259,7 +259,7 @@ func (b *Box) setMode(w http.ResponseWriter, r *http.Request) error {
 	if mode != req.Mode {
 		msg := "this session doesn't offer that mode; it is in " + mode + " mode"
 		if req.Mode == "bypassPermissions" {
-			msg = "bypass needs Claude Code started with --dangerously-skip-permissions; this session is in " + mode + " mode"
+			msg = "bypass needs Claude Code started with --allow-dangerously-skip-permissions (pierd starts Claude Code 2.1 or newer with it, unless it runs as root); this session is in " + mode + " mode"
 		}
 		return httpError{http.StatusConflict, msg}
 	}

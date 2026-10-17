@@ -691,6 +691,9 @@ private struct InboxFinishedCard: View {
                 .focused(replyFocus, equals: entry.id)
                 .submitLabel(.send)
                 .onSubmit { submit() }
+                // A field that grows takes Return as a new line: where a keyboard is at hand, Return sends (Shift- or
+                // Option-Return writes the line).
+                .returnSends { submit() }
                 .onKeyPress(.escape) { replyFocus.wrappedValue = nil; return .handled }
                 .padding(.leading, 12).padding(.vertical, 8)
                 .accessibilityIdentifier("inbox-reply-field")

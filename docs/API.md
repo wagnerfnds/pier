@@ -48,7 +48,7 @@ notifications).
 | Times | RFC 3339 with up to 9 fractional digits (`2026-10-07T19:07:42.53987405Z`). Zero times are omitted. Some fields are Unix milliseconds (transcript); they are named in place. |
 | Omitted fields | Most fields are omitted when empty: absent means zero, false or empty. Model every non-identity field as optional. |
 | Lists | Top-level empty lists are `[]`. Nested lists can be `null` or missing (`branches`, transcript `items`); decode defensively. |
-| Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `unsaved_work` (409, 2.8), `space_not_empty`, `space_has_files` (409, 2.9), `docker_missing` (501), `gh_missing` (501), `gh_auth` (428), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
+| Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `not_submitted` (409, 4.3: the agent never took a prompt typed into it; the body also has `kept`), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `unsaved_work` (409, 2.8), `space_not_empty`, `space_has_files` (409, 2.9), `docker_missing` (501), `gh_missing` (501), `gh_auth` (428), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
 | Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
@@ -440,8 +440,15 @@ for Codex. The agent's own folder (`~/.claude`, `~/.codex`) is its built-in acco
   limits?, limits_ready}]`. `signed_in` from the credentials file in the folder (`signed_in_known: false` where it
   cannot tell: Claude Code on macOS keeps them in the Keychain). `projects`: the locations whose agents use it.
 * `POST /v1/accounts {agent, name}` makes a folder under `~/.pier/box/accounts/<id>` with pierd's hooks (and, for
-  Claude, its status line and the installed skills). `POST /v1/accounts/{id}/login` starts a terminal session on that
-  folder (`claude`, which signs in first; `codex login --device-auth`): open it as a session to sign in.
+  Claude, its status line and the installed skills), ready to work at once: every project already on the box trusted
+  there (3.4), Codex's review of pierd's hooks answered, and, for Claude Code, its first-run screens marked seen
+  (`hasCompletedOnboarding` in the folder's `.claude.json`, the theme `dark`) and the bypass mode's warning accepted
+  (`skipDangerousModePermissionPrompt` in its `settings.json`, 4.4). `POST /v1/accounts/{id}/login` starts a terminal
+  on that account where the person signs in: `claude /login` (Claude Code opens on its login method), `codex login
+  --device-auth`, in a folder of pierd's own (`~/.pier/box/sign-in`, beside the accounts, which Claude Code is told it
+  trusts: in the home folder it would ask first, every time). It is a terminal, not an agent: listed with no `agent`, and the app
+  opens it as a terminal (copy and paste work there). The built-in account signs in on its own folder, with no
+  `CLAUDE_CONFIG_DIR` set (set at all, it moves Claude Code's config and its macOS keychain entry).
   `PATCH /v1/accounts/{id} {name?, default?: true}` renames it or makes it the box's default for its agent.
   `DELETE /v1/accounts/{id}` deletes an added account's folder, its login with it (projects on it go back to the
   default); the built-in ones cannot be removed. Events `account.added|changed|removed`; gates `before:account.add`,
@@ -534,7 +541,8 @@ overrides those lists on the box agent with that id. De-duplicate by `id`, repos
 | `open?` | a hint for other clients to show the session; the app never sets it |
 
 Answer: `{"worktree": Worktree, "session": Session}`. Order on the box: `before:task.create` →
-`before:worktree.create` → worktree (setup in the background) → `before:session.start` → the tmux session. If the
+`before:worktree.create` → worktree (setup in the background; its folder trusted for the agents, 3.4) →
+`before:session.start` → the tmux session. If the
 session cannot start, the worktree is removed again. Errors: 503 `tmux_missing` (checked first), 400 unknown agent,
 403 `refused`, 404 unknown location, 413 prompt too long. Events: `worktree.created`, `session.started`,
 `task.created {location, name, path, branch, session, agent}`.
@@ -551,8 +559,23 @@ session cannot start, the worktree is removed again. Errors: 503 `tmux_missing` 
 * `name?`: the tmux name; by default `<loc>-<program>-<base36 time>`. 409 `session_exists` when taken.
 * `home: true` (capability `session.home`): a terminal in the box user's home, no location and no agent.
 * Answer: the `Session` (4.1). Event `session.started {name, location, path, command, agent?}`.
-* With `agent` + `prompt`, pierd also handles the agent's start-up question (trust this folder) and holds the prompt
-  until it is answered.
+* **Trust, up front.** Claude Code and Codex ask before they work in a folder they have not seen. pierd answers in
+  their own configs before they ask, in the account the agent starts on (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, 2.10, else
+  the default): Claude Code's `projects[<path>].hasTrustDialogAccepted` in `.claude.json` (taken under Claude Code's own
+  lock, `.claude.json.lock`), Codex's `[projects."<path>"] trust_level = "trusted"` in `config.toml` (never a second
+  table for a folder, which would stop Codex from starting; the previous file kept as `config.toml.pier-backup`), for
+  the real path of the folder's repository top folder and, in a linked worktree, of its main checkout. It does so when
+  a project is registered (`POST /v1/locations`, a clone), when a worktree is made, before every agent session starts
+  (tasks, sessions, chats) and when an account is added (for every project already there). Only what is missing is
+  added: a folder the person marked untrusted stays so. Codex's review of new hooks ("Hooks need review") is answered
+  the same way for pierd's own hooks (`[hooks.state."<hooks.json>:<event>:<group>:<hook>"] trusted_hash`, the hash
+  Codex computes). Failing to write one of these never stops a start; pierd logs it.
+* When the question comes anyway (an agent whose config is elsewhere), in a project's folder or a chat's own (3.5),
+  pierd answers it from the screen itself; a menu it cannot read waits for the person. With `agent` + `prompt`, prompts
+  are held until it is answered.
+* Claude Code 2.1 or newer starts with `--allow-dangerously-skip-permissions` (not when pierd runs as root, where
+  Claude Code refuses it): bypass is among the modes Shift+Tab reaches (4.4), while the session still starts in its
+  default mode.
 
 ### 3.5 Start a chat, tied to no project: `POST /v1/sessions` with `chat: true`
 
@@ -569,8 +592,9 @@ an idea through, plan what does not exist yet.
   agent there would take the whole home for its project, and the turn ledger places a hook that names no session by
   its folder, so two chats never share one. The default name is `chat-<program>-<base36 time>`; when an earlier chat left a
   folder of that name, the next free `-2`, `-3`... is taken. A `name` whose folder exists: 409.
-* The agent's start-up question about that folder (Claude Code's "Quick safety check", Codex's "Do you trust the
-  contents of this directory?") pierd answers itself: it made the folder and nothing is in it yet. It moves the menu's
+* The folder is trusted in the agent's config before it starts (3.4). The agent's start-up question about it, if it
+  comes anyway (Claude Code's "Quick safety check", Codex's "Trust this folder?", "Do you trust the contents of this
+  directory?" before 0.16), pierd answers itself: it made the folder and nothing is in it yet. It moves the menu's
   cursor to the row that says yes, reading the screen after each key, and confirms only once the cursor is there; no
   `agent.waiting`, no push, and the first prompt runs at once. An agent starting cold can miss a key, redraw its menu
   late or keep the question drawn for seconds after the answer: while the question stays, pierd answers again every
@@ -642,12 +666,25 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
 | `force` | type even though the agent waits (only when the person is answering it) |
 | `idem_key` | always send one: a retry with the same key returns the original turn with `duplicate: true` and types nothing. Sends that make no turn (an answer, a slash or shell command) are remembered too, the last 32 per session; the keys survive a pierd restart and go with the session |
 
+* **Submitted, not just typed** (Claude Code and Codex, a prompt with `enter`, not an answer to a waiting agent):
+  an Enter that reaches an agent's input box while it is still taking the paste (at the end of a turn, when it redraws)
+  lands in it as a new line, and the prompt stays unsent. So pierd waits for a quiet screen (always for a held prompt,
+  and when the agent shows it is working), pastes, waits for the input box to show the prompt (its first words, or the
+  agent's "[Pasted text #1]" / "[Pasted Content …]"), presses Enter and watches for it to go in: the agent's hooks say
+  a prompt started, or the box let go of it. Still in the box: one more Enter, after a quiet screen, and never a third,
+  nor one into a box already empty. Still not taken: pierd clears the box (Ctrl-U, line by line) and answers **409
+  `not_submitted`** with `"kept": false`, and nothing was sent (the app gives the text back to the person), or
+  `"kept": true` when the box could not be cleared: the text is still typed there, so sending it again from scratch
+  would send it twice once someone presses Enter in the terminal. An input box pierd cannot read (another agent, a
+  layout it does not know) is typed into as before.
 * 409 `session_exited` when the program has ended.
 * At the agent's start-up question, text is held (`idle`, `now`) or refused (`force`).
 * A forced send into a waiting agent is an **answer** (`session.sent {answer: true, turn}`), not a new turn.
 * Slash commands (`/model`, `/cost`) pass through and create no turn (`sent: true` with no `turn`).
 * A prompt on an untitled session names it. Gate `before:session.send`.
-* Event `session.sent {name, from, idem_key?, turn?, answer?, command?, startup?}`; the text never appears in events.
+* Event `session.sent {name, from, idem_key?, turn?, answer?, command?, startup?, entered?}`, published once the
+  prompt went in; `entered` is when its Enter was pressed (a submitted prompt), so the turn ledger takes a start the
+  agent's own hook reported before the event as this send's. The text never appears in events.
 
 ### 4.4 Keys, interrupt and mode
 
@@ -661,6 +698,8 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
 * `GET /v1/sessions/{name}/controls` → `{agent, mode?, effort?, modes?, limit?}` (Claude Code modes `default,
   acceptEdits, plan, auto, bypassPermissions`). `POST .../mode {"mode":"plan"}` → `{"mode":"plan"}` cycles
   Shift-Tab until the mode matches (409 when the agent waits or the mode cannot be reached; event `session.mode`).
+  `bypassPermissions` is reachable in sessions pierd started with `--allow-dangerously-skip-permissions` (3.4), and its
+  warning never stops the switch (the accounts have `skipDangerousModePermissionPrompt`).
 
 ### 4.5 Held prompts (capability `queue`)
 
@@ -668,7 +707,10 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
   prompt can be as long as a send (2 MB); 16 are held per session.
 * `DELETE /v1/sessions/{name}/queue/{turn}` → `{"cancelled": turn}` (404 once sent). Event `session.unqueued`.
 * `POST /v1/sessions/{name}/queue/{turn}/send {force?}` → the send answer: type it now (409 while the agent waits,
-  unless `force`).
+  unless `force`; 409 `not_submitted` as 4.3, the prompt held again unless `kept`).
+* A held prompt is typed once the agent's screen is quiet, and submitted as 4.3. One the agent does not take (and that
+  could be cleared from its box) is held again and tried at the next delivery, three times in all; then, or when it is
+  left in the box, its turn ends `lost` with the reason as `status`.
 * `{turn}` looks like `name#3`: encode `#` as `%23` in the path.
 
 ### 4.6 Stop and rename
@@ -770,9 +812,10 @@ same, `internal/push/menu`):
 5. The state returns to `running` by itself when the tool runs. After a Deny, Claude Code goes back to its prompt.
 
 Start-up dialogs are not permission menus. Claude Code's "Quick safety check: … do you trust this folder?" has
-unnumbered rows with the cursor on **No**: send `keys: ["down","enter"]`. Codex's `› 1. Trust and continue` ignores
-the digit: send `keys: ["enter"]`. pierd reports both as `agent.waiting {reason: "startup question"}` and holds
-prompts until they are answered; in a chat's own folder it answers them itself (3.5).
+unnumbered rows with the cursor on **No**: send `keys: ["down","enter"]`. Codex's `› 1. Trust and continue` ("Trust this
+folder?" since 0.16) ignores the digit: send `keys: ["enter"]`. pierd trusts the folders of projects and chats up front
+(3.4), so they rarely come; when one does, pierd answers it itself in a project's folder or a chat's own (3.5), and
+otherwise reports it as `agent.waiting {reason: "startup question"}` and holds prompts until it is answered.
 
 When no Allow/Deny can be derived, offer "Answer": the screen plus a key bar (`1 2 3 y n enter esc`) through `keys`.
 Always show `ask.tool` + `ask.input` (+ `why`), e.g. `Bash  rm -rf build`.
@@ -1201,7 +1244,7 @@ with defaults and a tolerant decoder (missing keys, `null` lists).
 | `Models/QuestionModels.swift` | `Question`, `QuestionOption`, `QuestionAnswer` |
 | `Models/TranscriptModels.swift` | `TranscriptPage`, `TranscriptItem`, `CrewMember`, `ArtifactRef`, `Signals`, `ToolDetail` |
 | `Models/ReviewModels.swift` | `ReviewItem`, `ReviewFile`, `ReviewCommit`, `TouchedFile`, `FileDiff`, `ExecResult`, `PullRequest` |
-| `Models/Common.swift` | `AgentState` (with `.unknown(String)`), `SendRequest`, `ControlKey`, `PierEvent`, `BoxError`, `WorktreeRemoval`, `RFC3339`, `JSONDecoder.pier` |
+| `Models/Common.swift` | `AgentState` (with `.unknown(String)`), `SendRequest`, `ControlKey`, `PierEvent`, `BoxError` (`kind`, and `kept` with `.notSubmitted`), `WorktreeRemoval`, `RFC3339`, `JSONDecoder.pier` |
 | `JSON.swift` | `JSONValue`, `typealias JSON = [String: JSONValue]`, `PierJSON` (shared coders) |
 
 Use explicit `CodingKeys`, not `.convertFromSnakeCase`: keys are mixed (`oldStart` in hunks, `midTurn`).

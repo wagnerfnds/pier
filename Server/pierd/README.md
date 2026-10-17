@@ -149,9 +149,16 @@ pierd knows an agent's state (working, needs you, done) from the agent's own hoo
 and Codex's `hooks.json` and `notify` run `pierd hook TOOL EVENT`, which hands the event to the running pierd
 (or spools it while pierd is down). `pierd integrations install claude|codex|all` installs them (in
 `$CLAUDE_CONFIG_DIR` / `$CODEX_HOME` when set; running it again changes nothing);
-`pierd integrations` says which hooks each agent has. Codex asks once to trust new hooks (`/hooks`).
+`pierd integrations` says which hooks each agent has. Codex asks once to trust new hooks (`/hooks`); pierd marks its
+own as trusted in Codex's config (the hash Codex keeps for each) whenever it starts Codex on an account.
 
 Without any hooks pierd still follows agents by reading their screens, less precisely.
+
+Claude Code and Codex also ask before they work in a folder they have not seen. pierd answers that in their configs up
+front for the folders of the box's projects, the worktrees it makes and its chats' (Claude Code's `.claude.json`, under
+its own lock; Codex's `config.toml`), and from the screen when the question comes anyway. A prompt sent to either is
+submitted, not just typed: pierd waits for its input box to show the prompt, presses Enter, and checks it went in
+(docs/API.md 4.3).
 
 ## Push notifications
 

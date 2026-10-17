@@ -68,7 +68,7 @@ func run(_ client: BoxClient, _ method: BoxClient.Method, _ path: String, _ body
             } else { try data.write(to: URL(fileURLWithPath: out)) }
         }
         prettyPrint(data)
-    } catch PierError.api(let status, let message, let code) {
+    } catch PierError.api(let status, let message, let code, _) {
         FileHandle.standardError.write(Data("HTTP \(status) \(code ?? "-"): \(message)\n".utf8))
         exit(2)
     }

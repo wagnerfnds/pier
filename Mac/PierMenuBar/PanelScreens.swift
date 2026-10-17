@@ -363,10 +363,13 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
             failure.stringValue = f["error"] as? String ?? ""
             if token != failureToken {
                 failureToken = token
+                // No words back: the message stayed typed in the agent's own box, and only the reason shows.
                 let back = f["text"] as? String ?? ""
-                let current = composer.text
-                composer.text = current.isEmpty || current == restoredText ? back : back + " " + current
-                restoredText = composer.text
+                if !back.isEmpty {
+                    let current = composer.text
+                    composer.text = current.isEmpty || current == restoredText ? back : back + " " + current
+                    restoredText = composer.text
+                }
             }
         } else {
             failure.stringValue = ""

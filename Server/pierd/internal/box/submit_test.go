@@ -1,0 +1,521 @@
+package box
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"pier/pierd/internal/events"
+)
+
+// The fixtures in testdata/submit are Claude Code 2.1.302's and Codex
+// 0.160.1's screens at 200×50, captured with tmux capture-pane -p -J -e in a
+// scratch repository: at the trust question, idle, after a paste (a line,
+// three lines, a 1,214-character line, twenty lines), with a new line after
+// the text, while working, with a prompt sent while working, after a turn,
+// and with a slash command typed.
+
+func submitScreen(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "submit", name+".ansi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+const (
+	pasteLine  = "Reply with the single word OK and nothing else."
+	pasteMulti = "Line one of a pasted note\nLine two of a pasted note\nLine three of a pasted note"
+)
+
+func TestReadInputOnRealScreens(t *testing.T) {
+	for _, c := range []struct {
+		name, agent string
+		found       bool
+		empty       bool
+		holds       string // a prompt the box holds
+		lines       int
+	}{
+		{"claude-idle", "claude", true, true, "", 1},
+		{"claude-paste-line", "claude", true, false, pasteLine, 1},
+		{"claude-paste-multi", "claude", true, false, pasteMulti, 3},
+		{"claude-paste-long", "claude", true, false, "lorem ipsum, as long as you like", 1},
+		{"claude-paste-many", "claude", true, false, "Line 1 of a longer pasted log", 1},
+		{"claude-newline-in-input", "claude", true, false, pasteLine, 2},
+		{"claude-fast-enter", "claude", true, true, "", 1},
+		{"claude-busy-send", "claude", true, true, "", 1},
+		{"claude-after-turn", "claude", true, true, "", 1},
+		{"claude-slash", "claude", true, false, "/model", 1},
+		{"claude-trust", "claude", false, false, "", 0},
+		{"codex-idle", "codex", true, true, "", 1},
+		{"codex-paste-line", "codex", true, false, pasteLine, 1},
+		{"codex-paste-multi", "codex", true, false, pasteMulti, 3},
+		{"codex-paste-long", "codex", true, false, "lorem ipsum, as long as you like", 1},
+		{"codex-busy", "codex", true, true, "", 1},
+		{"codex-busy-send", "codex", true, true, "", 1},
+		{"codex-after", "codex", true, true, "", 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			box, _, _, found := readInput(c.agent, parseStyled(submitScreen(t, c.name)))
+			if found != c.found {
+				t.Fatalf("found %v, want %v (box %q)", found, c.found, box.text)
+			}
+			if !found {
+				return
+			}
+			if box.empty() != c.empty {
+				t.Errorf("empty %v, want %v: %q", box.empty(), c.empty, box.text)
+			}
+			if box.lines != c.lines {
+				t.Errorf("%d lines, want %d: %q", box.lines, c.lines, box.text)
+			}
+			if c.holds != "" && !box.holds(promptKey(c.holds)) {
+				t.Errorf("does not hold %q: %q", c.holds, box.text)
+			}
+			// Nothing else is taken for the prompt: the conversation above
+			// shows earlier prompts with the same marks.
+			if c.empty && box.holds(promptKey(pasteLine)) {
+				t.Errorf("an empty box holds the prompt: %q", box.text)
+			}
+		})
+	}
+}
+
+// The prompt sent while Claude Code worked shows above its box, queued; the
+// box itself is empty again.
+func TestReadViewSeesAQueuedPromptOutsideTheBox(t *testing.T) {
+	ft := &fixedTerm{s: submitScreen(t, "claude-busy-send")}
+	v, err := readView(ft, "claude")
+	if err != nil || !v.found || !v.box.empty() {
+		t.Fatalf("view %+v, %v", v, err)
+	}
+	if !strings.Contains(v.outside, promptKey(pasteMulti)) {
+		t.Fatalf("the queued prompt is not outside the box: %q", v.outside)
+	}
+}
+
+func TestPromptKey(t *testing.T) {
+	if got := promptKey("  Fix the *webhook* retries,\n  then run the tests"); got != "fixthewebhookretriesthen" {
+		t.Fatalf("key %q", got)
+	}
+	if got := promptKey("??"); got != "" {
+		t.Fatalf("key %q", got)
+	}
+	// Wrapped by the box mid-word or at a space, it still matches.
+	b := inputBox{text: "Fix the webho\n  ok retries, then run"}
+	if !b.holds(promptKey("Fix the webhook retries, then run the tests")) {
+		t.Fatal("a wrapped prompt is not found")
+	}
+	if got := trimBlankLines("\n  \n  indented\nmore\n\n  "); got != "  indented\nmore" {
+		t.Fatalf("trimmed %q", got)
+	}
+}
+
+type fixedTerm struct{ s string }
+
+func (f *fixedTerm) paste(string) error      { return nil }
+func (f *fixedTerm) keys(...string) error    { return nil }
+func (f *fixedTerm) screen() (string, error) { return f.s, nil }
+
+// agentTerm is an agent's terminal: a conversation, the input box under it,
+// and what each Enter does.
+type agentTerm struct {
+	mu        sync.Mutex
+	agent     string
+	convo     []string
+	box       []string
+	enters    int
+	sent      []string // every key and paste, in order
+	reads     int
+	onEnter   func(n int) string // "submit", "newline", "nothing", "late"
+	lateAt    time.Time          // when a late Enter goes in
+	dropPaste bool               // the paste never shows
+	stuck     bool               // Ctrl-U and Backspace do nothing
+	spinner   int                // reads that still show the agent working
+}
+
+func (f *agentTerm) paste(text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, "paste")
+	if f.dropPaste {
+		return nil
+	}
+	lines := strings.Split(text, "\n")
+	if len(f.box) == 0 {
+		f.box = lines
+	} else {
+		f.box[len(f.box)-1] += lines[0]
+		f.box = append(f.box, lines[1:]...)
+	}
+	return nil
+}
+
+func (f *agentTerm) submit() {
+	if len(f.box) > 0 {
+		f.convo = append(f.convo, "› "+strings.Join(f.box, " "))
+	}
+	f.box = nil
+}
+
+func (f *agentTerm) keys(k ...string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, key := range k {
+		f.sent = append(f.sent, key)
+		switch key {
+		case "Enter":
+			f.enters++
+			switch f.onEnter(f.enters) {
+			case "submit":
+				f.submit()
+			case "newline":
+				f.box = append(f.box, "")
+			case "late":
+				// Just after pierd stops watching for it.
+				f.lateAt = time.Now().Add(submitWithin + 15*time.Millisecond)
+			}
+		case "C-u":
+			if !f.stuck && len(f.box) > 0 {
+				f.box[len(f.box)-1] = ""
+			}
+		case "BSpace":
+			if !f.stuck && len(f.box) > 1 && f.box[len(f.box)-1] == "" {
+				f.box = f.box[:len(f.box)-1]
+			}
+		}
+	}
+	return nil
+}
+
+func (f *agentTerm) screen() (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reads++
+	if !f.lateAt.IsZero() && time.Now().After(f.lateAt) {
+		f.lateAt = time.Time{}
+		f.submit()
+	}
+	if len(f.box) == 1 && f.box[0] == "" {
+		f.box = nil
+	}
+	var b strings.Builder
+	for _, l := range f.convo {
+		b.WriteString("\x1b[39m" + l + "\n")
+	}
+	if f.spinner > 0 {
+		f.spinner--
+		b.WriteString("\x1b[39m✻ Brewing… (" + strings.Repeat("·", f.reads%5) + ")\n")
+	}
+	text := strings.Join(f.box, "\n")
+	switch f.agent {
+	case "claude":
+		rule := "\x1b[38;5;244m" + strings.Repeat("─", 60) + "\n"
+		b.WriteString(rule)
+		switch {
+		case len(f.box) == 0:
+			b.WriteString("\x1b[39m❯\u00a0\x1b[2mTry \"how does <filepath> work?\"\x1b[0m\n")
+		case len(text) > 800:
+			b.WriteString("\x1b[39m❯\u00a0[Pasted text #1]\n")
+		default:
+			for i, l := range f.box {
+				if i == 0 {
+					b.WriteString("\x1b[39m❯\u00a0" + l + "\n")
+				} else {
+					b.WriteString("  " + l + "\n")
+				}
+			}
+		}
+		b.WriteString(rule)
+		b.WriteString("\x1b[39m  \x1b[38;5;220m⏵⏵ auto mode on\x1b[38;5;246m (shift+tab to cycle)\n")
+	case "codex":
+		b.WriteString("\n")
+		switch {
+		case len(f.box) == 0:
+			b.WriteString("\x1b[1m›\x1b[0m \x1b[2mAsk Codex to do anything\x1b[0m\n")
+		case len(text) > 1000:
+			b.WriteString("\x1b[1m›\x1b[0m \x1b[38;5;6m[Pasted Content 1214 chars]\x1b[39m\n")
+		default:
+			for i, l := range f.box {
+				if i == 0 {
+					b.WriteString("\x1b[1m›\x1b[0m " + l + "\n")
+				} else {
+					b.WriteString("  " + l + "\n")
+				}
+			}
+		}
+		b.WriteString("\n  GPT-6.1-Sol medium · /home/octocat/code/shop\n")
+	default:
+		b.WriteString("$ " + text + "\n")
+	}
+	return b.String(), nil
+}
+
+func (f *agentTerm) count(key string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, k := range f.sent {
+		if k == key {
+			n++
+		}
+	}
+	return n
+}
+
+// fastSubmit runs a test's submits on short clocks.
+func fastSubmit(t *testing.T) {
+	saved := []time.Duration{quietGap, quietLimit, pasteShows, pastePoll, pasteSettle, submitWithin, submitPoll, clearPoll, boxShows}
+	quietGap, quietLimit, pasteShows, pastePoll = 3*time.Millisecond, 60*time.Millisecond, 120*time.Millisecond, 2*time.Millisecond
+	pasteSettle, submitWithin, submitPoll, clearPoll = 0, 150*time.Millisecond, 3*time.Millisecond, time.Millisecond
+	boxShows = 30 * time.Millisecond
+	t.Cleanup(func() {
+		quietGap, quietLimit, pasteShows, pastePoll = saved[0], saved[1], saved[2], saved[3]
+		pasteSettle, submitWithin, submitPoll, clearPoll, boxShows = saved[4], saved[5], saved[6], saved[7], saved[8]
+	})
+}
+
+func always(what string) func(int) string { return func(int) string { return what } }
+
+func TestSubmitWhenTheBoxTakesTheEnter(t *testing.T) {
+	fastSubmit(t)
+	for _, agent := range []string{"claude", "codex"} {
+		for _, text := range []string{pasteLine, pasteMulti, strings.Repeat("lorem ipsum dolor sit amet ", 45)} {
+			f := &agentTerm{agent: agent, onEnter: always("submit")}
+			entered, err := submitPrompt(context.Background(), f, submitParams{agent: agent}, text)
+			if err != nil || entered.IsZero() {
+				t.Fatalf("%s: %v (entered %v)", agent, err, entered)
+			}
+			if n := f.count("Enter"); n != 1 {
+				t.Errorf("%s: %d Enters, want 1", agent, n)
+			}
+			if len(f.convo) != 1 {
+				t.Errorf("%s: sent %d times", agent, len(f.convo))
+			}
+		}
+	}
+}
+
+// The Enter that lands as a new line (the agent still reading the paste):
+// one more, and it goes.
+func TestSubmitRetriesAnEnterThatBecameANewLine(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "claude", onEnter: func(n int) string {
+		if n == 1 {
+			return "newline"
+		}
+		return "submit"
+	}}
+	if _, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("Enter"); n != 2 {
+		t.Fatalf("%d Enters, want 2", n)
+	}
+	if len(f.convo) != 1 || len(f.box) != 0 {
+		t.Fatalf("convo %q, box %q", f.convo, f.box)
+	}
+}
+
+// Never taken: two Enters at most, the box cleared, and the app told the
+// text is not there any more (it gives it back to the person).
+func TestSubmitGivesUpAfterTwoEnters(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "claude", onEnter: always("newline")}
+	_, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteMulti)
+	var ns *NotSubmittedError
+	if !errors.As(err, &ns) || ns.Kept {
+		t.Fatalf("err %v, want not submitted and not kept", err)
+	}
+	if n := f.count("Enter"); n != 2 {
+		t.Fatalf("%d Enters, want 2", n)
+	}
+	if len(f.box) != 0 {
+		t.Fatalf("the box was left holding %q", f.box)
+	}
+	if codeFor(err) != CodeNotSubmitted || statusFor(err) != 409 {
+		t.Fatalf("code %s, status %d", codeFor(err), statusFor(err))
+	}
+}
+
+// A box that cannot be cleared: kept, so the app does not give the text back
+// (sent again, it would go twice once someone presses Enter there).
+func TestSubmitSaysWhenTheTextStaysInTheBox(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "codex", onEnter: always("nothing"), stuck: true}
+	_, err := submitPrompt(context.Background(), f, submitParams{agent: "codex"}, pasteLine)
+	var ns *NotSubmittedError
+	if !errors.As(err, &ns) || !ns.Kept {
+		t.Fatalf("err %v, want kept", err)
+	}
+	if n := f.count("Enter"); n != 2 {
+		t.Fatalf("%d Enters, want 2", n)
+	}
+}
+
+// A paste that never shows: one Enter, and none into the empty box after it.
+func TestSubmitNeverPressesEnterIntoAnEmptyBox(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "claude", onEnter: always("nothing"), dropPaste: true}
+	_, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine)
+	var ns *NotSubmittedError
+	if !errors.As(err, &ns) || ns.Kept {
+		t.Fatalf("err %v, want not submitted, not kept", err)
+	}
+	if n := f.count("Enter"); n != 1 {
+		t.Fatalf("%d Enters, want 1", n)
+	}
+}
+
+// An Enter the agent takes only after pierd stopped watching: the box is
+// empty by the second try, so no second Enter.
+func TestSubmitTakesALateEnter(t *testing.T) {
+	fastSubmit(t)
+	quietGap = 40 * time.Millisecond // the second look comes after the late Enter went in
+	f := &agentTerm{agent: "claude", onEnter: always("late")}
+	if _, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("Enter"); n != 1 {
+		t.Fatalf("%d Enters, want 1", n)
+	}
+	if len(f.convo) != 1 {
+		t.Fatalf("sent %d times", len(f.convo))
+	}
+}
+
+// The agent's hooks say the prompt started: that is enough, whatever the
+// screen shows yet.
+func TestSubmitBelievesTheHooks(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "claude", onEnter: always("nothing")}
+	var mu sync.Mutex
+	state := ledgerState{seq: 10, state: "finished", hooked: true}
+	p := submitParams{agent: "claude", ledger: func() ledgerState {
+		mu.Lock()
+		defer mu.Unlock()
+		if f.count("Enter") > 0 {
+			state = ledgerState{seq: 11, state: "running", hooked: true}
+		}
+		return state
+	}}
+	if _, err := submitPrompt(context.Background(), f, p, pasteLine); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("Enter"); n != 1 {
+		t.Fatalf("%d Enters, want 1", n)
+	}
+}
+
+// A held prompt waits for the screen to hold still before it is pasted.
+func TestSubmitWaitsForAQuietScreen(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "claude", onEnter: always("submit"), spinner: 6}
+	if _, err := submitPrompt(context.Background(), f, submitParams{agent: "claude", quiet: true}, pasteLine); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.spinner != 0 {
+		t.Fatalf("pasted while the agent still drew its spinner (%d reads left)", f.spinner)
+	}
+}
+
+// An input box pierd cannot read: typed as before, the paste then Enter.
+func TestSubmitTypesBlindIntoABoxItCannotRead(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "opencode", onEnter: always("nothing")}
+	if _, err := submitPrompt(context.Background(), f, submitParams{agent: "opencode"}, pasteLine); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.sent, " "); got != "paste Enter" {
+		t.Fatalf("sent %q", got)
+	}
+}
+
+func TestSubmits(t *testing.T) {
+	for _, c := range []struct {
+		agent, text string
+		enter, want bool
+	}{
+		{"claude", "fix it", true, true},
+		{"codex", "fix it", true, true},
+		{"claude", "fix it", false, false}, // a paste alone
+		{"claude", "1", true, false},       // a key
+		{"claude", "  \n", true, false},    // nothing to send
+		{"opencode", "fix it", true, false},
+		{"", "ls", true, false}, // a shell
+	} {
+		if got := submits(c.agent, c.text, c.enter); got != c.want {
+			t.Errorf("submits(%q, %q, %v) = %v", c.agent, c.text, c.enter, got)
+		}
+	}
+}
+
+// A prompt is published once the agent took it, and its own hook can come
+// first: the start the ledger took for a prompt typed at the terminal is
+// the send's.
+func TestASendKeepsTheStartItsHookGaveFirst(t *testing.T) {
+	s, dir := "shop-claude", "/srv/shop"
+	tr, bus := ledger(t, Session{Name: s, Dir: dir, Agent: "claude"})
+	hook(bus, "agent.ready", s, dir, "claude")
+	entered := time.Now().UTC()
+	hook(bus, "agent.started", s, dir, "claude", "signal", "prompt")
+	sent := bus.Publish(events.Event{Type: "session.sent", Data: map[string]any{
+		"name": s, "from": "client:phone", "idem_key": "k1", "entered": entered.Format(time.RFC3339Nano),
+	}})
+	got, ok := tr.ForSent(s, sent.Seq)
+	if !ok || got.State != "running" || got.Origin != "client:phone" || got.IdemKey != "k1" {
+		t.Fatalf("the send's turn = %+v %v", got, ok)
+	}
+	if all := tr.List(s, 10); len(all) != 1 {
+		t.Fatalf("%d turns, want the one: %+v", len(all), all)
+	}
+	if again, ok := tr.ByIdem(s, "k1"); !ok || again.ID != got.ID {
+		t.Fatalf("a retry finds %+v %v", again, ok)
+	}
+	hook(bus, "agent.finished", s, dir, "claude")
+	if st := turnState(t, tr, got.ID); st != "finished" {
+		t.Fatalf("the send's turn is %s after the agent's Stop", st)
+	}
+
+	// A held prompt delivered the same way takes the start's place.
+	q, err := tr.Queue(s, "next", true, "client:phone", "k2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items := tr.nextDeliveries(); len(items) != 1 || items[0].Turn != q.ID {
+		t.Fatalf("deliveries %+v", items)
+	}
+	entered = time.Now().UTC()
+	hook(bus, "agent.started", s, dir, "claude", "signal", "prompt")
+	bus.Publish(events.Event{Type: "session.sent", Data: map[string]any{"name": s, "turn": q.ID, "when": "idle", "entered": entered.Format(time.RFC3339Nano)}})
+	if st := turnState(t, tr, q.ID); st != "running" {
+		t.Fatalf("the held prompt's turn is %s", st)
+	}
+	if all := tr.List(s, 10); len(all) != 2 {
+		t.Fatalf("%d turns, want 2: %+v", len(all), all)
+	}
+}
+
+// A turn the person started at the terminal before the send's Enter is
+// theirs: the send gets a turn of its own.
+func TestASendDoesNotTakeAnEarlierTerminalTurn(t *testing.T) {
+	s, dir := "shop-claude", "/srv/shop"
+	tr, bus := ledger(t, Session{Name: s, Dir: dir, Agent: "claude"})
+	hook(bus, "agent.ready", s, dir, "claude")
+	hook(bus, "agent.started", s, dir, "claude", "signal", "prompt")
+	time.Sleep(2 * time.Millisecond)
+	entered := time.Now().UTC()
+	sent := bus.Publish(events.Event{Type: "session.sent", Data: map[string]any{"name": s, "from": "client:phone", "entered": entered.Format(time.RFC3339Nano)}})
+	got, ok := tr.ForSent(s, sent.Seq)
+	if !ok || got.ID != s+"#2" || got.State != "pending" {
+		t.Fatalf("the send's turn = %+v %v", got, ok)
+	}
+}

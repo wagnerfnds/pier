@@ -1249,6 +1249,26 @@
         }
       }
     },
+    "A box não confirmou o envio: a mensagem ficou digitada na caixa do agente, sem ser enviada. Abra o terminal da sessão e aperte Enter para enviá-la, ou apague-a lá." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box couldn't confirm the message went out: it was left typed in the agent's input, unsent. Open the session's terminal and press Return to send it, or clear it there."
+          }
+        }
+      }
+    },
+    "A box não confirmou o envio: o agente não recebeu a mensagem. Ela voltou para a caixa de mensagem para você enviar de novo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The box couldn't confirm the message went out: the agent didn't get it. It's back in the message box for you to send again."
+          }
+        }
+      }
+    },
     "A box não está respondendo. Reconectando…" : {
       "localizations" : {
         "en" : {
@@ -12217,6 +12237,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No connection to %@"
+          }
+        }
+      }
+    },
+    "Sua mensagem pode não ter chegado ao agente: ela não apareceu na conversa. O texto voltou para a caixa de mensagem; confira antes de enviar de novo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your message may not have reached the agent: it never showed up in the conversation. Its text is back in the message box; check before sending it again."
           }
         }
       }

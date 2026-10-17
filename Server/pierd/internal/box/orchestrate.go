@@ -37,26 +37,8 @@ func (s *Sessions) Send(ctx context.Context, name, text string, enter bool) erro
 		}
 		return nil
 	}
-	if text != "" {
-		text = inPaste(text)
-	}
-	if text != "" {
-		// The text goes to tmux on stdin, never on its command line, which
-		// tmux caps at about 16 KB: a prompt can be far longer.
-		buf := "pier-send-" + name
-		load, cctx, cancel, err := s.tmuxCommand(ctx, "load-buffer", "-b", buf, "-")
-		if err != nil {
-			return err
-		}
-		load.Stdin = strings.NewReader(text)
-		out, err := runTmux(ctx, cctx, load)
-		cancel()
-		if err != nil {
-			return tmuxSendError("load-buffer", out, err)
-		}
-		if out, err := s.tmux(ctx, "paste-buffer", "-p", "-d", "-b", buf, "-t", "="+name+":"); err != nil {
-			return tmuxSendError("paste-buffer", out, err)
-		}
+	if err := s.paste(ctx, name, text); err != nil {
+		return err
 	}
 	if enter {
 		// Agents' input boxes need a moment to take a paste before Enter
@@ -65,6 +47,30 @@ func (s *Sessions) Send(ctx context.Context, name, text string, enter bool) erro
 		if out, err := s.tmux(ctx, "send-keys", "-t", "="+name+":", "Enter"); err != nil {
 			return tmuxSendError("send-keys", out, err)
 		}
+	}
+	return nil
+}
+
+// paste types text into a session as one bracketed paste.
+func (s *Sessions) paste(ctx context.Context, name, text string) error {
+	if text = inPaste(text); text == "" {
+		return nil
+	}
+	// The text goes to tmux on stdin, never on its command line, which
+	// tmux caps at about 16 KB: a prompt can be far longer.
+	buf := "pier-send-" + name
+	load, cctx, cancel, err := s.tmuxCommand(ctx, "load-buffer", "-b", buf, "-")
+	if err != nil {
+		return err
+	}
+	load.Stdin = strings.NewReader(text)
+	out, err := runTmux(ctx, cctx, load)
+	cancel()
+	if err != nil {
+		return tmuxSendError("load-buffer", out, err)
+	}
+	if out, err := s.tmux(ctx, "paste-buffer", "-p", "-d", "-b", buf, "-t", "="+name+":"); err != nil {
+		return tmuxSendError("paste-buffer", out, err)
 	}
 	return nil
 }
@@ -200,7 +206,8 @@ func (b *Box) sendPrompt(ctx context.Context, name string, req SendRequest, orig
 		e := b.Events.Publish(events.Event{Type: "session.queued", Box: b.Name, Origin: origin, Data: map[string]any{"name": name, "turn": tr.ID}})
 		return SendResult{Queued: true, Turn: tr.ID, Seq: e.Seq, At: e.Time.UTC()}, nil
 	}
-	if agent := agentFor(sess); agent != "" {
+	agent := agentFor(sess)
+	if agent != "" {
 		// A new agent reads nothing until it has drawn. At its startup
 		// question (startup.go) a prompt is held for it, now or idle:
 		// typed, the question drops it and its Enter answers. A key alone,
@@ -226,11 +233,24 @@ func (b *Box) sendPrompt(ctx context.Context, name string, req SendRequest, orig
 	if b.Turns != nil && req.When == "idle" && !b.Turns.Ready(name) {
 		return hold()
 	}
-	if err := b.Sessions.Send(ctx, name, req.Text, enter); err != nil {
+	var entered time.Time
+	if waiting == "" && submits(agent, req.Text, enter) {
+		// A prompt: typed, and made sure it went in (submit.go). An answer
+		// to a question is typed as it is: the question's own screen is no
+		// input box.
+		if entered, err = b.submitToAgent(ctx, name, agent, req.Text, false); err != nil {
+			return SendResult{}, err
+		}
+	} else if err := b.Sessions.Send(ctx, name, req.Text, enter); err != nil {
 		return SendResult{}, err
 	}
 	// Only that something was sent: prompts never go into events.
 	data := map[string]any{"name": name, "from": from}
+	if !entered.IsZero() {
+		// When its Enter went: the agent's hooks may have said it started
+		// before this is published (turns.go, earlyStart).
+		data["entered"] = entered.UTC().Format(time.RFC3339Nano)
+	}
 	if c, local := localCommand(sessionAgent(sess), req.Text); local && enter && waiting == "" {
 		// The agent's own command (/cost, /model): its program answers, no
 		// turn starts, so none is opened to wait for.
