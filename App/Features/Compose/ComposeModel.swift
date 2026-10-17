@@ -31,9 +31,10 @@ final class ComposeModel {
     var model: String?
     var effort: String?
     var photos: [ComposePhoto] = []
-    /// A new worktree gets its environment (setup script, autostart services) as it is made; off for a quick fix that
-    /// only needs the code, prepared later from Detalhes. Remembered per project.
-    var prepare = true
+    /// How a new worktree gets its environment as it is made: the project's setup script and autostart services, a setup
+    /// agent that works the project out (where the box has them, by default while the project has no recipe), or only the
+    /// code for a quick fix, prepared later from Detalhes. "Only the code" is remembered per project.
+    var prepareMode: PrepareMode = .script
     var stage: Stage = .idle
     var error: String?
     var loadingBranches = false
@@ -84,7 +85,7 @@ final class ComposeModel {
         effort = pick?.agent == agentID ? pick?.effort : nil
         if !(agent?.canPickModel ?? false) { model = nil }
         if !(agent?.canPickEffort ?? false) { effort = nil }
-        prepare = pick?.prepare ?? true
+        prepareMode = PrepareChoice.initial(projectDefault: locationObject?.prepareWith, skippedLastTime: pick?.prepare == false, modes: prepareModes)
         refreshName()
     }
 
@@ -103,8 +104,18 @@ final class ComposeModel {
     var isNew: Bool { target == .newWorktree }
     /// The box can leave a new worktree unprepared (older pierd always prepares it).
     var canSkipPrepare: Bool { conn?.info?.has("prepare") ?? false }
-    /// What the request says: only "no", and only to a box that understands it.
-    private var prepareArg: Bool? { canSkipPrepare && !prepare ? false : nil }
+    /// The box can hand a new worktree to a setup agent: it has them, and Claude Code (or the project's own).
+    var canPrepareWithAgent: Bool {
+        guard conn?.info?.has("prepare.agent") == true else { return false }
+        return locationObject?.prepareWith == .agent || agents.contains { $0.id == "claude" }
+    }
+    /// The ways offered, in order: only the code, the project's script, a setup agent.
+    var prepareModes: [PrepareMode] { PrepareChoice.modes(canSkip: canSkipPrepare, canAgent: canPrepareWithAgent) }
+    /// What the request says: only the code, or a way that is not the project's default, and only to a box that
+    /// understands it.
+    private var prepareArgs: (prepare: Bool?, prepareWith: PrepareMode?) {
+        PrepareChoice.request(prepareMode, projectDefault: locationObject?.prepareWith, canSkip: canSkipPrepare, canAgent: canPrepareWithAgent)
+    }
     var existingWorktree: Worktree? {
         if case .existing(let n) = target { return worktrees.first { $0.name == n } }
         return nil
@@ -274,18 +285,20 @@ final class ComposeModel {
         let baseArg = effectiveBase.isEmpty ? nil : effectiveBase
         var session: Session?
         do {
+            let prep = prepareArgs
             if isNew && photos.isEmpty {
                 stage = .starting
                 let r = try await conn.client.createTask(TaskCreator.request(
                     location: loc.name, worktree: worktreeName, base: baseArg,
-                    agent: agent.id, prompt: text, model: modelArg, effort: effortArg, title: titleArg, prepare: prepareArg))
+                    agent: agent.id, prompt: text, model: modelArg, effort: effortArg, title: titleArg, prepare: prep.prepare, prepareWith: prep.prepareWith))
                 session = r.session
             } else {
                 let wtName: String
                 let ref: String
                 if isNew {
                     stage = .creatingWorktree
-                    let wt = try await conn.client.createWorktree(location: loc.name, WorktreeRequest(name: worktreeName, branch: worktreeName, base: baseArg, prepare: prepareArg))
+                    let wt = try await conn.client.createWorktree(location: loc.name, WorktreeRequest(name: worktreeName, branch: worktreeName, base: baseArg,
+                                                                                                         prepare: prep.prepare, prepareWith: prep.prepareWith))
                     wtName = wt.name; ref = loc.ref(wt)
                     // From here on a retry must reuse the worktree we just made.
                     await conn.refreshLocations()
@@ -311,7 +324,7 @@ final class ComposeModel {
         stage = .idle
         Haptic.success()
         if sendsComposerDraft { app?.prefs.setComposeDraft("") }
-        app?.prefs.noteComposed(box: box, location: loc.name, pick: .init(agent: agent.id, model: modelArg, effort: effortArg, prepare: prepare))
+        app?.prefs.noteComposed(box: box, location: loc.name, pick: .init(agent: agent.id, model: modelArg, effort: effortArg, prepare: prepareMode != .none))
         conn.scheduleRefresh(sessions: true, locations: true)
         if let session {   // the Live Activity manager follows new tasks
             StartingPrompts.note(box: box, session: session.name, prompt: text)

@@ -45,9 +45,25 @@ extension BoxAPI {
     }
 
     /// Prepare the worktree now, in the background (again, for one already prepared): answers `running`; 409 while a
-    /// preparation of it still runs.
-    public func prepare(location: String, worktree: String) async throws -> PrepareStatus {
-        try decode(try await call(.post, "/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/prepare").data)
+    /// preparation of it still runs. `with` picks a setup agent or the setup script (capability `prepare.agent`); nil is
+    /// the project's default.
+    public func prepare(location: String, worktree: String, with: PrepareMode? = nil) async throws -> PrepareStatus {
+        let path = "/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/prepare"
+        guard let with else { return try decode(try await call(.post, path).data) }
+        struct Body: Encodable { let prepare_with: String }
+        return try decode(try await call(.post, path, body: Body(prepare_with: with.rawValue)).data)
+    }
+
+    /// The worktree's preview: the page to open, a test login, its public link (capability `preview`). Empty when nothing
+    /// was recorded.
+    public func preview(location: String, worktree: String) async throws -> WorktreePreview {
+        try await get("/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/preview")
+    }
+
+    /// Record the worktree's preview (an empty one forgets it); a port gets a public link by itself where the box makes
+    /// them.
+    public func setPreview(location: String, worktree: String, _ preview: WorktreePreview) async throws -> WorktreePreview {
+        try decode(try await call(.put, "/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/preview", body: preview).data)
     }
 }
 
@@ -60,6 +76,18 @@ extension BoxAPI {
     public func setProjectsRoot(_ path: String) async throws -> BoxSettings {
         struct Body: Encodable { let projects_root: String }
         return try decode(try await call(.put, "/v1/settings", body: Body(projects_root: path)).data)
+    }
+
+    /// Set the rules every setup agent on the box keeps to ("" brings the defaults back).
+    public func setPrepareRules(_ text: String) async throws -> BoxSettings {
+        struct Body: Encodable { let prepare_rules: String }
+        return try decode(try await call(.put, "/v1/settings", body: Body(prepare_rules: text)).data)
+    }
+
+    /// Whether a worktree's preview gets a public link by itself, for the whole box.
+    public func setAutoShare(_ on: Bool) async throws -> BoxSettings {
+        struct Body: Encodable { let auto_share: Bool }
+        return try decode(try await call(.put, "/v1/settings", body: Body(auto_share: on)).data)
     }
 
     public func addSpace(name: String) async throws -> ProjectSpace {

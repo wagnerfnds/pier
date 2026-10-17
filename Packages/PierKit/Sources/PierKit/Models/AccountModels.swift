@@ -125,8 +125,11 @@ public struct PublicLink: Codable, Sendable, Hashable, Identifiable {
     public let port: Int
     public let created: Date?
     public let expires: Date?
+    /// The link the box made for the worktree's preview, renewed while the worktree is there (docs/API.md §2.12.1).
+    public let auto: Bool?
     public var id: String { name }
-    public init(name: String, url: String, location: String, worktree: String, port: Int, created: Date? = nil, expires: Date? = nil) {
+    public init(name: String, url: String, location: String, worktree: String, port: Int, created: Date? = nil, expires: Date? = nil, auto: Bool? = nil) {
         self.name = name; self.url = url; self.location = location; self.worktree = worktree; self.port = port; self.created = created; self.expires = expires
+        self.auto = auto
     }
 }

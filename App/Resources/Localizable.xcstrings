@@ -16598,6 +16598,336 @@
           }
         }
       }
+    },
+    "Só o código" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code only"
+          }
+        }
+      }
+    },
+    "Script do projeto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Project's script"
+          }
+        }
+      }
+    },
+    "Agente prepara" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent sets it up"
+          }
+        }
+      }
+    },
+    "Um agente instala o que falta, sobe o servidor e cria um login de teste, ao lado da sua tarefa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent installs what is missing, starts the server and makes a test login, beside your task"
+          }
+        }
+      }
+    },
+    "Link público copiado." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Public link copied."
+          }
+        }
+      }
+    },
+    "Público até %@, renovado enquanto a worktree existir." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Public until %@, renewed while the worktree exists."
+          }
+        }
+      }
+    },
+    "Link copiado." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link copied."
+          }
+        }
+      }
+    },
+    "Acesso de teste" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test login"
+          }
+        }
+      }
+    },
+    "Usuário copiado." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "User copied."
+          }
+        }
+      }
+    },
+    "Copiar usuário" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy user"
+          }
+        }
+      }
+    },
+    "Senha escondida" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Password hidden"
+          }
+        }
+      }
+    },
+    "Esconder senha" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide password"
+          }
+        }
+      }
+    },
+    "Mostrar senha" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show password"
+          }
+        }
+      }
+    },
+    "Senha copiada." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Password copied."
+          }
+        }
+      }
+    },
+    "Copiar senha" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy password"
+          }
+        }
+      }
+    },
+    "O agente de preparação precisa de você" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The setup agent needs you"
+          }
+        }
+      }
+    },
+    "Agente de preparação" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setup agent"
+          }
+        }
+      }
+    },
+    "Abrir conversa" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open conversation"
+          }
+        }
+      }
+    },
+    "Preparar com agente de novo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up with an agent again"
+          }
+        }
+      }
+    },
+    "Preparar com agente" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up with an agent"
+          }
+        }
+      }
+    },
+    "Rodar o script" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Run the script"
+          }
+        }
+      }
+    },
+    "Um agente instala o que falta, sobe o servidor e cria um login de teste; no fim salva a receita, e as próximas worktrees a repetem sem agente." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent installs what is missing, starts the server and makes a test login; at the end it saves the recipe, and the next worktrees repeat it without an agent."
+          }
+        }
+      }
+    },
+    "O agente está preparando…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The agent is setting it up…"
+          }
+        }
+      }
+    },
+    "A preparação não terminou" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The setup did not finish"
+          }
+        }
+      }
+    },
+    "Nada registrado sobre a preparação" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing recorded about its preparation"
+          }
+        }
+      }
+    },
+    "com agente" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "with an agent"
+          }
+        }
+      }
+    },
+    "Link público automático" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic public link"
+          }
+        }
+      }
+    },
+    "A página que o agente registra ganha um link p-….docktopier.com, renovado enquanto a worktree existir." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The page the agent records gets a p-….docktopier.com link, renewed while the worktree exists."
+          }
+        }
+      }
+    },
+    "Regras da preparação" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setup rules"
+          }
+        }
+      }
+    },
+    "Salvar regras" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save rules"
+          }
+        }
+      }
+    },
+    "Voltar às regras padrão" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to the default rules"
+          }
+        }
+      }
+    },
+    "Preparação por agente" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setup by an agent"
+          }
+        }
+      }
+    },
+    "Um agente prepara as worktrees de projetos sem receita: instala o que falta, sobe o servidor e cria um login de teste, e salva o que fez para as próximas. Toda preparação desta box segue estas regras." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent prepares the worktrees of projects without a recipe: it installs what is missing, starts the server, makes a test login, and saves what it did for the next ones. Every setup on this box follows these rules."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

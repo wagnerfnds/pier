@@ -163,10 +163,11 @@ public struct TaskRequest: Codable, Sendable, Hashable {
     public var effort: String?
     public var title: String?
     public var fromSession: String?
-    /// The worktree's (`WorktreeRequest.prepare`).
+    /// The worktree's (`WorktreeRequest.prepare`, `.prepareWith`).
     public var prepare: Bool?
+    public var prepareWith: PrepareMode?
 
-    public init(location: String, name: String, branch: String? = nil, base: String? = nil, pr: Int? = nil, ref: String? = nil, agent: String? = nil, command: String? = nil, prompt: String? = nil, model: String? = nil, effort: String? = nil, title: String? = nil, fromSession: String? = nil, prepare: Bool? = nil) {
+    public init(location: String, name: String, branch: String? = nil, base: String? = nil, pr: Int? = nil, ref: String? = nil, agent: String? = nil, command: String? = nil, prompt: String? = nil, model: String? = nil, effort: String? = nil, title: String? = nil, fromSession: String? = nil, prepare: Bool? = nil, prepareWith: PrepareMode? = nil) {
         self.location = location
         self.name = name
         self.branch = branch
@@ -181,6 +182,7 @@ public struct TaskRequest: Codable, Sendable, Hashable {
         self.title = title
         self.fromSession = fromSession
         self.prepare = prepare
+        self.prepareWith = prepareWith
     }
 
     enum CodingKeys: String, CodingKey {
@@ -198,6 +200,7 @@ public struct TaskRequest: Codable, Sendable, Hashable {
         case title
         case fromSession = "from_session"
         case prepare
+        case prepareWith = "prepare_with"
     }
 
     public init(from decoder: Decoder) throws {
@@ -216,6 +219,7 @@ public struct TaskRequest: Codable, Sendable, Hashable {
         self.title = try c.decodeIfPresent(String.self, forKey: .title)
         self.fromSession = try c.decodeIfPresent(String.self, forKey: .fromSession)
         self.prepare = try c.decodeIfPresent(Bool.self, forKey: .prepare)
+        self.prepareWith = try? c.decodeIfPresent(PrepareMode.self, forKey: .prepareWith)
     }
 }
 

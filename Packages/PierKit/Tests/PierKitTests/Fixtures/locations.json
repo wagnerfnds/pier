@@ -3,6 +3,7 @@
     "default_branch" : "master",
     "name" : "leads-app",
     "path" : "/home/ubuntu/code/leads-app",
+    "prepare_with" : "agent",
     "remote" : "https://github.com/octocat/leads-app.git",
     "repo" : true,
     "repo_trust" : "none",

@@ -2,10 +2,12 @@ import SwiftUI
 import PierKit
 
 /// "Detalhes" of a worktree: what runs there and how to see it.
-/// - **Preparação**: whether its setup script and autostart services ran (a worktree made without them, for a quick fix,
-///   is prepared from here; `…/prepare`, capability `prepare`);
-/// - **Visualização**: the dev servers listening in the worktree (`GET /v1/services`), each as a link to the box's
-///   address and port, checked from this device (a box reached only through a relay has no page to open from here);
+/// - **Preparação**: whether its setup script and autostart services ran, or how its setup agent is doing, with its
+///   conversation a tap away (a worktree made without them, for a quick fix, is prepared from here, by script or by a
+///   setup agent; `…/prepare`, capabilities `prepare`, `prepare.agent`);
+/// - **Visualização**: the worktree's preview (`…/preview`, capability `preview`: the page to open at its public link,
+///   the app's test login), then the dev servers listening in the worktree (`GET /v1/services`), each as a link to the
+///   box's address and port, checked from this device (a box reached only through a relay has no page to open from here);
 /// - **Serviços**: the project's services in this worktree (`GET …/services`), with their command, to start, stop or restart;
 /// - **Ambiente**: branch, base, ports ($PIER_PORT…), folder, setup script and sessions.
 /// Read again every few seconds while on screen, and when a service event arrives.
@@ -28,6 +30,8 @@ final class WorktreeDetailsStore {
     private(set) var busy: Set<String> = []
     private(set) var links: [PublicLink] = []
     private(set) var prepare: PrepareStatus?
+    /// The worktree's preview: the page, its public link, the app's test login.
+    private(set) var preview: WorktreePreview?
     var error: String?
     var prepareError: String?
 
@@ -35,25 +39,31 @@ final class WorktreeDetailsStore {
         self.box = box; self.location = location; self.worktree = worktree
     }
 
-    func load(model: AppModel) async {
+    /// Reads it all again; `previewOnly` (the session's inspector) reads the preview and the dev servers, not the
+    /// services, the git state or the preparation.
+    func load(model: AppModel, previewOnly: Bool = false) async {
         guard let conn = model.connection(for: box), let wt = conn.location(named: location)?.worktrees?.first(where: { $0.name == worktree }) else { return }
         let api = BoxAPI(transport: conn.raw)
-        async let svc = try? api.worktreeServiceDetails(location: location, worktree: worktree)
         async let all = try? api.services()
-        async let st = try? conn.client.worktreeStatuses(location: location)
-        if let s = await svc, s != services { services = s }
-        if let a = await all { let v = Projects.devServers(a, location: location, worktree: wt); if v != servers { servers = v } }
-        if let s = await st, let mine = s.first(where: { $0.name == worktree }), mine != status { status = mine }
-        if conn.info?.has("prepare") == true, let p = try? await api.prepareStatus(location: location, worktree: worktree), p != prepare { prepare = p }
-        if conn.info?.has("shares") == true, let all = try? await api.publicLinks() {
-            let mine = all.filter { $0.location == location && $0.worktree == worktree }
-            if mine != links { links = mine }
+        if conn.info?.has("preview") == true, let p = try? await api.preview(location: location, worktree: worktree), p != preview { preview = p }
+        if !previewOnly {
+            async let svc = try? api.worktreeServiceDetails(location: location, worktree: worktree)
+            async let st = try? conn.client.worktreeStatuses(location: location)
+            if let s = await svc, s != services { services = s }
+            if let s = await st, let mine = s.first(where: { $0.name == worktree }), mine != status { status = mine }
+            if conn.info?.has("prepare") == true, let p = try? await api.prepareStatus(location: location, worktree: worktree), p != prepare { prepare = p }
+            if conn.info?.has("shares") == true, let all = try? await api.publicLinks() {
+                let mine = all.filter { $0.location == location && $0.worktree == worktree }
+                if mine != links { links = mine }
+            }
         }
+        if let a = await all { let v = Projects.devServers(a, location: location, worktree: wt); if v != servers { servers = v } }
         if !loaded { loaded = true }
         let host = conn.record.host
         var probes: [Int: Bool] = [:]
+        let ports = Set(servers.map(\.port) + (preview?.port.map { [$0] } ?? []))
         await withTaskGroup(of: (Int, Bool).self) { g in
-            for p in Set(servers.map(\.port)) { g.addTask { (p, await PortProbe.reachable(host: host, port: p)) } }
+            for p in ports { g.addTask { (p, await PortProbe.reachable(host: host, port: p)) } }
             for await (p, ok) in g { probes[p] = ok }
         }
         if probes != reachable { reachable = probes }
@@ -78,14 +88,17 @@ final class WorktreeDetailsStore {
         catch { self.error = ComposeErrorText.message(error) }
     }
 
-    /// Runs the setup script and starts the autostart services, in the background on the box.
-    func runPrepare(model: AppModel) async {
+    /// Prepares it in the background on the box: by `with` (a setup agent or the setup script), or nil, the project's
+    /// default way.
+    func runPrepare(model: AppModel, with: PrepareMode? = nil) async {
         guard let conn = model.connection(for: box) else { return }
         busy.insert("prepare")
         defer { busy.remove("prepare") }
         do {
-            prepare = try await BoxAPI(transport: conn.raw).prepare(location: location, worktree: worktree)
+            prepare = try await BoxAPI(transport: conn.raw).prepare(location: location, worktree: worktree, with: with)
             prepareError = nil
+            // The setup agent's session is new: the sidebar and Agentes list it.
+            if with == .agent || prepare?.byAgent == true { conn.scheduleRefresh(sessions: true) }
         } catch { prepareError = ComposeErrorText.message(error) }
     }
 
@@ -138,7 +151,7 @@ struct WorktreeDetailsView: View {
 
     var body: some View {
         List {
-            if let p = store.prepare, p.hasWork { prepareSection(p) }
+            if let p = store.prepare, p.hasAnything { prepareSection(p) }
             preview
             servicesSection
             environment
@@ -159,7 +172,9 @@ struct WorktreeDetailsView: View {
         .task {
             for await h in model.hub.subscribe() where h.box == box {
                 let t = h.event.type
-                if t.hasPrefix("service.") || t.hasPrefix("worktree.setup") || t.hasPrefix("worktree.prepare") { await store.load(model: model) }
+                if t.hasPrefix("service.") || t.hasPrefix("worktree.setup") || t.hasPrefix("worktree.prepare") || t.hasPrefix("preview.") || t.hasPrefix("share.") {
+                    await store.load(model: model)
+                }
             }
         }
     }
@@ -168,12 +183,14 @@ struct WorktreeDetailsView: View {
 
     private func prepareSection(_ p: PrepareStatus) -> some View {
         let running = p.state == .running || store.busy.contains("prepare")
+        // The session the setup agent works in, while the box still has it.
+        let agentSession = p.byAgent ? p.session.flatMap { name in conn?.sessions.first { $0.name == name } } : nil
         return Section {
             HStack(spacing: 8) {
                 if running { ProgressView().controlSize(.small) } else {
                     Circle().fill(prepareColor(p.state)).frame(width: 8, height: 8)
                 }
-                Text(prepareTitle(p.state)).font(.body.weight(.semibold)).foregroundStyle(Theme.text)
+                Text(prepareTitle(p)).font(.body.weight(.semibold)).foregroundStyle(Theme.text)
                 if let since = p.since, !running {
                     Text(since, format: .relative(presentation: .named)).font(.caption).foregroundStyle(Theme.textFaint)
                 }
@@ -181,6 +198,24 @@ struct WorktreeDetailsView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("prepare-state")
+            if p.byAgent {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles").foregroundStyle(Theme.accent).frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(p.waiting && p.state == .running ? "O agente de preparação precisa de você" : "Agente de preparação")
+                            .font(.subheadline).foregroundStyle(p.waiting && p.state == .running ? Theme.orange : Theme.textDim)
+                        if let s = p.session { Text(s).font(.mono(11)).foregroundStyle(Theme.textFaint).lineLimit(1).truncationMode(.middle) }
+                    }
+                    Spacer(minLength: 4)
+                    if let s = agentSession {
+                        Button { model.openSession(box: box, name: s.name) } label: {
+                            Label("Abrir conversa", systemImage: "bubble.left.and.text.bubble.right").font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier("prepare-open-agent")
+                    }
+                }
+            }
             if let setup = p.setup, !setup.isEmpty { MonoText(setup, size: 11, color: Theme.textFaint).lineLimit(3).textSelection(.enabled) }
             if !p.services.isEmpty {
                 Text("Depois sobem: \(p.services.joined(separator: ", "))").font(.caption).foregroundStyle(Theme.textDim)
@@ -190,28 +225,51 @@ struct WorktreeDetailsView: View {
             }
             if let e = store.prepareError { Text(e).font(.caption).foregroundStyle(Theme.red) }
             if !running {
-                Button { Task { await store.runPrepare(model: model) } } label: {
-                    Label(p.state == .ready || p.state == .failed ? "Preparar de novo" : "Preparar ambiente", systemImage: "hammer")
-                        .font(.subheadline.weight(.semibold))
+                // The project's default way first (a setup agent while it has no recipe), the other beside it.
+                let byAgent = p.prepareWith == .agent || (p.prepareWith == nil && p.byAgent)
+                let again = p.state == .ready || p.state == .failed
+                HStack(spacing: 16) {
+                    Button { Task { await store.runPrepare(model: model) } } label: {
+                        Label(byAgent ? (again ? "Preparar com agente de novo" : "Preparar com agente") : (again ? "Preparar de novo" : "Preparar ambiente"),
+                              systemImage: byAgent ? "sparkles" : "hammer")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .accessibilityIdentifier("prepare-run")
+                    if p.prepareWith == .script, canPrepareWithAgent {
+                        Button { Task { await store.runPrepare(model: model, with: .agent) } } label: {
+                            Label("Preparar com agente", systemImage: "sparkles").font(.subheadline)
+                        }
+                        .accessibilityIdentifier("prepare-agent")
+                    } else if byAgent, p.hasWork {
+                        Button { Task { await store.runPrepare(model: model, with: .script) } } label: {
+                            Label("Rodar o script", systemImage: "hammer").font(.subheadline)
+                        }
+                        .accessibilityIdentifier("prepare-script")
+                    }
                 }
                 .buttonStyle(.borderless)
-                .accessibilityIdentifier("prepare-run")
             }
         } header: {
             Text("Preparação")
         } footer: {
             if p.state == .skipped { Text("Esta worktree foi criada só com o código. Prepare quando precisar rodar o projeto ou a visualização.") }
+            else if p.byAgent && running { Text("Um agente instala o que falta, sobe o servidor e cria um login de teste; no fim salva a receita, e as próximas worktrees a repetem sem agente.") }
         }
         .listRowBackground(Theme.card)
     }
 
-    private func prepareTitle(_ s: PrepareStatus.State) -> String {
-        switch s {
-        case .running: String(localized: "Preparando…")
+    /// A setup agent can prepare it: the box has them, and Claude Code.
+    private var canPrepareWithAgent: Bool {
+        conn?.info?.has("prepare.agent") == true && (conn?.info?.agents.contains { $0.id == "claude" } ?? false)
+    }
+
+    private func prepareTitle(_ p: PrepareStatus) -> String {
+        switch p.state {
+        case .running: p.byAgent ? String(localized: "O agente está preparando…") : String(localized: "Preparando…")
         case .ready: String(localized: "Ambiente pronto")
-        case .failed: String(localized: "O setup falhou")
+        case .failed: p.byAgent ? String(localized: "A preparação não terminou") : String(localized: "O setup falhou")
         case .skipped: String(localized: "Ambiente não preparado")
-        case .unknown: String(localized: "Sem registro desde que a box reiniciou")
+        case .unknown: p.prepareWith != nil ? String(localized: "Nada registrado sobre a preparação") : String(localized: "Sem registro desde que a box reiniciou")
         }
     }
 
@@ -228,6 +286,11 @@ struct WorktreeDetailsView: View {
 
     @ViewBuilder private var preview: some View {
         Section {
+            if let p = store.preview, !p.isEmpty {
+                WorktreePreviewBlock(preview: p, host: host, reachable: p.port.flatMap { store.reachable[$0] })
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("worktree-preview")
+            }
             if store.servers.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(store.loaded ? "Nada escutando nesta worktree agora." : "Procurando servidores…")
@@ -261,7 +324,8 @@ struct WorktreeDetailsView: View {
                 Spacer(minLength: 0)
             }
             if let url { linkLine(url, reachable: store.reachable[s.port]) }
-            publicLinkLine(port: s.port)
+            // The preview above already shows this port's public link.
+            if store.preview?.share == nil || store.preview?.port != s.port { publicLinkLine(port: s.port) }
         }
         .padding(.vertical, 2)
     }

@@ -446,7 +446,7 @@ struct ComposeScreenPlaceholder: View {
                         if vm.isNew {
                             optionRow("arrow.turn.down.right", "A partir de", vm.effectiveBase.isEmpty ? "—" : vm.effectiveBase) { sheet = .base }
                             nameRow
-                            if vm.canSkipPrepare { prepareRow }
+                            if !vm.prepareModes.isEmpty { prepareRow }
                         }
                     }
                     if let a = vm.agent {
@@ -521,21 +521,30 @@ struct ComposeScreenPlaceholder: View {
         }
     }
 
-    /// Setup script and autostart services as the worktree is made; off for a quick fix (Detalhes prepares it later).
+    /// How the worktree gets its environment as it is made: only the code (a quick fix; Detalhes prepares it later), the
+    /// project's setup script and autostart services, or a setup agent (the box's default while the project has no
+    /// recipe), as chips like the model's.
     private var prepareRow: some View {
         VStack(spacing: 0) {
-            Toggle(isOn: $vm.prepare) {
-                HStack(spacing: 10) {
-                    Image(systemName: "hammer").foregroundStyle(Theme.textDim).frame(width: 20)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Preparar ambiente").font(.subheadline).foregroundStyle(Theme.textDim)
-                        Text(vm.prepare ? "Setup e serviços automáticos ao criar" : "Só o código; prepare depois em Detalhes")
-                            .font(.caption).foregroundStyle(Theme.textFaint)
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "hammer").foregroundStyle(Theme.textDim).frame(width: 20).padding(.top, ChoiceChip.vPad)
+                Text("Preparação").font(.subheadline).foregroundStyle(Theme.textDim)
+                    .frame(minWidth: Platform.isMac ? 64 : 58, alignment: .leading)
+                    .padding(.top, ChoiceChip.vPad)
+                VStack(alignment: .leading, spacing: 6) {
+                    FlowLayout(spacing: 6, lineSpacing: 6) {
+                        ForEach(vm.prepareModes, id: \.self) { m in
+                            ChoiceChip(title: PrepareText.choice(m), selected: vm.prepareMode == m) { vm.prepareMode = m; Haptic.selection() }
+                                .accessibilityIdentifier("compose-prepare-\(m.rawValue)")
+                        }
                     }
+                    Text(PrepareText.choiceDetail(vm.prepareMode)).font(.caption).foregroundStyle(Theme.textFaint)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .tint(Theme.accent)
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("compose-prepare")
             Divider().overlay(Theme.stroke).padding(.leading, 42)
         }

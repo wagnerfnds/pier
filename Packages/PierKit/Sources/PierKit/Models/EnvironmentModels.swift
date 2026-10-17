@@ -9,12 +9,23 @@ public struct BoxSettings: Codable, Sendable, Hashable {
     public let home: String
     public let spaces: [ProjectSpace]
     public let docker: DockerState
+    /// What every setup agent on the box must keep to (docs/API.md §2.6.1): the box's own text, or its defaults
+    /// (`prepareRulesDefault`); nil from a box without setup agents.
+    public let prepareRules: String?
+    public let prepareRulesDefault: Bool
+    /// A worktree's preview gets a public link by itself; nil from a box without previews.
+    public let autoShare: Bool?
 
-    public init(projectsRoot: String? = nil, home: String = "", spaces: [ProjectSpace] = [], docker: DockerState = DockerState()) {
+    public init(projectsRoot: String? = nil, home: String = "", spaces: [ProjectSpace] = [], docker: DockerState = DockerState(),
+                prepareRules: String? = nil, prepareRulesDefault: Bool = false, autoShare: Bool? = nil) {
         self.projectsRoot = projectsRoot; self.home = home; self.spaces = spaces; self.docker = docker
+        self.prepareRules = prepareRules; self.prepareRulesDefault = prepareRulesDefault; self.autoShare = autoShare
     }
 
-    enum CodingKeys: String, CodingKey { case projectsRoot = "projects_root", home, spaces, docker }
+    enum CodingKeys: String, CodingKey {
+        case projectsRoot = "projects_root", home, spaces, docker
+        case prepareRules = "prepare_rules", prepareRulesDefault = "prepare_rules_default", autoShare = "auto_share"
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -23,6 +34,9 @@ public struct BoxSettings: Codable, Sendable, Hashable {
         home = try c.decodeIfPresent(String.self, forKey: .home) ?? ""
         spaces = try c.decodeIfPresent([ProjectSpace].self, forKey: .spaces) ?? []
         docker = try c.decodeIfPresent(DockerState.self, forKey: .docker) ?? DockerState()
+        prepareRules = try c.decodeIfPresent(String.self, forKey: .prepareRules)
+        prepareRulesDefault = try c.decodeIfPresent(Bool.self, forKey: .prepareRulesDefault) ?? false
+        autoShare = try c.decodeIfPresent(Bool.self, forKey: .autoShare)
     }
 }
 

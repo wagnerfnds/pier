@@ -458,12 +458,23 @@ final class MockBox: PierTransport, @unchecked Sendable {
         if let r = signIns.route(method, p, body) { return r }   // tools and sign-ins (UITestMockSignIn.swift)
         projects.signedOut = signIns.signedOut
         projects.signedIn = signIns.signedIn
+        if method == .post, p.count == 6, p[1] == "locations", p[3] == "worktrees", p[5] == "prepare" {
+            // A setup agent's run (UITestMockProjects.swift): its session works here a few seconds.
+            switch projects.beginAgentRun(location: p[2], worktree: p[4], main: p[2] == p[4], body: body) {
+            case .busy?: return (409, Self.json(["error": "this worktree is already being prepared", "code": "conflict"]))
+            case .started(let name)?:
+                startSetupAgent(name, location: p[2], worktree: p[4], main: p[2] == p[4])
+                return (202, projects.prepareJSON(p[2], p[4]))
+            case nil: break
+            }
+        }
         if let r = projects.route(method, p, query, body, locations: MockFixtures.locations) { return r }   // clones, GitHub, removal (UITestMockProjects.swift)
         switch (method, p[1]) {
         case (.get, "info"):
             // pierd with the file routes.
             var info = Self.fixtureObject(MockFixtures.info)
-            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare", "tools", "logins", "mcp"]
+            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare",
+                                                                                   "prepare.agent", "preview", "tools", "logins", "mcp"]
                 // Terminals stream (`-mockTTY 0`: a box before them, its screen read every second).
                 + (UserDefaults.standard.string(forKey: "mockTTY") == "0" ? [] : ["tty"])
             return (200, Self.json(info))
@@ -578,6 +589,25 @@ final class MockBox: PierTransport, @unchecked Sendable {
         recordAt[name] = Date().addingTimeInterval(Self.recordDelay)
         scheduleReply(name, text: "Good question. Let's think it through together.", after: Self.recordDelay + 2)
         return (200, Self.json(s))
+    }
+
+    /// A setup agent's session (`POST …/prepare` by an agent, docs/API.md §2.6.1), as pierd runs one: the last run's
+    /// goes, this one reads the project and reports what it installed and the test login once its work is done.
+    private func startSetupAgent(_ name: String, location: String, worktree: String, main: Bool) {
+        let base = main ? "\(location)-setup" : "\(location)-\(worktree)-setup"
+        sessions.removeAll { s in let n = s["name"] as? String; return n == base || n == base + "-2" }
+        let flat = main ? location : "\(location)-\(worktree)"
+        var s = Self.session(name, location: main ? location : "\(location)/\(worktree)", dir: "/home/ubuntu/code/\(flat)", state: "running",
+                             title: "Environment setup")
+        s["command"] = "claude --disallowedTools AskUserQuestion --permission-mode bypassPermissions"
+        s["created"] = Self.iso()
+        sessions.insert(s, at: 0)
+        transcripts[name] = [item("user", text: "You are the setup agent of a Pier box: you prepare a fresh checkout of the project \(location) so that it runs, alone and unattended.")]
+        scheduleReply(name, text: """
+            Done. I installed PHP 8.3 with its extensions and MySQL, ran `composer install`, the migrations and the seeders, built the assets \
+            and started the dev server as a Pier service on its port. Test login: `demo@example.com` / `demo-pass-123`. The recipe is saved, \
+            so the next worktrees are prepared without me.
+            """, after: MockProjects.agentWork)
     }
 
     /// An agent started in a worktree that exists ("sandbox" for the main checkout, "sandbox/subtract"), as pierd's
