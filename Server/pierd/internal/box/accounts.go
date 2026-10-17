@@ -550,24 +550,6 @@ func (b *Box) loginAccount(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// signInDir is where a sign-in terminal runs: an empty folder of pierd's
-// own, which Claude Code is told it trusts. In the home folder it would ask
-// first, every time (it never keeps an answer about the home folder).
-func (b *Box) signInDir(a Account, env []string) string {
-	home, _ := os.UserHomeDir()
-	if b.StateDir == "" {
-		return home
-	}
-	dir := filepath.Join(b.StateDir, "sign-in")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return home
-	}
-	if a.Agent == "claude" {
-		b.pretrust(dir, env, "claude")
-	}
-	return dir
-}
-
 // enableLimits puts pierd's status line in the Claude accounts that lack it,
 // so their limits can be read.
 func (b *Box) enableLimits(w http.ResponseWriter, r *http.Request) error {
