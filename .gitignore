@@ -30,3 +30,6 @@ Config/Signing.xcconfig
 
 # JavaScript tooling (Design/hero builds the site's 3D scene)
 node_modules/
+
+# The Mac spike's accessibility probe, built locally (Tools/mac-spike/run.sh build)
+Tools/mac-spike/axprobe
