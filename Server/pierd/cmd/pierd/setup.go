@@ -68,7 +68,7 @@ func setup(b boxHome, args []string) error {
 	if !skipTools(*noTools) {
 		fmt.Println("Tools (--no-tools leaves them alone):")
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		installTools(ctx, allTools(), false, indented{os.Stdout})
+		installTools(ctx, allTools(), false, &lineIndent{w: os.Stdout, prefix: "  "})
 		stop()
 		fmt.Println()
 	}
