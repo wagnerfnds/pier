@@ -259,7 +259,9 @@ final class SessionViewModel {
         let store = self.store
         if let f = foldCache, f.stamp == storeStamp, f.live == live { return f }
         let items = store.displayItems
-        let f = Folded(stamp: storeStamp, live: live, blocks: ConversationFold.blocks(items, live: live), lastTurn: TurnChanges.lastTurn(items))
+        let f = Perf.interval("session.fold") {
+            Folded(stamp: storeStamp, live: live, blocks: ConversationFold.blocks(items, live: live), lastTurn: TurnChanges.lastTurn(items))
+        }
         foldCache = f
         return f
     }
@@ -466,7 +468,7 @@ final class SessionViewModel {
         // Observable state is written only when it changed: every write re-renders the screen, and this runs every 1.5 s.
         if case .success(let p)? = p {
             var next = store
-            if next.apply(p) {
+            if Perf.interval("session.apply", { next.apply(p) }) {
                 if next.items.count > Self.trimAbove { next.trim(keeping: Self.keptItems) }
                 store = next
                 TranscriptCache.shared.put(next, box: box, session: name, persist: !isMockBox)
@@ -550,7 +552,7 @@ final class SessionViewModel {
         guard !pages.isEmpty else { return }
         // The store as it is now (a message may have gone out meanwhile), with the pages in the order they were read.
         var next = store
-        for page in pages { next.absorbHistory(page) }
+        Perf.interval("session.gap") { for page in pages { next.absorbHistory(page) } }
         store = next
         TranscriptCache.shared.put(store, box: box, session: name, persist: !isMockBox)
     }
@@ -562,7 +564,7 @@ final class SessionViewModel {
         loadingOlder = true
         defer { loadingOlder = false }
         if let page = try? await client.transcriptBefore(session: name, before: off, limit: 120) {
-            store.absorbHistory(page)
+            Perf.interval("session.older") { store.absorbHistory(page) }
             TranscriptCache.shared.put(store, box: box, session: name, persist: !isMockBox)
         }
     }

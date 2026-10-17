@@ -88,7 +88,8 @@ final class BoxConnection: Identifiable {
         let was = state
         var changed = false
         do {
-            changed = applySessions(try await client.sessions())
+            let list = try await client.sessions()
+            changed = Perf.interval("sessions.apply") { applySessions(list) }
             set(\.state, .online)
         } catch { apply(error: error) }
         // Widgets and Live Activities follow changes only: most refreshes find the list as it was.

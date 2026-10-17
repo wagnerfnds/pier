@@ -507,6 +507,8 @@ final class LocalPrefs {
     }
 
     private func writeNow() {
+        let span = Perf.begin("prefs.write")
+        defer { Perf.end(span) }
         var out = data
         out.composeDraft = composeDraft
         (out.closed, out.seen, out.dismissed, out.snoozedHealth) = (closedMarks, seenMarks, dismissedMarks, snoozedMarks)
