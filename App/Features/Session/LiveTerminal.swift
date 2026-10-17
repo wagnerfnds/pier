@@ -362,7 +362,12 @@ struct LiveTerminalView: View {
             terminal.state.isSurfaceVisible = v
             // Put away (another tab, Conversa), it lets go of the keyboard: what is typed next is not for a shell no one
             // sees.
+            #if os(iOS)
             if !v, let view = terminal.state.attachedPlatformView, view.isFirstResponder { view.resignFirstResponder() }
+            #else
+            // AppKit: a view gives the keyboard up through its window.
+            if !v, let view = terminal.state.attachedPlatformView, view.isFirstResponder { view.window?.makeFirstResponder(nil) }
+            #endif
         }
         .onChange(of: focus, initial: true) { _, f in
             guard f, visible else { return }
