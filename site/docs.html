@@ -35,7 +35,7 @@
     <a href="#mac">Connect the Mac</a><a href="#accounts">Claude and Codex accounts</a><a href="#root">Projects folder and spaces</a>
     <a href="#env">The box's variables and skills</a><a href="#projects">Bring in projects</a><a href="#isolated">Isolated environments</a>
     <a href="#notifications">Notifications</a><a href="#daily">Day to day</a><a href="#links">Public links</a>
-    <a href="#commands">Useful commands</a><a href="#problems">Common problems</a>
+    <a href="#mcp">MCP servers</a><a href="#commands">Useful commands</a><a href="#problems">Common problems</a>
   </nav>
 
   <h2 id="how">How Pier works</h2>
@@ -134,6 +134,10 @@ pierd tools install gh                              # the GitHub CLI, once pierd
       and, with “Set up the environment”, installs its dependencies and starts its dev server.</li>
     <li><strong>Clone from link</strong>: <code>owner/repo</code>, a GitHub page or a clone URL. Setup starts off here, since it runs the
       repository's own config: turn it on for repositories you trust.</li>
+    <li><strong>Set up with an agent</strong>: allowed once per project (the app asks), an agent prepares each new worktree by
+      itself. It installs what is missing, the dependencies, the database and <code>.env</code>, creates a test login, starts the
+      dev server and saves a recipe that the next worktrees replay by script. Settings › Projects holds the box's setup rules
+      (no Docker and no network changes by default) and the projects allowed. It never runs for a pull request's checkout.</li>
     <li><strong>Remove from disk</strong>: shows the space it frees and what would be lost (uncommitted files, unpushed commits,
       stashes) before deleting anything.</li>
   </ul>
@@ -155,15 +159,23 @@ pierd tools install gh                              # the GitHub CLI, once pierd
     <tr><th>What needs me</th><td><strong>Inbox</strong>: permissions and questions, answered with a tap.</td></tr>
     <tr><th>Everything at once</th><td><strong>Board</strong>: working, needs you, done.</td></tr>
     <tr><th>Review</th><td>A session's <strong>Review</strong>: each file's diff, commit, push, pull request.</td></tr>
-    <tr><th>See it running</th><td>A worktree's <strong>Details</strong>: dev servers with their links, services, ports.</td></tr>
+    <tr><th>Terminal beside the chat</th><td>On iPad and Mac, <strong>Side by Side</strong> in a session's tab strip (⌥⌘T): the conversation on the left, its terminals or the browser on the right.</td></tr>
+    <tr><th>See it running</th><td>A worktree's <strong>Details</strong>: the preview's public link and test login, dev servers with their links (<strong>Open in Pier</strong> opens them in the app's browser), services, ports.</td></tr>
     <tr><th>Clean up</th><td><strong>Cleanup</strong> (Projects › ✦): unused worktrees, services, every project's main.</td></tr>
   </table>
 
   <h2 id="links">Public links</h2>
   <p>A worktree's Details › <strong>Create public link</strong> puts its dev server at <code>https://p-&lt;name&gt;.docktopier.com</code>
-  for 24 hours (7 days at most), for anyone with the link. It goes when it expires, when you take it down, or with its worktree.</p>
+  for 24 hours (7 days at most), for anyone with the link. It goes when it expires, when you take it down, or with its worktree.
+  A preview a setup agent records gets one by itself, a day at a time while its worktree exists (Settings › Projects ›
+  <em>Automatic public link</em>).</p>
   <div class="callout warn"><p>Never publish a server with a debug console on (Rails' web-console, Django's debug toolbar):
   anyone with the link reaches it.</p></div>
+
+  <h2 id="mcp">MCP servers</h2>
+  <p><strong>Settings › MCP servers</strong>: a name, the server's URL and its token. pierd writes it into every Claude Code
+  and Codex account on the box with their own CLIs (changing only the entries it made), gives Codex the token through a
+  session variable, and shows whether each agent connects.</p>
 
   <h2 id="commands">Useful commands</h2>
   <table>
@@ -199,7 +211,7 @@ pierd tools install gh                              # the GitHub CLI, once pierd
     <a href="#conectar-mac">Conectar o Mac</a><a href="#contas">Contas do Claude e do Codex</a><a href="#pasta">Pasta dos projetos e espaços</a>
     <a href="#variaveis">Variáveis da box e skills</a><a href="#projetos">Trazer os projetos</a><a href="#ambiente">Ambiente isolado</a>
     <a href="#notificacoes">Notificações</a><a href="#dia">O dia a dia</a><a href="#publicos">Links públicos</a>
-    <a href="#comandos">Comandos úteis</a><a href="#problemas">Problemas comuns</a>
+    <a href="#servidores-mcp">Servidores MCP</a><a href="#comandos">Comandos úteis</a><a href="#problemas">Problemas comuns</a>
   </nav>
 
   <h2 id="como">Como o Pier funciona</h2>
@@ -299,6 +311,11 @@ pierd tools install gh                              # o GitHub CLI, com o pierd 
       ambiente”, instala as dependências e sobe o servidor de desenvolvimento.</li>
     <li><strong>Clonar por link</strong>: <code>dono/repo</code>, a página no GitHub ou a URL de clone. Aqui o setup começa desligado,
       porque roda a configuração do próprio repositório: ligue para repositórios em que você confia.</li>
+    <li><strong>Preparar com agente</strong>: permitido uma vez por projeto (o app pergunta), um agente prepara sozinho cada
+      worktree nova. Ele instala o que falta, as dependências, o banco e o <code>.env</code>, cria um login de teste, sobe o servidor
+      de desenvolvimento e salva uma receita que as próximas worktrees repetem por script. Em Ajustes › Projetos ficam as regras
+      da preparação da box (sem Docker e sem mexer na rede, por padrão) e os projetos permitidos. Nunca roda no checkout de um
+      pull request.</li>
     <li><strong>Remover do disco</strong>: mostra o espaço que libera e o que se perderia (arquivos não commitados, commits sem push,
       stashes) antes de apagar.</li>
   </ul>
@@ -320,16 +337,23 @@ pierd tools install gh                              # o GitHub CLI, com o pierd 
     <tr><th>O que precisa de mim</th><td><strong>Inbox</strong>: permissões e perguntas, respondidas com um toque.</td></tr>
     <tr><th>Tudo de uma vez</th><td><strong>Quadro</strong>: trabalhando, precisa de você, terminou.</td></tr>
     <tr><th>Revisar</th><td><strong>Revisar</strong> numa sessão: o diff de cada arquivo, commit, push, pull request.</td></tr>
-    <tr><th>Ver rodando</th><td><strong>Detalhes</strong> da worktree: servidores com os links, serviços, portas.</td></tr>
+    <tr><th>Terminal ao lado da conversa</th><td>No iPad e no Mac, <strong>Lado a lado</strong> na faixa de abas da sessão (⌥⌘T): a conversa à esquerda, os terminais ou o navegador à direita.</td></tr>
+    <tr><th>Ver rodando</th><td><strong>Detalhes</strong> da worktree: o link público e o login de teste da visualização, os servidores com os links (<strong>Abrir no Pier</strong> abre no navegador do app), serviços, portas.</td></tr>
     <tr><th>Limpar</th><td><strong>Faxina</strong> (Projetos › ✦): worktrees sem uso, serviços, a main de cada projeto.</td></tr>
   </table>
 
   <h2 id="publicos">Links públicos</h2>
   <p>Em Detalhes da worktree › <strong>Criar link público</strong>, o servidor de desenvolvimento fica em
   <code>https://p-&lt;nome&gt;.docktopier.com</code> por 24 horas (no máximo 7 dias), para qualquer pessoa com o link. Ele sai do ar
-  quando expira, quando você o remove, ou com a worktree.</p>
+  quando expira, quando você o remove, ou com a worktree. A visualização que um agente de preparação registra ganha um
+  sozinho, um dia por vez enquanto a worktree existir (Ajustes › Projetos › <em>Link público automático</em>).</p>
   <div class="callout warn"><p>Nunca publique um servidor com console de depuração ligado (web-console do Rails, debug toolbar
   do Django): quem tem o link chega a ele.</p></div>
+
+  <h2 id="servidores-mcp">Servidores MCP</h2>
+  <p><strong>Ajustes › Servidores MCP</strong>: nome, URL do servidor e token. O pierd grava o servidor em todas as contas do
+  Claude Code e do Codex da box pelos próprios CLIs (mexendo só nas entradas que ele criou), passa o token ao Codex por uma
+  variável da sessão e mostra se cada agente conecta.</p>
 
   <h2 id="comandos">Comandos úteis</h2>
   <table>
