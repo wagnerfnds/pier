@@ -23,8 +23,10 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 |---|---|---|
 | `GET /v1/info` | `info.go` `handleInfo` | App `info()`: BoxConnection (its `relay` updates the box's record: `AppModel.relayChanged`), HeadlessBoxes, PushSupport |
 | `GET /v1/stats` | `stats.go` `handleStats` | App `stats()`: BoxConnection (box card); `pierd stats` |
-| `GET /v1/doctor` | `doctor.go` `handleDoctor` | `pierd doctor`; pierctl selftest (the app has `doctor()` but no caller today) |
-| `GET /v1/agents` | `info.go` `listAgentCLIs` | pierctl selftest (`installableAgents`); kept small: claude and codex, no installer |
+| `GET /v1/doctor` | `doctor.go` `handleDoctor` | App `doctor()`: BoxHealthStore (the Inbox's "A box precisa de você"), OnboardingAccounts ("Contas"); `pierd doctor`; pierctl selftest |
+| `GET /v1/agents` | `info.go` `listAgentCLIs` | pierctl selftest (`installableAgents`); kept small: claude and codex, which pierd installs (`/v1/tools`) |
+| `GET /v1/tools`, `POST /v1/tools/install` (202; gate `before:tools.install`) | `toolsapi.go` `listTools`/`installTools` (`internal/installer`, as `pierd tools install`) | App `tools()`/`installTools()`: BoxToolsStore (OnboardingAccounts, InboxScreen's Instalar, GitHubReposScreen) |
+| `GET`/`POST /v1/logins`, `GET`/`DELETE /v1/logins/{id}`, `POST /v1/logins/{id}/code` (gate `before:login.start`) | `logins.go` (the CLI's sign-in in a `login-*` session, its screen read) | App `startLogin()`/`login()`/`sendLoginCode()`/`cancelLogin()`: SignInSheet (OnboardingAccounts, AccountsScreen, InboxScreen's Entrar, GitHubReposScreen) |
 
 ## Locations and worktrees
 
@@ -38,7 +40,7 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `GET`/`PUT /v1/settings` | `settings.go` `getSettings`/`putSettings` (projects folder, spaces, Docker) | App `settings()`/`setProjectsRoot()`: BoxProjectsSettingsScreen, SpacesStore |
 | `POST /v1/spaces`, `DELETE /v1/spaces/{name}` (`purge`, `force`) | `settings.go` `addSpace`/`removeSpace` | App `addSpace()`/`removeSpace()`: BoxProjectsSettingsScreen, RemoveSpaceSheet |
 | `GET`/`PUT /v1/locations/{name}/environment` | `environment.go` `getEnvironment`/`putEnvironment` (launchers, containers as units) | App `environment()`/`setEnvironment()`: ProjectEnvironmentScreen |
-| `GET`/`POST /v1/accounts`, `PATCH`/`DELETE /v1/accounts/{id}`, `POST /v1/accounts/{id}/login` | `accounts.go` | App `accounts()`… : AccountsScreen, LimitsWidget (default), AccountsCache |
+| `GET`/`POST /v1/accounts`, `PATCH`/`DELETE /v1/accounts/{id}`, `POST /v1/accounts/{id}/login` (a sign-in, `logins.go`, answered as its session) | `accounts.go` | App `accounts()`… : AccountsScreen (`loginAccount()` on boxes without `logins`), LimitsWidget (default), AccountsCache, OnboardingAccounts |
 | `POST /v1/limits/enable` | `accounts.go` `enableLimits` (pierd's status line, `integrations/statusline.go`) | App `enableLimits()`: LimitsWidget |
 | `PUT /v1/locations/{name}/accounts` | `accounts.go` `putLocationAccounts` | App `setProjectAccounts()`: ProjectAccountsSection |
 | `GET`/`PUT /v1/env` | `skills.go` `getEnv`/`putEnv` (rewrites the skills) | App `boxVariables()`/`setBoxVariables()`: BoxVariablesScreen |
@@ -116,6 +118,8 @@ Event types pierd publishes, and what the app does with them:
 | `worktree.prepare.{started,finished,failed}` | WorktreeDetails reads the preparation again; no notification (a setup that failed already sent `worktree.setup.failed`) |
 | `location.added`, `location.removed`, `config.changed` | locations refresh |
 | `account.*` | HomeStore reads the limits again |
+| `login.changed` | SignInSheet reads its sign-in again at once (it also polls every 1.5 s) |
+| `tool.installed`, `tool.failed` | none: BoxToolsStore polls `GET /v1/tools` while an install it asked for runs |
 | `env.changed`, `skills.changed`, `share.*`, `location.accounts` | none: the screens read the box again after their own changes |
 | `settings.changed`, `space.added`, `space.removed`, `environment.*` | none yet: the screens read the box again after their own changes; ProjectEnvironmentScreen polls while building |
 | `clone.started`, `clone.finished`, `clone.failed` | none yet: ClonesStore polls `GET /v1/clones` while a clone runs |

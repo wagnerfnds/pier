@@ -262,12 +262,31 @@ the undo window like answers: the card leaves at once and "Desfazer" brings it b
 ## The box needs you too (health cards)
 
 `GET /v1/doctor` is read per box (`BoxHealthStore`, every 10 minutes while online, on pull-to-refresh) and `BoxHealth.issues`
-(PierKit, tested) keeps the checks that need a hand: an agent CLI signed out (pierd's new `<agent> sign-in` check reads the
-CLI's credentials file), hooks not installed, no agent installed, git/tmux missing, pierd not a service or stopping at
+(PierKit, tested) keeps the checks that need a hand: an agent CLI signed out (pierd's `<agent> sign-in` check reads the
+CLI's credentials file; an account added on the box has its own), GitHub signed out (`GitHub sign-in`, gh's own status) or
+its CLI missing (`gh`), hooks not installed, no agent installed, git/tmux missing, pierd not a service or stopping at
 logout, a location that no longer exists, events lost. A box that cannot be reached, revoked or with another key is an
 issue too. The Inbox lists them first ("A box precisa de você"), each card with the words for the problem, the exact
 command to run on the box and "Copiar"; "Ignorar por hoje" snoozes the card for a day (`LocalPrefs.snoozedHealth`), with
-the undo window. Keys: Return copies the fix, E ignores. Debug: `-uiTestHealth 1` makes the mock box report three problems.
+the undo window. On a box that signs in and installs from the app (`logins`, `tools`), a sign-in card gets "Entrar" (the
+sign-in sheet below) and a missing GitHub CLI or agent "Instalar" (`BoxToolsStore`); which card gets which is
+`SignIn.action` (PierKit, tested), from the check's `tool` and `account`. Keys: Return does the card's Entrar / Instalar,
+else copies the fix; E ignores. Debug: `-uiTestHealth 1` makes the mock box report three problems, `-uiTestSignIn 1` the
+GitHub CLI missing and Codex signed out.
+
+## Signing in and installing from the app
+
+pierd puts Claude Code, Codex and the GitHub CLI on a box with no sudo (`pierd setup` runs `pierd tools install`; the app
+asks `POST /v1/tools/install`, docs/API.md §2.13) and signs them in with no terminal (`/v1/logins`, §2.10.1): it runs the
+CLI's own sign-in in a wide tmux session and reads its link and one-time code off the screen. `SignInSheet` (reached from
+the onboarding's "Contas", Ajustes › Contas, the Inbox's cards and the GitHub list) shows it in steps: "Abrir a página de
+login" opens the link in the system browser (a device code is copied first, and shown large with Copiar to type on the
+page), Claude Code's page code goes back through a field with a `PasteButton` (no paste prompt) and Enviar, and a status
+line follows the sign-in (`GET /v1/logins/{id}` every 1.5 s while it runs, at once on `login.changed`) to "conectado" or
+its error with "Tentar de novo". "Abrir no terminal" shows the sign-in's `login-*` session for whatever the screen reading
+does not cover; closing the sheet otherwise cancels the sign-in. `SignIn` (PierKit) holds the sheet's steps and the
+cleaning of a pasted code. `BoxToolsStore` follows the installs it asked for (every 2 s), then reads the box's info, its
+health cards and its accounts again.
 
 ## Undo window ("Enviando… Desfazer")
 
@@ -357,8 +376,9 @@ Detalhes) picks its language version and its databases. pierd runs them in Docke
 worktrees' PATH, never in the project (docs/API.md 2.9); rows and cards show the space and an "isolated" mark.
 
 **Accounts, limits, variables, public links**: Ajustes › Projetos also has the box's Claude Code and Codex accounts
-(`AccountsScreen`: add one, sign in from the box's terminal opened in the app, the real one, where the link and the
-code are copied and pasted: `Session.isSignIn`, docs/API.md 2.10; make it the default) and its variables with a
+(`AccountsScreen`: add one, sign in from the app with `SignInSheet` (on a box without `logins`, the box's terminal
+opened in the app, the real one, where the link and the code are copied and pasted: `Session.isSignIn`, docs/API.md
+2.10), make it the default) and its variables with a
 note each, plus the skills that tell the agents about them (`BoxVariablesScreen`). A project picks its agents' account
 (`ProjectAccountsSection`, on the project's screen and in a worktree's Detalhes; `AccountsCache` loads them). The Home's
 **Limites de uso** (`LimitsWidget`) shows each account's 5-hour and weekly use and switches the box's default with a tap.
@@ -526,8 +546,10 @@ unsaved work, and each worktree's `dev` service, which can be stopped and starte
 space "clientes" once one is set), spaces and environments (each "building" for 2 s, then ready). On the Mac a mock run shares the installed app's container and App
 Group: its sidebar prefs go to `prefs-mock.json`, and it never writes the widgets' copy of names and hidden projects
 (the app rewrites that copy at launch). `-uiTestExtras 1`,
-`-uiTestChats 1`, `-uiTestPRs 1`, `-uiTestAsk 1` (an agent asking a question with three choices) and `-uiTestHealth 1`
-(a doctor report with three things to fix) add to its data. A task or chat it starts answers `source: "none"` for its first
+`-uiTestChats 1`, `-uiTestPRs 1`, `-uiTestAsk 1` (an agent asking a question with three choices), `-uiTestHealth 1`
+(a doctor report with three things to fix) and `-uiTestSignIn 1` (the GitHub CLI missing and Codex signed out) add to its
+data. Its tools install in 3 s and its sign-ins go as pierd's do (`App/Debug/UITestMockSignIn.swift`): a device code that
+the "person" enters a few seconds later, Claude Code's link waiting for its code. A task or chat it starts answers `source: "none"` for its first
 3 s, as a starting Claude Code does on pierd (`-mockRecordDelay <s>` makes that longer; `SessionStartUITests`). A
 message sent with `when: idle` while its agent works is held (`GET/DELETE …/queue`, `…/queue/<turn>/send`, the session's
 `queued`) and goes in when the turn ends, as on pierd; `-mockReplyDelay <s>` makes the agent slower to answer, long enough
@@ -658,7 +680,10 @@ Revisar button is tapped by position in that test.
   `pier://` link on this Mac, and the app pairs without the confirm phase because the link names this very device
   (`ThisDevice.isHere`, `LocalHost.isThisDevice` in PierKit); the switch "Abrir o Pier quando o Mac ligar" (on by
   default) registers the app as a login item once the box pairs (`LoginItem`, `SMAppService.mainApp`; also in Ajustes).
-  "Tudo pronto!" then offers "Levar para o iPhone". "Num servidor": the same command, to run over SSH, then the link
+  "Tudo pronto!" then offers "Levar para o iPhone". Before it, a box that signs in from the app (`logins`) shows "Contas"
+  (`OnboardingAccounts`): Claude Code, Codex and GitHub with where each stands (`SignIn.rows` over `/v1/tools`,
+  `/v1/accounts` and `/v1/doctor`, PierKit, tested) and Instalar, Entrar (`SignInSheet`) or ✓; "Pular por enquanto"
+  goes on, and an older box goes on to "Tudo pronto!" at once. "Num servidor": the same command, to run over SSH, then the link
   (scanned on a phone, pasted on the Mac); "Outros jeitos de instalar" (`InstallHelpSheet`, also under Ajustes →
   Adicionar box) offers a prompt for the agent already running there and the commands (the script, npm, Homebrew) with
   Copiar. "No meu Mac" (the phone's default): the code the Mac's "Levar para o iPhone" shows.

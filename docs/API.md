@@ -48,10 +48,10 @@ notifications).
 | Times | RFC 3339 with up to 9 fractional digits (`2026-10-07T19:07:42.53987405Z`). Zero times are omitted. Some fields are Unix milliseconds (transcript); they are named in place. |
 | Omitted fields | Most fields are omitted when empty: absent means zero, false or empty. Model every non-identity field as optional. |
 | Lists | Top-level empty lists are `[]`. Nested lists can be `null` or missing (`branches`, transcript `items`); decode defensively. |
-| Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `not_submitted` (409, 4.3: the agent never took a prompt typed into it; the body also has `kept`), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `unsaved_work` (409, 2.8), `space_not_empty`, `space_has_files` (409, 2.9), `docker_missing` (501), `gh_missing` (501), `gh_auth` (428), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
+| Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `not_submitted` (409, 4.3: the agent never took a prompt typed into it; the body also has `kept`), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `unsaved_work` (409, 2.8), `space_not_empty`, `space_has_files` (409, 2.9), `docker_missing` (501), `gh_missing` (501), `gh_auth` (428), `tool_missing` (424, 2.10.1), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
-| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
+| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `tools` (2.13) and `logins` (2.10.1), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
 
 ### 0.3 Naming and addressing
 
@@ -108,10 +108,18 @@ processes seen on the box, including ones pierd did not start. `hooks: true` mea
 
 ### 1.3 `GET /v1/doctor`
 
-`[{area, name, status: "ok"|"warn"|"fail"|"info", detail?, fix?}]`, the same as `pierd doctor --json`. The app turns
-the `warn` / `fail` checks into Inbox cards (`BoxHealth` in PierKit): besides tools, service and locations, the
-"Agents" area has `<agent> hooks` (pierd's hooks installed) and `<agent> sign-in` (the CLI's credentials file, or an
-API key in pierd's environment; left out where that cannot be told), with `fix` the command to run on the box.
+`[{area, name, status: "ok"|"warn"|"fail"|"info", detail?, fix?, tool?, account?}]`, the same as `pierd doctor --json`.
+The app turns the `warn` / `fail` checks into Inbox cards (`BoxHealth` in PierKit): besides tools, service and
+locations, the "Agents" area has `<agent> hooks` (pierd's hooks installed) and `<agent> sign-in` (the CLI's credentials
+file, or an API key in pierd's environment; left out where that cannot be told), with `fix` the command to run on the
+box; an account added on the box has its own, `<agent> (<account name>) sign-in`, and GitHub's is `GitHub sign-in` (gh's
+own `gh auth status`; left out without gh). "Worktrees and sessions" has `gh`, a `warn` when the GitHub CLI is missing
+(pull requests and the GitHub list need it), and an agent the box lacks is an `info` line in "Agents" with `fix`
+`pierd tools install <id>`. `tool` names the CLI a check is about when the box installs it (2.13) or signs it in
+(2.10.1): `claude`, `codex` or `gh`; `account` the account a sign-in check is about (an id of `GET /v1/accounts`). The
+app puts Instalar or Entrar on those cards. On Linux, `survives logout` first turns lingering on itself, without sudo
+(`loginctl enable-linger`, at most once an hour; systemd's polkit rule lets a user do it where polkit runs), and warns
+only when that is refused, with `fix` `sudo loginctl enable-linger USER` for an admin.
 
 ### 1.4 Reachability
 
@@ -123,7 +131,7 @@ API key in pierd's environment; left out where that cannot be told), with `fix` 
 | Route | Answer |
 | --- | --- |
 | `GET /v1/services` | `[{location, worktree, path, port, process?, main?}]`: dev servers listening, by worktree |
-| `GET /v1/agents` | `[{id, name, command, ..., installed, path?}]`: the known agent CLIs (claude, codex) and whether each is installed. Model and effort lists are in `info.agents`, not here |
+| `GET /v1/agents` | `[{id, name, command, ..., installed, path?}]`: the known agent CLIs (claude, codex) and whether each is installed; `offered: true`, pierd installs them (2.13). Model and effort lists are in `info.agents`, not here |
 
 ---
 
@@ -444,12 +452,11 @@ for Codex. The agent's own folder (`~/.claude`, `~/.codex`) is its built-in acco
   there (3.4), Codex's review of pierd's hooks answered, and, for Claude Code, its first-run screens marked seen
   (`hasCompletedOnboarding` in the folder's `.claude.json`, the theme `dark`) and the bypass mode's warning accepted
   (`skipDangerousModePermissionPrompt` in its `settings.json`, 4.4; the built-in account's own settings are left as
-  they are). `POST /v1/accounts/{id}/login` starts a terminal
-  on that account where the person signs in: `claude /login` (Claude Code opens on its login method), `codex login
-  --device-auth`, in a folder of pierd's own (`~/.pier/box/sign-in`, beside the accounts, which Claude Code is told it
-  trusts: in the home folder it would ask first, every time). It is a terminal, not an agent: listed with no `agent`, and the app
-  opens it as a terminal (copy and paste work there). The built-in account signs in on its own folder, with no
-  `CLAUDE_CONFIG_DIR` set (set at all, it moves Claude Code's config and its macOS keychain entry).
+  they are). `POST /v1/accounts/{id}/login` starts the account's sign-in (2.10.1) and answers its session, with `login`
+  (the sign-in's id): an app that opens it as a terminal sees the CLI's sign-in there (`claude auth login`, `codex login
+  --device-auth`; the session is a terminal, not an agent: listed with no `agent`, so the app opens it as a terminal,
+  where copy and paste work); one with `logins` uses `POST /v1/logins` instead. The built-in account signs in on its own
+  folder, with no `CLAUDE_CONFIG_DIR` set (set at all, it moves Claude Code's config and its macOS keychain entry).
   `PATCH /v1/accounts/{id} {name?, default?: true}` renames it or makes it the box's default for its agent.
   `DELETE /v1/accounts/{id}` deletes an added account's folder, its login with it (projects on it go back to the
   default); the built-in ones cannot be removed. Events `account.added|changed|removed`; gates `before:account.add`,
@@ -467,6 +474,41 @@ for Codex. The agent's own folder (`~/.claude`, `~/.codex`) is its built-in acco
   /v1/limits/enable` puts it in every Claude account. Codex's come from the last `rate_limits` of the newest session
   log in the account's folder (`sessions/YYYY/MM/DD/*.jsonl`, `primary` / `secondary` windows; undocumented, read as
   Codex writes it). A window past its reset is left out.
+
+#### 2.10.1 Signing in from the app (capability `logins`)
+
+The agents' and GitHub's sign-in with no terminal: pierd runs the CLI's own sign-in in a tmux session of its own
+(`login-<account or tool>`, 1000 columns wide so a link stays on one line), reads the link and the one-time code off its
+screen, types back the code Claude Code's page shows, and calls it done only when the CLI exited cleanly and its own
+status agrees (`claude auth status --json`, `codex login status`, `gh auth status`).
+
+* `POST /v1/logins {tool: "claude"|"codex"|"gh", account?}` → 202:
+
+  ```json
+  {"id":"da71a5bd807f","tool":"gh","state":"open_link","url":"https://github.com/login/device","user_code":"1B8C-23C0",
+   "needs_code":false,"session":"login-gh","started":"2026-10-17T00:46:14.808188Z"}
+  ```
+
+  `account`: for claude and codex, an id of `GET /v1/accounts` (the box's default when left out), whose folder the CLI
+  gets (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`); none for gh, which keeps its own config. The commands: `claude auth login`
+  (the subscription's sign-in, not the TUI), `codex login --device-auth`, `gh auth login --web --git-protocol https
+  --hostname github.com` (pierd answers its two questions: git through gh's credentials, and Enter to go on). No browser
+  opens on the box (`BROWSER`, `GH_BROWSER`): the app opens the link where the person is. A sign-in already running for
+  the same account gives way to the new one. 424 `tool_missing` when the box lacks the CLI (2.13), 404 for an unknown
+  account, 400 for an account of another agent. Gate `before:login.start {tool, account}`.
+* `state`: `starting`; `open_link` (the link is ready, and for Codex and GitHub the one-time code `user_code` to type on
+  its page); `enter_code` (Claude Code waits for the code its page shows: `needs_code`); `waiting` (the code went in);
+  `done`; `failed` (`error`: the CLI's last lines, `canceled`, or that it took more than 15 minutes, after which its session
+  ends). `finished` is set with the last two.
+* `GET /v1/logins/{id}`; `GET /v1/logins` (those of the last hour, newest first). The app reads the one it shows every
+  1.5 s, and at once on `login.changed`.
+* `POST /v1/logins/{id}/code {code}` types the code into Claude Code, then Enter: one line of up to 4096 characters (400
+  otherwise); 409 when the sign-in is not waiting for one. A code it does not take brings `enter_code` back with `error`.
+* `DELETE /v1/logins/{id}` cancels it (`failed`, `canceled`) and ends its session; a finished one stays as it was.
+* Event `login.changed {id, tool, account?, state}` on each change of state, never with the link or the code (events are
+  kept in the journal). A sign-in done for an account also publishes `account.changed {id}`; GitHub's runs `gh auth
+  setup-git` once done. Meanwhile the session is an ordinary one (`GET /v1/sessions` lists it, the app's "Abrir no
+  terminal" shows it); it ends with the sign-in.
 
 ### 2.11 The box's variables and skills (capability `box.env`)
 
@@ -495,6 +537,27 @@ A worktree's dev server at a public URL through the box's relay (PROTOCOL.md §1
   (`~/.pier/box/shares.json`) and published again; expired ones go by themselves (`share.expired`). Removing the
   worktree or the project takes its links down. Events `share.created`, `share.removed`.
 * The capability appears when the box has a relay; whether that relay serves links shows on the first `POST`.
+
+### 2.13 Installing the agents and the GitHub CLI (capability `tools`)
+
+* `GET /v1/tools` → `[{id, name, command, installed, path?, version?, installing?, error?, log?}]` for `claude` (Claude
+  Code), `codex` (Codex) and `gh` (the GitHub CLI), found as the person's shell finds them (3.1):
+
+  ```json
+  [{"id":"claude","name":"Claude Code","command":"claude","installed":true,"path":"/home/octocat/.local/bin/claude","version":"2.1.302 (Claude Code)"},
+   {"id":"gh","name":"GitHub CLI","command":"gh","installed":false,"installing":true,"log":"/home/octocat/.config/pier/box/logs/tools/gh.log"}]
+  ```
+
+* `POST /v1/tools/install {tools?: [id…]}` (none: every one) installs the named tools the box lacks, each in the
+  background, and answers 202 with `GET /v1/tools`'s list. Everything goes to `~/.local/bin`, with no sudo: Claude Code
+  through `https://claude.ai/install.sh`; Codex through its standalone `https://chatgpt.com/codex/install.sh`
+  (`CODEX_NON_INTERACTIVE=1`), else the binary of its latest GitHub release, checked against the SHA-256 GitHub keeps
+  with it; the GitHub CLI from its latest release's archive, checked against `gh_<version>_checksums.txt`. Nothing whose
+  checksum does not match is installed. Then pierd looks for the agents again (`agents.found`; `GET /v1/info` lists a new
+  one) and puts its hooks in a new agent's settings. `error` keeps why the last install failed until the tool is there;
+  `log` is that install's log. 400 for another tool. Gate `before:tools.install {tools}`. Events `tool.installed {tool,
+  path, version}` and `tool.failed {tool, log}` (envelope `error`). `pierd tools install` and `pierd setup` run the same
+  installs on the box.
 
 ---
 
@@ -1012,6 +1075,7 @@ path, script, log}` (failures set the envelope `error`), `worktree.prepare.{star
 path}` (2.6.1), `location.added`, `location.removed` (`purged`, `freed`
 after a removal from the disk), `clone.started|finished|failed` (2.8), `settings.changed`, `space.added|removed`,
 `environment.changed|started|ready|failed` (2.9), `account.added|changed|removed`, `location.accounts` (2.10),
+`login.changed {id, tool, account?, state}` (2.10.1), `tool.installed|failed` (2.13),
 `env.changed`, `skills.changed` (2.11), `share.created|removed|expired` (2.12), `config.changed`,
 `service.started|stopped|failed`, `file.written {location, worktree, path, file, size}` (a save through `PUT
 .../file`, 2.7; `path` is the worktree's folder, `file` the saved file relative to it).
@@ -1173,7 +1237,7 @@ Runs and gates (`/v1/runs…`, `run.*` events), `/v1/turns/{id}[/wait]`, termina
 `/tty`, 4.8) and port streams
 (`/v1/tcp`), `/v1/ports`, `/v1/processes`, the memory guard, the phone web app and its token, units, teams,
 flows and webhooks, browsers and visual diffs, `/v1/hooks`, secrets, skills, integrations install over
-HTTP, self-upgrade, agent CLI install, session commands/files/subagents/fork/rewind, worktree log/sync/pause/resume/
+HTTP, self-upgrade, session commands/files/subagents/fork/rewind, worktree log/sync/pause/resume/
 rename, and service logs. A client asking for one gets a plain-text 404.
 
 ---
@@ -1236,7 +1300,9 @@ against a live box with `pierctl selftest` and against captured fixtures (`Tests
 | Review | `review(all:)`, `touched(location:worktree:)`, `fileDiff(session:file:)`, `exec(location:command:timeout:)` |
 | Connection | `reset()` |
 
-`BoxAPI` adds `pairInvite()`, the Home commands (`BoxAPI+Home.swift`) and `events(since:onState:)`. `PushClient`
+`BoxAPI` adds `pairInvite()`, the Home commands (`BoxAPI+Home.swift`), the tools and sign-ins (`BoxAPI+Logins.swift`:
+`tools()`, `installTools(_:)`, `startLogin(tool:account:)`, `login(id:)`, `logins()`, `sendLoginCode(id:code:)`,
+`cancelLogin(id:)`; 2.10.1, 2.13) and `events(since:onState:)`. `PushClient`
 covers `/v1/push/*` (PUSH.md). `events` reconnects with backoff (1 s doubling to 30 s, ±20 % jitter), resumes with
 `?since=<max seq>`, skips keepalives and undecodable lines, and ends only on non-retryable errors (revoked, pin
 mismatch, 4xx).
@@ -1252,6 +1318,7 @@ with defaults and a tolerant decoder (missing keys, `null` lists).
 | `Models/LocationModels.swift` | `Location`, `Worktree`, `Scripts`, `WorktreeStatus`, `Commit`, `BranchList`, `WorktreeRequest` |
 | `Models/FileModels.swift` | `DirListing`, `FileEntry`, `WorktreeFile`, `FileWrite` |
 | `Models/AccountModels.swift` | `AgentAccount`, `AccountLimits`, `LimitWindow`, `BoxVariables`, `BoxSkill`, `PublicLink` (2.10–2.12) |
+| `Models/LoginModels.swift` | `BoxTool`, `Login` (2.10.1, 2.13) |
 | `Models/EnvironmentModels.swift` | `BoxSettings`, `ProjectSpace`, `DockerState`, `ProjectEnvironment`, `EnvRuntime`, `EnvContainer`, `EnvironmentView` (2.9) |
 | `Models/ProjectModels.swift` | `GitHubRepos`, `GitHubRepo`, `CloneRequest`, `ProjectClone`, `ProjectDisk`, `ProjectPurge`, `WorktreeServiceDetail` (2.8; called through `BoxAPI+Projects.swift`) |
 | `Models/SessionModels.swift` | `Session`, `Ask`, `TaskRequest`, `TaskResult`, `SessionRequest`, `SendResult`, `InterruptResult`, `SessionControls`, `HeldPrompt`, `Turn`, `WaitResult`, `Draft`, `Attachment` |
@@ -1276,5 +1343,7 @@ Use explicit `CodingKeys`, not `.convertFromSnakeCase`: keys are mixed (`oldStar
 | `FileTree`, `EditorText` | the workspace's file tree (paths, the rows of the open folders, status badges) and the editor's text rules (line and column, indentation, Return, line endings) for 2.7 |
 | `NotificationText`, `DisplayNames` | notification text and names (9) |
 | `Accounts` | a limit window's label (5h, 7d), the tightest window and how worrying it is, the account a project's agents use, which variables are secrets, valid variable names (2.10, 2.11) |
+| `SignIn` | where the sign-in sheet is at each state of a sign-in, a pasted code cleaned up, a health card's Entrar / Instalar, the onboarding's "Contas" rows (2.10.1, 2.13) |
+| `BoxHealth` | the doctor checks that need a hand, as Inbox cards (1.3) |
 | `Environments` | the runtimes and service containers the environment screen offers by version, a saved environment read back as those choices, its one-line summary, valid container and space names (2.9) |
 | `Projects` | the project screens' rules for 2.8: what can be sent as a repository link, the GitHub list's search, a repository's location on the box, a worktree's dev servers and their preview URLs, its port block, what removing a project would lose |

@@ -41,9 +41,10 @@
 <pre>curl -fsSL https://docktopier.com/install.sh | sh</pre>
   <p>Or with npm: <code>npm install -g pierd &amp;&amp; pierd setup</code>. Or with Homebrew:
   <code>brew install wagnerfnds/tap/pierd &amp;&amp; pierd setup</code>.</p>
-  <p>It installs pierd as a service with the agents' hooks, adds the git repositories it finds (<code>~/code</code>,
-  <code>~/Projects</code>, …) and prints a pairing link with its QR code. On a Linux server, run
-  <code>sudo loginctl enable-linger $USER</code> once so pierd keeps running after you log out.</p>
+  <p>It installs Claude Code, Codex and the GitHub CLI where they are missing (no sudo), pierd as a service with the
+  agents' hooks, adds the git repositories it finds (<code>~/code</code>, <code>~/Projects</code>, …) and prints a pairing link
+  with its QR code. On a Linux server it also turns on lingering so pierd keeps running after you log out; if the system
+  does not let your user do that, whoever runs the server runs <code>sudo loginctl enable-linger $USER</code> once.</p>
 
   <h2>2. Pair the app</h2>
   <ul>
@@ -108,9 +109,11 @@
 <pre>curl -fsSL https://docktopier.com/install.sh | sh</pre>
   <p>Ou pelo npm: <code>npm install -g pierd &amp;&amp; pierd setup</code>. Ou pelo Homebrew:
   <code>brew install wagnerfnds/tap/pierd &amp;&amp; pierd setup</code>.</p>
-  <p>Ele instala o pierd como serviço com os hooks dos agentes, adiciona os repositórios git que encontrar
-  (<code>~/code</code>, <code>~/Projects</code>, …) e mostra um link de pareamento com o QR code. Num servidor Linux, rode
-  uma vez <code>sudo loginctl enable-linger $USER</code> para o pierd continuar rodando depois do logout.</p>
+  <p>Ele instala o Claude Code, o Codex e o GitHub CLI quando faltam (sem sudo), o pierd como serviço com os hooks dos
+  agentes, adiciona os repositórios git que encontrar (<code>~/code</code>, <code>~/Projects</code>, …) e mostra um link de
+  pareamento com o QR code. Num servidor Linux ele também liga o lingering para o pierd continuar rodando depois do logout;
+  se o sistema não deixar o seu usuário fazer isso, quem administra o servidor roda uma vez
+  <code>sudo loginctl enable-linger $USER</code>.</p>
 
   <h2>2. Pareie o app</h2>
   <ul>
