@@ -94,6 +94,12 @@ type Box struct {
 	accounts   accountStore
 	sharesOnce sync.Once
 	shareList  *shareStore
+	// ToolInstaller, when set, installs one tool in place of
+	// internal/installer (tests); tools are the installs since pierd started.
+	ToolInstaller func(ctx context.Context, id string, out io.Writer) error
+	tools         toolJobs
+	// logins are the sign-ins run from the app (logins.go).
+	logins loginStore
 }
 
 // Mount registers the box's routes on s. They are reachable by paired
@@ -130,6 +136,13 @@ func (b *Box) Mount(s *wire.Server) {
 	route("PATCH /v1/accounts/{id}", b.updateAccount)
 	route("DELETE /v1/accounts/{id}", b.removeAccount)
 	route("POST /v1/accounts/{id}/login", b.loginAccount)
+	route("GET /v1/tools", b.listTools)
+	route("POST /v1/tools/install", b.installTools)
+	route("GET /v1/logins", b.listLogins)
+	route("POST /v1/logins", b.postLogin)
+	route("GET /v1/logins/{id}", b.getLogin)
+	route("POST /v1/logins/{id}/code", b.loginCode)
+	route("DELETE /v1/logins/{id}", b.deleteLogin)
 	route("POST /v1/limits/enable", b.enableLimits)
 	route("PUT /v1/locations/{name}/accounts", b.putLocationAccounts)
 	route("GET /v1/shares", b.listShares)

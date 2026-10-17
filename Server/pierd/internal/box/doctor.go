@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"pier/pierd/internal/doctor"
 	"pier/pierd/internal/groups"
@@ -47,14 +49,16 @@ func (b *Box) Doctor(ctx context.Context) []doctor.Check {
 			checks = append(checks, c)
 			// Signed out, a new session stops at the agent's login prompt and nothing in the app says why.
 			if in, known := t.SignedIn(home); known {
-				s := doctor.Check{Area: "Agents", Name: t.Name + " sign-in", Status: doctor.OK, Detail: "signed in"}
+				s := doctor.Check{Area: "Agents", Name: t.Name + " sign-in", Status: doctor.OK, Detail: "signed in", Tool: t.ID, Account: t.ID}
 				if !in {
 					s.Status, s.Detail, s.Fix = doctor.Warn, "not signed in on this box: a new session would stop at its login prompt", t.LoginFix
 				}
 				checks = append(checks, s)
 			}
 		}
+		checks = append(checks, b.accountSignInChecks()...)
 	}
+	checks = append(checks, ghChecks(ctx)...)
 	checks = append(checks, b.eventChecks()...)
 	locs, err := b.Locations.List(ctx)
 	if err != nil {
@@ -76,6 +80,59 @@ func (b *Box) Doctor(ctx context.Context) []doctor.Check {
 		checks = append(checks, doctor.Check{Area: "Locations", Name: "locations", Status: doctor.Info, Detail: "none yet", Fix: "pierd location add NAME ~/path/to/repo"})
 	}
 	return append(checks, b.processChecks(ctx)...)
+}
+
+// accountSignInChecks are the sign-in lines of the accounts added on the box: one signed out stops its projects'
+// sessions at the agent's login prompt.
+func (b *Box) accountSignInChecks() []doctor.Check {
+	var checks []doctor.Check
+	for _, a := range b.loadAccounts().Accounts {
+		t, ok := toolByID(a.Agent)
+		if !ok {
+			continue
+		}
+		in, known := t.SignedInAt(a.Dir)
+		if !known {
+			continue
+		}
+		c := doctor.Check{Area: "Agents", Name: t.Name + " (" + a.Name + ") sign-in", Status: doctor.OK, Detail: "signed in", Tool: a.Agent, Account: a.ID}
+		if !in {
+			c.Status = doctor.Warn
+			c.Detail = "the account " + a.Name + " is not signed in: sessions on it would stop at the login prompt"
+			c.Fix = agentDirVar[a.Agent] + "=" + shellQuote(a.Dir) + " " + t.LoginFix
+		}
+		checks = append(checks, c)
+	}
+	return checks
+}
+
+// ghChecks report the GitHub CLI, which pull requests, the GitHub list and private clones run through, and whether it
+// is signed in, by its own `gh auth status`.
+func ghChecks(ctx context.Context) []doctor.Check {
+	f, ok := agentFound("gh")
+	if !ok {
+		return []doctor.Check{{Area: "Worktrees and sessions", Name: "gh", Status: doctor.Warn,
+			Detail: "not installed; pull requests and the GitHub list need it, and the Pier app can install it",
+			Fix:    "pierd tools install gh", Tool: "gh"}}
+	}
+	checks := []doctor.Check{{Area: "Worktrees and sessions", Name: "gh", Status: doctor.OK, Detail: f.Path, Tool: "gh"}}
+	c := doctor.Check{Area: "Agents", Name: "GitHub sign-in", Status: doctor.OK, Detail: "signed in", Tool: "gh"}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, f.Path, "auth", "status", "--hostname", "github.com")
+	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1")
+	if f.PATH != "" {
+		cmd.Env = append(cmd.Env, "PATH="+f.PATH)
+	}
+	switch err := cmd.Run(); {
+	case err == nil:
+	case ctx.Err() != nil:
+		c.Status, c.Detail = doctor.Info, "gh auth status did not answer in time"
+	default:
+		c.Status, c.Detail = doctor.Warn, "gh is not signed in on this box: pull requests, the GitHub list and private repositories need it"
+		c.Fix = "gh auth login --web --git-protocol https"
+	}
+	return append(checks, c)
 }
 
 // processChecks say how sessions are cleaned up here.

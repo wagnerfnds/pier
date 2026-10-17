@@ -1,0 +1,4 @@
+? Authenticate Git with your GitHub credentials? Yes
+
+! One-time code (948B-8C30) copied to clipboard
+Press Enter to open https://github.com/login/device in your browser...

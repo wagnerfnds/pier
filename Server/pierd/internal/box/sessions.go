@@ -290,6 +290,12 @@ func (s *Sessions) Create(ctx context.Context, name, location, dir, command stri
 // Every session gets PIER_SESSION (its name) and, for an agent preset,
 // PIER_AGENT, so the agent's hooks can say which session they come from.
 func (s *Sessions) create(ctx context.Context, name, location, dir, command, agent string, env, wrap []string) (Session, error) {
+	return s.createSized(ctx, name, location, dir, command, agent, env, wrap, 200, 50)
+}
+
+// createSized is create with a window of cols × rows until a terminal
+// attaches: a sign-in's session is wide, so the link it prints is one line.
+func (s *Sessions) createSized(ctx context.Context, name, location, dir, command, agent string, env, wrap []string, cols, rows int) (Session, error) {
 	if !sessionName.MatchString(name) {
 		return Session{}, fmt.Errorf("invalid session name %q: use letters, digits, - and _", name)
 	}
@@ -312,7 +318,7 @@ func (s *Sessions) create(ctx context.Context, name, location, dir, command, age
 		// login shell alone (-l) never reads.
 		argv = []string{shell, "-lc", withPATH(shell, launchPATH(command, agent), sourceCommand(shell, file))}
 	}
-	args := []string{"new-session", "-d", "-s", name, "-c", dir, "-x", "200", "-y", "50"}
+	args := []string{"new-session", "-d", "-s", name, "-c", dir, "-x", strconv.Itoa(cols), "-y", strconv.Itoa(rows)}
 	env = append(append(append([]string(nil), s.Env...), env...), "PIER_SESSION="+name)
 	if agent != "" {
 		env = append(env, "PIER_AGENT="+agent)

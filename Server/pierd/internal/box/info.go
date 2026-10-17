@@ -91,9 +91,11 @@ func (b *Box) handleInfo(w http.ResponseWriter, r *http.Request) error {
 // …/locations/{name}/disk and DELETE /v1/locations/{name}?purge=1;
 // environments: GET/PUT /v1/settings (the projects folder), /v1/spaces and
 // GET/PUT …/locations/{name}/environment; tty: POST …/sessions/{name}/tty,
-// a terminal on a session (where the box can open a pseudo-terminal).
+// a terminal on a session (where the box can open a pseudo-terminal); tools:
+// GET /v1/tools and POST /v1/tools/install (Claude Code, Codex, the GitHub
+// CLI); logins: /v1/logins, the agents' and GitHub's sign-in from the app.
 func (b *Box) Capabilities() []string {
-	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env", "prepare"}
+	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env", "prepare", "tools", "logins"}
 	if b.Turns != nil {
 		caps = append(caps, "turns", "queue", "ask", "controls")
 	}

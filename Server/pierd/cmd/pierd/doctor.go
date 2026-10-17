@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync"
+	"time"
 
 	"pier/pierd/internal/box"
 	"pier/pierd/internal/doctor"
@@ -34,10 +36,15 @@ func daemonChecks(b boxHome, listening string) []doctor.Check {
 		checks = append(checks, doctor.Check{Area: area, Name: "starts at boot", Status: doctor.Warn, Detail: "pierd runs, but not as a service", Fix: "pierd install"})
 	}
 	if runtime.GOOS == "linux" {
-		if lingering() {
+		switch {
+		case lingering():
 			checks = append(checks, doctor.Check{Area: area, Name: "survives logout", Status: doctor.OK, Detail: "user lingering is on"})
-		} else {
-			checks = append(checks, doctor.Check{Area: area, Name: "survives logout", Status: doctor.Warn, Detail: "pierd stops when you log out", Fix: "sudo loginctl enable-linger " + currentUser()})
+		case tryLinger():
+			checks = append(checks, doctor.Check{Area: area, Name: "survives logout", Status: doctor.OK, Detail: "user lingering is on (pierd turned it on)"})
+		default:
+			checks = append(checks, doctor.Check{Area: area, Name: "survives logout", Status: doctor.Warn,
+				Detail: "pierd stops when you log out, and this system does not let your user turn lingering on (loginctl enable-linger was refused): an admin of the machine has to",
+				Fix:    "sudo loginctl enable-linger " + currentUser()})
 		}
 	}
 	peers, err := b.clients().List()
@@ -50,6 +57,24 @@ func daemonChecks(b boxHome, listening string) []doctor.Check {
 		checks = append(checks, doctor.Check{Area: area, Name: "paired clients", Status: doctor.OK, Detail: fmt.Sprintf("%d", len(peers))})
 	}
 	return checks
+}
+
+// lingerTried is when the report last tried to turn lingering on.
+var lingerTried struct {
+	sync.Mutex
+	at time.Time
+}
+
+// tryLinger turns lingering on when the system lets this user do it, at most once an hour: unlike the rest of the
+// report, this check fixes what it can, since it is the one fix pierd can make for itself, without sudo.
+func tryLinger() bool {
+	lingerTried.Lock()
+	defer lingerTried.Unlock()
+	if time.Since(lingerTried.at) < time.Hour {
+		return false
+	}
+	lingerTried.at = time.Now()
+	return enableLinger()
 }
 
 // runDoctor asks the running daemon for its report; without one, it reports

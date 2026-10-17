@@ -7,6 +7,7 @@ import (
 
 	"pier/pierd/internal/agentpath"
 	"pier/pierd/internal/doctor"
+	"pier/pierd/internal/installer"
 )
 
 // Agent CLIs are found as the person's own terminal finds them
@@ -120,9 +121,14 @@ func agentChecks() []doctor.Check {
 	home, _ := os.UserHomeDir()
 	var checks []doctor.Check
 	found := 0
+	var missing []doctor.Check
 	for _, p := range builtinAgents {
 		f, ok := agentFound(p.Command)
 		if !ok {
+			if _, installable := installer.Lookup(p.ID); installable {
+				missing = append(missing, doctor.Check{Area: "Agents", Name: p.Name, Status: doctor.Info,
+					Detail: "not installed; the Pier app can install it", Fix: "pierd tools install " + p.ID, Tool: p.ID})
+			}
 			continue
 		}
 		found++
@@ -131,7 +137,9 @@ func agentChecks() []doctor.Check {
 	if found == 0 {
 		checks = append(checks, doctor.Check{Area: "Agents", Name: "agent CLIs", Status: doctor.Info,
 			Detail: "none found (claude, codex, opencode, gemini, cursor-agent), through your shell or where installers put them",
-			Fix:    "Install it on the box: curl -fsSL https://claude.ai/install.sh | bash"})
+			Fix:    "pierd tools install claude codex"})
+	} else {
+		checks = append(checks, missing...)
 	}
 	st := agentFinder().Status()
 	if st.Shell != "" && !st.OK {

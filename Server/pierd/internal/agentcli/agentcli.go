@@ -1,6 +1,7 @@
 // Package agentcli lists the agent CLIs pierd runs, and how each is
-// installed, for GET /v1/agents. pierd does not install them itself: the
-// person runs the install command on the box.
+// installed, for GET /v1/agents. pierd installs Claude Code and Codex itself
+// (`pierd tools install`, POST /v1/tools/install, internal/installer); Install
+// is the command for a person who would rather do it by hand.
 package agentcli
 
 // Agent is an agent CLI pierd knows.
@@ -12,18 +13,18 @@ type Agent struct {
 	Install string `json:"install,omitempty"`
 	// Default agents are ticked when nothing was chosen before.
 	Default bool `json:"default,omitempty"`
-	// Offered is always false: pierd leaves installing to the person, and
-	// Why says so.
+	// Offered says pierd installs it itself (POST /v1/tools/install); Why
+	// says how.
 	Offered bool   `json:"offered"`
 	Why     string `json:"why,omitempty"`
 }
 
-const why = "install it on the box with the command shown; pierd does not install agents"
+const why = "pierd installs it in ~/.local/bin (pierd tools install, or the app); or run the command shown"
 
 // Catalog is every agent CLI pierd has presets and hooks for, in order.
 var Catalog = []Agent{
 	{ID: "claude", Name: "Claude Code", Command: "claude", Default: true,
-		Install: "curl -fsSL https://claude.ai/install.sh | bash", Why: why},
+		Install: "curl -fsSL https://claude.ai/install.sh | bash", Offered: true, Why: why},
 	{ID: "codex", Name: "Codex", Command: "codex",
-		Install: "npm install -g @openai/codex", Why: why},
+		Install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh", Offered: true, Why: why},
 }

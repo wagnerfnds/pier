@@ -27,6 +27,11 @@ type Check struct {
 	Detail string `json:"detail,omitempty"`
 	// Fix is a command, or one plain sentence, that resolves the problem.
 	Fix string `json:"fix,omitempty"`
+	// Tool is the command-line tool the check is about when pierd can install it or sign in to it (claude, codex,
+	// gh), and Account the agent account a sign-in check is about (an id of GET /v1/accounts): the app offers
+	// Install or Sign in right on the card.
+	Tool    string `json:"tool,omitempty"`
+	Account string `json:"account,omitempty"`
 }
 
 // extraToolDirs are searched after PATH. macOS GUI apps inherit a minimal
