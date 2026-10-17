@@ -179,16 +179,21 @@ public enum RFC3339 {
 
 // MARK: errors
 
-/// A box-level error `{"error": "...", "code": "..."}` (or a plain-text body), with the HTTP status.
+/// A box-level error `{"error": "...", "code": "..."}` (or a plain-text body), with the HTTP status. A code this
+/// version does not know still decodes (`kind` is nil): branch on `kind`, show `error`.
 public struct BoxError: Error, Decodable, Sendable, LocalizedError, Hashable {
     public var status: Int
     public let error: String
     public let code: String?
+    /// With `not_submitted`: the agent never took the prompt and it is still typed in the agent's input box on the box,
+    /// so whoever sent it must not send it again from scratch (it would go twice once someone presses Enter there).
+    public let kept: Bool
 
     public enum Code: String, Sendable {
         case notFound = "not_found", sessionExited = "session_exited", sessionExists = "session_exists"
         case agentWaiting = "agent_waiting", refused, unsupported, tmuxMissing = "tmux_missing", gitFailed = "git_failed"
         case commandFailed = "command_failed", tooMany = "too_many", fileChanged = "file_changed", fileExists = "file_exists"
+        case notSubmitted = "not_submitted"
         case badRequest = "bad_request"
         case `internal`
     }
@@ -196,18 +201,20 @@ public struct BoxError: Error, Decodable, Sendable, LocalizedError, Hashable {
     public var kind: Code? { code.flatMap(Code.init(rawValue:)) }
     public var errorDescription: String? { error }
 
-    public init(status: Int = 0, error: String, code: String? = nil) {
+    public init(status: Int = 0, error: String, code: String? = nil, kept: Bool = false) {
         self.status = status
         self.error = error
         self.code = code
+        self.kept = kept
     }
 
-    enum CodingKeys: String, CodingKey { case error, code }
+    enum CodingKeys: String, CodingKey { case error, code, kept }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         status = 0
         error = try c.decodeIfPresent(String.self, forKey: .error) ?? ""
         code = try c.decodeIfPresent(String.self, forKey: .code)
+        kept = try c.decodeIfPresent(Bool.self, forKey: .kept) ?? false
     }
 
     /// Parse an error response body: JSON `{"error","code"}` or plain text.

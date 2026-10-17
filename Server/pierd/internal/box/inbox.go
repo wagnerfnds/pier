@@ -1,6 +1,7 @@
 package box
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -75,11 +76,26 @@ func (b *Box) sendQueued(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := b.Sessions.Send(ctx, name, it.Text, it.Enter); err != nil {
-		b.Turns.putBack(it)
+	var entered time.Time
+	if agent := agentFor(sess); waiting == "" && submits(agent, it.Text, it.Enter) {
+		entered, err = b.submitToAgent(ctx, name, agent, it.Text, false)
+	} else {
+		err = b.Sessions.Send(ctx, name, it.Text, it.Enter)
+	}
+	if err != nil {
+		var ns *NotSubmittedError
+		if errors.As(err, &ns) && ns.Kept {
+			// In the agent's box now: held again, it would go twice.
+			b.Turns.endQueued(name, turn, "not submitted: left in the agent's input box")
+		} else {
+			b.Turns.putBack(it)
+		}
 		return err
 	}
 	data := map[string]any{"name": name, "from": it.Origin, "when": "now"}
+	if !entered.IsZero() {
+		data["entered"] = entered.UTC().Format(time.RFC3339Nano)
+	}
 	if waiting != "" {
 		// Typed at a question, it is an answer there, not a turn of its own.
 		data["answer"], data["turn"] = true, waiting

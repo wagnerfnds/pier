@@ -1,0 +1,50 @@
+[2m╭─────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ [0;1m[38;2;99;168;248m✨ Update available![0m [1m0.160.1 -> 0.163.0[0;2m                                                             │
+│ [0mRun [38;2;99;168;248msh -c 'curl -fsSL ]8;;https://chatgpt.com/codex/install.sh\https://chatgpt.com/codex/install.sh]8;;\ | CODEX_NON_INTERACTIVE=1 sh'[39m to update.[2m │[0m                   
+[2m│                                                                                                     │
+│ [0mSee full release notes:[2m                                                                             │
+│ [0;4m[38;2;99;168;248m]8;;https://github.com/openai/codex/releases/latest\https://github.com/openai/codex/releases/latest[0;2m]8;;\                                                     │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+[0m  [38;2;99;168;248m>_ [1m[39mOpenAI Codex[0;2m (v0.160.1)
+[0m     [2m/home/octocat/code/shop
+
+[0m  [38;2;99;168;248mWhat are we poking with a metaphorical stick?
+
+
+[1;2m[39m› [0mCount from 1 to 60, each number on its own line, no other text.
+                                                                                                     
+                                                                                                              
+[1m[38;5;1m•[0m Hook failed                                                                                                   
+  └ hook exited with code 127                                                                                    
+                                                                                                                  
+[1m[38;5;1m•[0m Hook failed                                                                                                     
+  └ hook exited with code 127                                                                                      
+                                                                                                                    
+                                                                                                                    
+                                                                                                                     
+                                                                                                                    
+                                                                                                                    
+                                                                                                                   
+                                                                                                                 
+                                                                                                              
+                                                                                                             
+                                                                                                           
+                               
+                               
+                               
+                                
+                                
+[1m[38;2;128;128;128m•[0m [2mWorking[0m [2m(1s • [0;1mesc[0;2m to interrupt)
+[0m                                
+[2m• [0mMessages to be submitted after next tool call[2m (press [0;1mesc[0;2m to interrupt and send immediately)
+  ↳ Line one of a pasted note[0m    
+    [2mLine two of a pasted note[0m   
+    [2mLine three of a pasted note[0m  
+                                
+                                
+[1m›[0m [2mAsk Codex to do anything[0m                                       
+
+  [38;2;246;226;183mGPT-6.1-Sol medium[39m · [38;2;171;223;167m/home/octocat/code/shop[39m · [38;2;245;224;220m⠏
+[39m  [1m←[0m for agents · [1m?[0m for shortcuts                                                                                                                                               ⚠ [38;2;196;167;103m1 warning[39m · [1mf2[0m to view

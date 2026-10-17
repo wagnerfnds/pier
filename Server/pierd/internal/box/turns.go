@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -141,6 +142,9 @@ type Turns struct {
 	saveSoon  chan struct{}
 	loaded    bool
 	stop      func()
+	// delivering are the sessions whose held prompt is being typed now
+	// (deliverInbox), so the next one waits for it.
+	delivering map[string]bool
 }
 
 type sessTrack struct {
@@ -210,6 +214,9 @@ type inboxItem struct {
 	Enter   bool      `json:"enter"`
 	Origin  string    `json:"origin,omitempty"`
 	At      time.Time `json:"at"`
+	// Tries is how many times it was typed and the agent did not take it
+	// (deliverInbox).
+	Tries int `json:"tries,omitempty"`
 }
 
 type dirState struct {
@@ -451,7 +458,7 @@ func (t *Turns) Observe(e events.Event) {
 			return
 		}
 		s := t.track(name, str(e.Data, "agent"), str(e.Data, "path"), e.Time)
-		if s.Agent == "" {
+		if s.Agent == "" && !signInSession(name, str(e.Data, "location"), "") {
 			s.Agent = agentOf(str(e.Data, "command"))
 		}
 		t.bump()
@@ -570,6 +577,26 @@ func (t *Turns) sent(e events.Event) {
 	if id := str(e.Data, "turn"); id != "" {
 		tr = s.find(id) // a queued prompt, delivered now
 	}
+	if early := s.earlyStart(e); early != nil {
+		// Its start came first: the send's turn is the one that started.
+		if tr != nil && tr != early {
+			// The held prompt takes the place of the start the ledger
+			// took for one typed at the terminal.
+			tr.State, tr.Started, tr.Ended, tr.EndSeq = early.State, early.Started, early.Ended, early.EndSeq
+			tr.Waits, tr.Fidelity, tr.Status = early.Waits, early.Fidelity, early.Status
+			s.remove(early)
+		} else {
+			tr = early
+			tr.Origin = str(e.Data, "from")
+			if tr.Origin == "" {
+				tr.Origin = e.Origin
+			}
+			tr.IdemKey = str(e.Data, "idem_key")
+		}
+		tr.SentSeq, tr.Sent = e.Seq, e.Time
+		t.bump()
+		return
+	}
 	if tr == nil {
 		origin := str(e.Data, "from")
 		if origin == "" {
@@ -596,6 +623,35 @@ func (t *Turns) sent(e events.Event) {
 		tr.State = "pending"
 	}
 	t.bump()
+}
+
+// earlyStart is the turn the agent's own hooks started for a send before
+// the send was published. A prompt pierd types is published once the agent
+// took it (submit.go), with the time its Enter went ("entered"), and the
+// agent's hook can say so first: the ledger then took it for a prompt typed
+// at the terminal, which is this send's, started after that Enter.
+func (s *sessTrack) earlyStart(e events.Event) *Turn {
+	entered, err := time.Parse(time.RFC3339Nano, str(e.Data, "entered"))
+	if err != nil {
+		return nil
+	}
+	for i := len(s.Turns) - 1; i >= 0; i-- {
+		tr := s.Turns[i]
+		if tr.Origin == "terminal" && tr.SentSeq == 0 && tr.State != "queued" && !tr.Started.IsZero() && !tr.Started.Before(entered) {
+			return tr
+		}
+	}
+	return nil
+}
+
+// remove takes a turn out of the session's list.
+func (s *sessTrack) remove(tr *Turn) {
+	for i, x := range s.Turns {
+		if x == tr {
+			s.Turns = append(s.Turns[:i:i], s.Turns[i+1:]...)
+			return
+		}
+	}
 }
 
 // resolve finds the session an agent event is about: the one it names, or
@@ -1279,16 +1335,28 @@ func (s *sessTrack) idle() bool {
 func (t *Turns) nextDeliveries() []inboxItem {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.delivering == nil {
+		t.delivering = map[string]bool{}
+	}
 	var out []inboxItem
 	for _, s := range t.sess {
-		if len(s.inbox) > 0 && s.idle() {
+		if len(s.inbox) > 0 && s.idle() && !t.delivering[s.Name] {
 			out = append(out, s.inbox[0])
 			s.inbox = s.inbox[1:]
+			t.delivering[s.Name] = true
 			t.inboxD = true
 			t.markDirty()
 		}
 	}
 	return out
+}
+
+// delivered says the held prompt taken for a session was typed (or put back,
+// or given up): the session's next one can go once its agent is idle again.
+func (t *Turns) delivered(name string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.delivering, name)
 }
 
 // failQueued ends a held turn that could not be typed.
@@ -1552,32 +1620,72 @@ func (t *Turns) Expire(now time.Time) int {
 	return n
 }
 
-// deliverInbox types each idle session's next held prompt.
+// inboxTries is how many times a held prompt is typed before it is given
+// up: an agent that did not take it (and whose box could be cleared) gets
+// it again at the next delivery.
+const inboxTries = 3
+
+// deliverInbox types each idle session's next held prompt, each session's on
+// its own (a submit can take seconds, and the ledger's loop that calls this
+// writes the ledger and reads the screens meanwhile). A prompt for an agent
+// is typed once its screen is quiet (it has just ended a turn, and redraws)
+// and made sure to go in (submit.go).
 func (b *Box) deliverInbox(ctx context.Context) {
 	for _, it := range b.Turns.nextDeliveries() {
-		if b.startupHeld(ctx, it.Session) {
-			// Still starting, or at its startup question: typed now, it
-			// would be lost. The watch kicks the inbox once it is ready.
+		go b.deliverHeld(ctx, it)
+	}
+}
+
+func (b *Box) deliverHeld(ctx context.Context, it inboxItem) {
+	defer b.Turns.delivered(it.Session)
+	if b.startupHeld(ctx, it.Session) {
+		// Still starting, or at its startup question: typed now, it would be
+		// lost. The watch kicks the inbox once it is ready.
+		b.Turns.putBack(it)
+		return
+	}
+	unlock := b.lockSend(it.Session)
+	defer func() { unlock() }() // the one in force when it returns
+	var entered time.Time
+	sess, err := b.Sessions.Get(ctx, it.Session)
+	if err == nil && sess.Exited {
+		err = ErrSessionExited
+	}
+	if err == nil {
+		if agent := agentFor(sess); submits(agent, it.Text, it.Enter) {
+			entered, err = b.submitToAgent(ctx, it.Session, agent, it.Text, true)
+		} else {
+			err = b.Sessions.Send(ctx, it.Session, it.Text, it.Enter)
+		}
+	}
+	if err != nil {
+		var ns *NotSubmittedError
+		if errors.As(err, &ns) && !ns.Kept && it.Tries+1 < inboxTries {
+			// Not taken, and nothing of it left in the box: again at the next
+			// delivery.
+			it.Tries++
 			b.Turns.putBack(it)
-			continue
-		}
-		unlock := b.lockSend(it.Session)
-		if err := b.Sessions.Send(ctx, it.Session, it.Text, it.Enter); err != nil {
+		} else {
 			b.Turns.failQueued(it, err.Error())
-			unlock()
-			continue
 		}
-		data := map[string]any{"name": it.Session, "turn": it.Turn, "when": "idle"}
-		if sess, err := b.Sessions.Get(ctx, it.Session); err == nil && it.Enter {
-			if c, local := localCommand(sessionAgent(sess), it.Text); local {
-				data["command"] = c
-			}
+		return
+	}
+	data := map[string]any{"name": it.Session, "turn": it.Turn, "when": "idle"}
+	if !entered.IsZero() {
+		data["entered"] = entered.UTC().Format(time.RFC3339Nano)
+	}
+	if it.Enter {
+		if c, local := localCommand(sessionAgent(sess), it.Text); local {
+			data["command"] = c
 		}
-		b.Events.Publish(events.Event{Type: "session.sent", Box: b.Name, Origin: it.Origin, Data: data})
-		unlock()
-		if it.Enter && commandName(it.Text) == "" {
-			b.nameAfter(ctx, it.Session, adapters.Title(it.Text))
-		}
+	}
+	b.Events.Publish(events.Event{Type: "session.sent", Box: b.Name, Origin: it.Origin, Data: data})
+	// Typed and announced: the next send to the session need not wait for
+	// the title.
+	unlock()
+	unlock = func() {}
+	if it.Enter && commandName(it.Text) == "" {
+		b.nameAfter(ctx, it.Session, adapters.Title(it.Text))
 	}
 }
 

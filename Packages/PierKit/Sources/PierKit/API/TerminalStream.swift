@@ -65,7 +65,7 @@ extension BoxAPI {
                 do {
                     for try await chunk in raw { continuation.yield(chunk) }
                     continuation.finish()
-                } catch PierError.api(let status, let message, let code) {
+                } catch PierError.api(let status, let message, let code, _) {
                     continuation.finish(throwing: BoxError(status: status, error: message, code: code))
                 } catch PierError.rateLimited(let message) {
                     // 429 too_many: as many terminals as the box takes are open.

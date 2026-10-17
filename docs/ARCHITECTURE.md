@@ -141,7 +141,12 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   from the queue). The box's pending copy and then the record's replace it in the same turn. Sends go one at a time in
   the order they were made (`sendTail`), whoever sends (the composer, the Inbox, the Mac panel, the next steps), so the
   composer takes the next message while the last is on its way. A send has 15 s; when it fails on the connection the
-  view model drops the connection and sends again with the same `idem_key` (pierd types it once).
+  view model drops the connection and sends again with the same `idem_key` (pierd types it once). pierd answers once
+  the agent took the prompt (docs/API.md 4.3): one it never took is 409 `not_submitted`, and its text comes back to the
+  composer (`composerRestore`) with the reason, unless it was `kept` (still typed in the agent's own box: given back,
+  it would go twice; the reason says to open the terminal). A pending bubble the record never echoes goes after 90 s
+  with the agent not at work, and in a conversation with a record its text comes back to the composer too, with a word
+  that it may not have reached the agent.
 - A task starts in its chat: Claude Code and Codex write their record only once the prompt is in, and until then the box
   answers `source: "none"`. `recordPending` (a Claude or Codex session with no record yet, waiting, or younger than 2 min
   by this device's clock when started here, `StartingPrompts`, else 90 s by the box's) keeps the conversation, not the
@@ -158,7 +163,11 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   row drop the connection, so the next request dials again, address and relay, instead of waiting for the PING
   watchdog (~45 s).
 - On regular width the conversation and the composer are a 780 pt column. The Mac's window shows the session's title
-  and, beside it, its state line; Return sends there (Shift- or Option-Return writes a line). "Ir para o fim" and
+  and, beside it, its state line. Return sends where a keyboard is at hand, on the Mac and from an iPad's hardware
+  keyboard (`returnSends`, App/DesignSystem: GameController's keyboard, followed as it comes and goes), in the composer
+  and the Inbox's reply field; Shift- or Option-Return writes a line, ⌘Return sends anywhere, and the on-screen
+  keyboard's Return writes a line. Never while an input method composes text (UIKit's marked text in the field that
+  has the keyboard; Japanese, Chinese and Korean input when that field cannot be found). "Ir para o fim" and
   loading older messages follow the scroll view's own geometry (iOS 18), so a trackpad or wheel counts like a finger.
 - The working indicators (`ShimmerText`, `PulsingDot`) are Core Animation layers: a SwiftUI `repeatForever` updated
   the view graph every frame (about a fifth of the main thread while an agent worked). XCUITest takes an endless Core
@@ -348,7 +357,8 @@ Detalhes) picks its language version and its databases. pierd runs them in Docke
 worktrees' PATH, never in the project (docs/API.md 2.9); rows and cards show the space and an "isolated" mark.
 
 **Accounts, limits, variables, public links**: Ajustes › Projetos also has the box's Claude Code and Codex accounts
-(`AccountsScreen`: add one, sign in from a terminal session in the app, make it the default) and its variables with a
+(`AccountsScreen`: add one, sign in from the box's terminal opened in the app, the real one, where the link and the
+code are copied and pasted: `Session.isSignIn`, docs/API.md 2.10; make it the default) and its variables with a
 note each, plus the skills that tell the agents about them (`BoxVariablesScreen`). A project picks its agents' account
 (`ProjectAccountsSection`, on the project's screen and in a worktree's Detalhes; `AccountsCache` loads them). The Home's
 **Limites de uso** (`LimitsWidget`) shows each account's 5-hour and weekly use and switches the box's default with a tap.

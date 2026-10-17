@@ -25,5 +25,17 @@ func TestMain(m *testing.M) {
 	}
 	testFinder := &agentpath.Finder{NoCache: true, NoVersion: true, NoNPM: true, SystemDirs: []string{}}
 	agentFinder = func() *agentpath.Finder { return testFinder }
-	os.Exit(m.Run())
+	// The agents' configs pierd writes trust into (trust.go) are a scratch
+	// home's, never the developer's own.
+	os.Unsetenv("CLAUDE_CONFIG_DIR")
+	os.Unsetenv("CODEX_HOME")
+	home, err := os.MkdirTemp("", "pierd-agents-home-")
+	if err != nil {
+		panic(err)
+	}
+	agentHome = func() (string, error) { return home, nil }
+	logf = func(string, ...any) {}
+	code := m.Run()
+	os.RemoveAll(home)
+	os.Exit(code)
 }

@@ -113,8 +113,14 @@ func InstallTool(home, tool, bin string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "Codex: hooks %s in %s (trust them once in Codex with /hooks)\n", verb(changed), hooks)
 		config := filepath.Join(dir, "config.toml")
+		// Codex runs new hooks only once they are trusted: pierd's own are,
+		// as Codex itself records it.
+		if _, err := TrustCodexHooks(config, hooks, bin); err != nil {
+			fmt.Fprintf(out, "Codex: hooks %s in %s (trust them once in Codex with /hooks: %v)\n", verb(changed), hooks, err)
+		} else {
+			fmt.Fprintf(out, "Codex: hooks %s in %s, trusted\n", verb(changed), hooks)
+		}
 		changed, err = InstallCodexNotify(config, bin)
 		switch {
 		case errors.Is(err, ErrNotifyTaken):

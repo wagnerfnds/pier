@@ -22,8 +22,8 @@ public final class BoxAPI: PierBoxClient, Sendable {
         let payload: Data? = try body.map { try Self.encode($0) }
         do {
             return try await transport.send(method, path: path, body: payload)
-        } catch PierError.api(let status, let message, let code) {
-            throw BoxError(status: status, error: message, code: code)
+        } catch PierError.api(let status, let message, let code, let kept) {
+            throw BoxError(status: status, error: message, code: code, kept: kept)
         }
     }
 

@@ -145,7 +145,8 @@ func editJSON(f files, rel string, change func(map[string]any) bool) (bool, erro
 	before, err := f.read(rel)
 	switch {
 	case err == nil:
-		if err := json.Unmarshal(before, &root); err != nil {
+		// Numbers keep their digits: a float would round a large one.
+		if root, err = decodeObject(before); err != nil {
 			return false, fmt.Errorf("%s is not valid JSON, so pierd left it alone: %w", f.path(rel), err)
 		}
 	case !os.IsNotExist(err):

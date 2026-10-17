@@ -44,12 +44,9 @@ struct ComposerBar: View {
                             .onSubmit { if canSend { Task { await send() } } }
                             // Esc right after sending takes the message back (the focused field gets the key first).
                             .onKeyPress(.escape) { PendingActions.shared.undoLatest() ? .handled : .ignored }
-                            // The Mac sends on Return, as Messages does; Shift- or Option-Return writes a new line.
-                            .onKeyPress(keys: [.return], phases: .down) { press in
-                                guard Platform.isMac, press.modifiers.isDisjoint(with: [.shift, .option]) else { return .ignored }
-                                if canSend { Task { await send() } }
-                                return .handled
-                            }
+                            // Return sends on the Mac and from an iPad's keyboard, as Messages does; Shift- or Option-
+                            // Return writes a new line (and Return does on the on-screen keyboard).
+                            .returnSends { if canSend { Task { await send() } } }
                         actionButton.padding(4)
                     }
                     .background(Theme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
@@ -59,7 +56,7 @@ struct ComposerBar: View {
                     Text("Será enviada quando o agente terminar a vez atual.").font(.caption2).foregroundStyle(Theme.textDim)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 48)
                         .transition(.opacity)
-                } else if Platform.isMac, focused, hasText {
+                } else if Platform.isMac || HardwareKeyboard.shared.connected, focused, hasText {
                     Text("↩ envia · ⇧↩ nova linha").font(.caption2).foregroundStyle(Theme.textFaint)
                         .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 8)
                         .transition(.opacity)
@@ -106,7 +103,7 @@ struct ComposerBar: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSend)
-            // ⌘↩ sends from a hardware keyboard (Return alone writes a new line in the growing field).
+            // ⌘↩ sends too, from any keyboard (Return alone does where a keyboard is at hand: `returnSends`).
             .keyboardShortcut(.return, modifiers: .command)
             .accessibilityLabel(busy ? "Enviar quando o agente terminar" : "Enviar")
             .accessibilityIdentifier("composer-send")

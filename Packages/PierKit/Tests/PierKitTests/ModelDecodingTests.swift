@@ -26,6 +26,7 @@ import Testing
             "screen_shell.json": d(Obj.self),
             "draft.json": d(Draft.self), "send_now_result.json": d(SendResult.self), "send_idle_queued.json": d(SendResult.self),
             "send_key_result.json": d(SendResult.self), "queue_send_now.json": d(SendResult.self),
+            "send_not_submitted.json": d(BoxError.self), "send_not_submitted_kept.json": d(BoxError.self),
             "queue_empty.json": d([HeldPrompt].self), "queue_held.json": d([HeldPrompt].self),
             "interrupt_result.json": d(InterruptResult.self), "mode_set.json": d(Obj.self),
             "controls_auto.json": d(SessionControls.self), "controls_default.json": d(SessionControls.self), "controls_codex.json": d(SessionControls.self),

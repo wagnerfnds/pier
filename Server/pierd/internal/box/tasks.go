@@ -4,10 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"pier/pierd/internal/events"
 	"pier/pierd/internal/wire"
@@ -113,6 +117,11 @@ var modelWord = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)
 // plain name, or one the agent has no flag for, is refused.
 func AgentCommandWith(p AgentPreset, prompt, model, effort string) (string, error) {
 	cmd := p.Command
+	if agentOf(cmd) == "claude" && !strings.Contains(cmd, "dangerously-skip-permissions") && claudeBypassOffered() {
+		// Bypass among the modes Shift+Tab cycles through, so the app's mode
+		// menu can reach it; the session still starts in its default mode.
+		cmd += " " + claudeBypassFlag
+	}
 	if model != "" {
 		if !modelWord.MatchString(model) || strings.HasPrefix(model, "-") {
 			return "", badRequest("%q is not a model name", model)
@@ -148,6 +157,45 @@ func AgentCommandWith(p AgentPreset, prompt, model, effort string) (string, erro
 	}
 	return cmd + " " + shellQuote(prompt), nil
 }
+
+// claudeBypassFlag lets a Claude Code session be switched to bypass
+// permissions (no questions) without starting in it.
+const claudeBypassFlag = "--allow-dangerously-skip-permissions"
+
+// claudeBypassOffered says Claude Code sessions start with claudeBypassFlag:
+// the Claude Code this box runs lists it in its --help (asked once per
+// binary and version: one without it would refuse to start on an option it
+// does not know), and pierd does not run as root, where Claude Code refuses
+// to start with it at all. A Claude Code whose version pierd could not read
+// is not asked, and gets no flag.
+func claudeBypassOffered() bool {
+	if os.Geteuid() == 0 {
+		return false
+	}
+	f, ok := agentFound("claude")
+	if !ok || f.Path == "" || strings.TrimSpace(f.Version) == "" {
+		return false
+	}
+	key := f.Path + "\x00" + f.Version
+	if v, ok := bypassProbes.Load(key); ok {
+		return v.(bool)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, f.Path, "--help")
+	if f.PATH != "" {
+		// An npm install's `#!/usr/bin/env node` finds its node there.
+		cmd.Env = append(os.Environ(), "PATH="+f.PATH)
+	}
+	out, err := cmd.Output()
+	has := err == nil && strings.Contains(string(out), claudeBypassFlag)
+	bypassProbes.Store(key, has)
+	return has
+}
+
+// bypassProbes is what each Claude Code binary's --help said, by path and
+// version.
+var bypassProbes sync.Map
 
 // maxPromptArg is the longest first prompt an agent can be started with:
 // the program gets it as one argument, which Linux caps at 128 KB
@@ -215,9 +263,21 @@ func wrapperWord(f string) bool {
 	return ok && k != "" && !strings.ContainsAny(k, "/ ")
 }
 
+// signInSession says a session is the terminal pierd opened for someone to
+// sign an agent account in (POST /v1/accounts/{id}/login): named
+// login-<account>, at no location, with no preset. It runs the agent's CLI,
+// but nobody works there: it is a terminal, which the app opens as one (a
+// real terminal, where the code to sign in can be copied and pasted).
+func signInSession(name, location, preset string) bool {
+	return strings.HasPrefix(name, "login-") && location == "" && preset == ""
+}
+
 // agentFor is the agent a session runs: its preset when pierd started it
-// with one, else what its command looks like.
+// with one, else what its command looks like; none for a sign-in terminal.
 func agentFor(s Session) string {
+	if signInSession(s.Name, s.Location, s.Preset) {
+		return ""
+	}
 	if s.Preset != "" {
 		for _, p := range builtinAgents {
 			if p.ID == s.Preset {

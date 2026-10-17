@@ -91,7 +91,13 @@ final class SessionViewModel {
 
     @ObservationIgnored private var kickFlag = false
     @ObservationIgnored private var tickCount = 0
-    @ObservationIgnored private var pendingSentAt: [String: Date] = [:]
+    /// Messages shown as on their way until the record echoes them: when each went, and its words.
+    @ObservationIgnored private var pendingSent: [String: PendingSend] = [:]
+
+    private struct PendingSend {
+        let at: Date
+        let text: String
+    }
     @ObservationIgnored private var waitSince: Date?
     var titleOverride: String?
 
@@ -123,9 +129,10 @@ final class SessionViewModel {
             loaded = true
         }
         if let p = StartingPrompts.prompt(box: box, session: session.name) { startingPrompt = p.text; startedHere = p.at }
-        if let m = SessionViewPrefs.mode(box: box, name: session.name) {
+        if let m = SessionViewPrefs.mode(box: box, name: session.name), !session.isSignIn {
             mode = m; modeChosen = true
-        } else if !session.isAgent {
+        } else if !session.isAgent || session.isSignIn {
+            // A shell, and the terminal an account signs in at (whatever an older box says runs in it), open as a terminal.
             mode = .terminal
         }
     }
@@ -554,15 +561,22 @@ final class SessionViewModel {
 
     @ObservationIgnored private var checkingReview = false
 
-    /// A prompt the record never echoed (sent with attachments, a slash command, a lost turn) must not linger forever.
+    /// A prompt the record never echoed must not linger forever: after 90 s with the agent not at work (working, it may
+    /// still hold the message in its own queue, to take when its turn ends), the bubble goes. In a conversation the box
+    /// reads the record of, a message (not a command) that never showed may never have reached the agent: its words go
+    /// back to the composer, with a word on why, so nothing is lost and the person decides whether to send it again.
     private func expirePending() {
         let now = Date()
+        let working = session.agentState == .running || session.agentState == .waiting
         for item in store.pending {
-            if let at = pendingSentAt[item.id], now.timeIntervalSince(at) > 90 {
-                store.removePending(id: item.id); pendingSentAt[item.id] = nil
+            guard let sent = pendingSent[item.id], now.timeIntervalSince(sent.at) > 90, !working else { continue }
+            store.removePending(id: item.id); pendingSent[item.id] = nil
+            if hasTranscript, !sent.text.isEmpty, !sent.text.hasPrefix("/"), !sent.text.hasPrefix("!") {
+                composerRestore = ComposerRestore(text: composerRestore.map { $0.text + "\n" + sent.text } ?? sent.text)
+                actionError = S("Sua mensagem pode não ter chegado ao agente: ela não apareceu na conversa. O texto voltou para a caixa de mensagem; confira antes de enviar de novo.")
             }
         }
-        for id in pendingSentAt.keys where !store.pending.contains(where: { $0.id == id }) { pendingSentAt[id] = nil }
+        for id in pendingSent.keys where !store.pending.contains(where: { $0.id == id }) { pendingSent[id] = nil }
     }
 
     /// Reads the pages of a hole left by a reset (the box read the record afresh: a pierd restart, ten idle minutes), then
@@ -619,31 +633,40 @@ final class SessionViewModel {
 
     /// The send in flight or queued last: each `send` waits for it, so messages typed one after the other reach the box
     /// in that order and never trip over each other (the composer, the Inbox, the Mac panel and the next steps all send here).
-    @ObservationIgnored private var sendTail: Task<Bool, Never>?
+    @ObservationIgnored private var sendTail: Task<SendOutcome, Never>?
+
+    /// How a send ended. `leftOnBox`: the agent never took it and it is still typed in its input box on the box
+    /// (`not_submitted` with `kept`), so its words must not come back to whoever sent it: sent again, they would go twice.
+    enum SendOutcome: Equatable { case sent, failed, leftOnBox }
 
     /// Prompt composer: `idle` while the agent works (held on the box), `now` otherwise. `paths`: photos already taken
     /// out of the composer; nil sends the composer's own. `when` forces one (suggested next steps go with `idle`, so they
     /// never cut into a turn that started meanwhile).
     func send(_ text: String, attachments paths: [String]? = nil, when forced: SendRequest.When? = nil) async -> Bool {
+        await submit(text, attachments: paths, when: forced) == .sent
+    }
+
+    /// `send`, with how it ended.
+    func submit(_ text: String, attachments paths: [String]? = nil, when forced: SendRequest.When? = nil) async -> SendOutcome {
         let atts = paths ?? attachments.compactMap(\.path)
         let previous = sendTail
         let task = Task { [self] in
             // Behind a message that did not go out, the ones queued after it do not either: they would reach the box
             // before it. They come back with it, in order (their senders restore them).
-            if let previous, !(await previous.value) { return false }
+            if let previous, await previous.value != .sent { return SendOutcome.failed }
             return await sendNow(text, attachments: atts, fromComposer: paths == nil, when: forced)
         }
         sendTail = task
-        let sent = await task.value
+        let outcome = await task.value
         // The queue that failed is over: the next message starts afresh.
-        if !sent, sendTail == task { sendTail = nil }
-        return sent
+        if outcome != .sent, sendTail == task { sendTail = nil }
+        return outcome
     }
 
-    private func sendNow(_ text: String, attachments atts: [String], fromComposer: Bool, when forced: SendRequest.When?) async -> Bool {
+    private func sendNow(_ text: String, attachments atts: [String], fromComposer: Bool, when forced: SendRequest.When?) async -> SendOutcome {
         var full = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !atts.isEmpty { full += (full.isEmpty ? "" : "\n") + atts.joined(separator: "\n") }
-        guard !full.isEmpty, canSend else { return false }
+        guard !full.isEmpty, canSend else { return .failed }
         let s = session
         let busy = s.agentState == .running || s.agentState == .waiting
         sending = true
@@ -664,7 +687,7 @@ final class SessionViewModel {
                 } catch where LinkWatch.isLinkFailure(error) {
                     actionError = S("Não deu para confirmar o envio: a box não respondeu. Confira a conversa antes de enviar de novo.")
                     Haptic.warning()
-                    return false
+                    return .failed
                 }
             }
             Haptic.impact(.light)
@@ -674,20 +697,29 @@ final class SessionViewModel {
                 held = (try? await client.heldPrompts(session: name)) ?? held
             } else {
                 let item = store.addPendingUser(full)
-                pendingSentAt[item.id] = Date()
+                pendingSent[item.id] = PendingSend(at: Date(), text: text.trimmingCharacters(in: .whitespacesAndNewlines))
             }
             conn?.scheduleRefresh(sessions: true)
             kick()
-            return true
+            return .sent
         } catch let e as BoxError where e.kind == .agentWaiting {
             actionError = S("O agente está esperando por você. Responda ao pedido antes de enviar.")
         } catch let e as BoxError where e.kind == .sessionExited {
             actionError = S("A sessão foi encerrada e não aceita mais mensagens.")
+        } catch let e as BoxError where e.kind == .notSubmitted {
+            // The box typed it and checked: the agent never took it.
+            Haptic.warning()
+            if e.kept {
+                actionError = S("A box não confirmou o envio: a mensagem ficou digitada na caixa do agente, sem ser enviada. Abra o terminal da sessão e aperte Enter para enviá-la, ou apague-a lá.")
+                return .leftOnBox
+            }
+            actionError = S("A box não confirmou o envio: o agente não recebeu a mensagem. Ela voltou para a caixa de mensagem para você enviar de novo.")
+            return .failed
         } catch {
             actionError = describe(error)
         }
         Haptic.warning()
-        return false
+        return .failed
     }
 
     func cancelHeld(_ h: HeldPrompt) async {
@@ -857,10 +889,11 @@ final class SessionViewModel {
     /// stopped with Interromper, or taken back from the queue while the agent works. Its text and photos come back if it
     /// fails. False when there is nothing to send.
     /// `done`: a sender other than this screen's composer (the Mac panel) hears how it went, with the error, and puts the
-    /// text back itself; without it a failed message's text comes back through `composerRestore`.
+    /// text back itself (not when it was `leftOnBox`); without it a failed message's text comes back through
+    /// `composerRestore`.
     /// `withAttachments: false` (the Mac's side panel, which shares this model with the window): the composer's photos
     /// stay where they are.
-    func scheduleSend(_ text: String, withAttachments: Bool = true, done: (@MainActor (_ sent: Bool, _ error: String?) -> Void)? = nil) -> Bool {
+    func scheduleSend(_ text: String, withAttachments: Bool = true, done: (@MainActor (_ outcome: SendOutcome, _ error: String?) -> Void)? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let photos = withAttachments ? attachments.filter { $0.path != nil } : []
         guard canSend, !trimmed.isEmpty || !photos.isEmpty else { return false }
@@ -869,13 +902,18 @@ final class SessionViewModel {
         outgoing.append(out)
         sendTick += 1   // the conversation follows the new bubble down now, not after the box answers
         Task { [self] in
-            let sent = await send(text, attachments: photos.compactMap(\.path))
+            let outcome = await submit(text, attachments: photos.compactMap(\.path))
             // Sent, `send` put the box's own pending copy in place in the same turn: no gap, no double.
             outgoing.removeAll { $0.id == out.id }
-            if sent { done?(true, nil); return }
+            if outcome == .sent { done?(.sent, nil); return }
+            if outcome == .leftOnBox {
+                // Still typed in the agent's box on the box: given back here too, it would go twice. The error says so.
+                if let done { done(.leftOnBox, actionError); actionError = nil }
+                return
+            }
             attachments = photos + attachments
             if let done {
-                done(false, actionError)
+                done(.failed, actionError)
                 actionError = nil
             } else if !text.isEmpty {
                 // Messages that failed together come back in the order they were sent.

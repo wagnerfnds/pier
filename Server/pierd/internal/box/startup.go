@@ -24,9 +24,13 @@ import (
 // held in the session's inbox, typed once the person has answered and the
 // agent is at its prompt, and the screen poller leaves its turn alone.
 //
-// In a chat's own folder pierd answers the question itself: it made that
-// folder for the chat, nothing is in it yet, and asking a person to trust
-// it would only stop every new chat before its first answer, with a push.
+// pierd tells the agents up front that the folders of the box's projects
+// and chats are trusted (trust.go), so the question should not come. When
+// it comes anyway (an agent that keeps its answers elsewhere, a config
+// pierd could not write), pierd answers it itself in a chat's own folder
+// (it made that folder for the chat, and nothing is in it yet) and in a
+// folder of a project the person registered: asking would only stop every
+// new task or chat before its first answer, with a push.
 
 // startupQuestions are the words of those questions. notify: the chat is
 // told the agent waits (agent.waiting). Codex's numbered menu isn't, so the
@@ -38,7 +42,8 @@ var startupQuestions = []struct {
 }{
 	{"Yes, I trust this folder", true},                     // Claude Code, in a folder it has not seen
 	{"Do you trust the files in this", true},               // older Claude Code
-	{"Do you trust the contents of this directory", false}, // Codex
+	{"Do you trust the contents of this directory", false}, // Codex up to 0.15x
+	{"Trust this folder?", false},                          // Codex 0.16x ("Folder access")
 }
 
 // stillLoading is a screen an agent draws before it is ready: Codex shows
@@ -49,7 +54,7 @@ var stillLoading = regexp.MustCompile(`model:\s+loading\b`)
 // startupHints are the key hints those questions show at their foot. One
 // must show too, so the words alone (in a file the agent prints, say) are
 // never taken for the question.
-var startupHints = []string{"enter to confirm", "press enter to continue"}
+var startupHints = []string{"enter to confirm", "press enter to continue", "enter continue"}
 
 // startupQuestion says whether screen shows an agent's startup question,
 // and whether to say it waits.
@@ -116,7 +121,7 @@ func trustMenu(screen string) (cursor, yes int, ok bool) {
 }
 
 // trustOwnFolder answers the startup question an agent asks in a chat's
-// own folder. It moves the menu's cursor to the row that says yes a key at
+// own folder, or a project's. It moves the menu's cursor to the row that says yes a key at
 // a time, reading the screen after each, and presses Enter only once the
 // screen shows the cursor there, so a menu drawn in another order is never
 // answered no. It says whether it answered; a menu it can't read is left
@@ -323,8 +328,10 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 	began := time.Now()
 	var answered, tried time.Time
 	told, tries := false, 0
-	// A chat's own folder: pierd answers its question (trustOwnFolder).
-	own := sess.Location == "" && isChatDir(sess.Dir)
+	// A chat's own folder, or a project's: pierd answers its question
+	// (trustOwnFolder). A chat's only while nothing is in it yet.
+	chat := sess.Location == "" && isChatDir(sess.Dir)
+	own := chat || b.projectFolder(ctx, sess.Dir)
 	last, same := "", 0
 	for {
 		poll := startupPoll
@@ -344,7 +351,10 @@ func (b *Box) watchStartup(from string, sess Session, st *startup) {
 		if asked, notify := startupQuestion(screen); asked {
 			st.set(startAsking)
 			if own && tries <= trustRetries && (tries == 0 || time.Since(tried) > trustRetry) {
-				if own = chatDirBare(sess.Dir); own {
+				if chat {
+					own = chatDirBare(sess.Dir)
+				}
+				if own {
 					tries++
 					b.trustOwnFolder(ctx, sess.Name, screen)
 					tried = time.Now()

@@ -258,6 +258,18 @@ struct MockTerminals {
                 s.lines.append("Serving HTTP on 0.0.0.0 port \(port) (http://0.0.0.0:\(port)/) ...")
                 s.running = command
             }
+        case "claude" where rest.first == "/login":
+            // An account's sign-in (POST /v1/accounts/{id}/login): Claude Code at its login method, until ⌃C.
+            s.lines += ["", " Login", "", " Claude Code can be used with your Claude subscription or billed based on API usage through your Console account.",
+                        "", " Select login method:", "", " ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise",
+                        "   2. Anthropic Console account · API usage billing", "   3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, Google Vertex AI",
+                        "", " Esc to cancel"]
+            s.running = command
+        case "codex" where rest.first == "login":
+            s.lines += ["Follow these steps to sign in with ChatGPT using device code authorization:", "",
+                        "1. Open this link in your browser and sign in to your account", "   https://auth.openai.com/codex/device", "",
+                        "2. Enter this one-time code (expires in 15 minutes)", "   K7QX-M2PD"]
+            s.running = command
         case "npm", "pnpm", "yarn", "bun":
             switch (rest.first == "run" ? rest.dropFirst().first : rest.first) ?? "" {
             case "dev", "start", "serve": devServer(command, in: &s)

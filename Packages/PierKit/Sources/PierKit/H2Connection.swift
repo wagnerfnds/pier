@@ -271,13 +271,13 @@ private final class MuxBox: @unchecked Sendable {
 
 /// `{"error","code"}` -> typed error. 401 means revoked, 429 rate limited.
 func mapHTTPError(status: Int, body: Data) -> PierError {
-    struct Payload: Decodable { let error: String?; let code: String? }
+    struct Payload: Decodable { let error: String?; let code: String?; let kept: Bool? }
     let p = try? JSONDecoder().decode(Payload.self, from: body)
     let message = p?.error ?? (String(data: body.prefix(200), encoding: .utf8).flatMap { $0.isEmpty ? nil : $0 }) ?? "HTTP \(status)"
     switch status {
     case 401: return .unauthorized
     case 429 where p?.code == nil || p?.code == "too_many": return .rateLimited(message: message)
-    default: return .api(status: status, message: message, code: p?.code)
+    default: return .api(status: status, message: message, code: p?.code, kept: p?.kept ?? false)
     }
 }
 

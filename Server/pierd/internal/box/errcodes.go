@@ -1,6 +1,7 @@
 package box
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -17,6 +18,8 @@ import (
 //	session_exited   the session's program has ended; it takes no input
 //	session_exists   a session with that name is already running
 //	agent_waiting    the agent waits for an answer; sending would pick one
+//	not_submitted    the agent never took a prompt typed into it (kept: it is
+//	                 still in its input box)
 //	refused          a before: hook (or the box's own rules) said no
 //	unsupported      this box doesn't have that feature
 //	tmux_missing     tmux is not installed on the box
@@ -38,6 +41,7 @@ const (
 	CodeSessionExited = "session_exited"
 	CodeSessionExists = "session_exists"
 	CodeAgentWaiting  = "agent_waiting"
+	CodeNotSubmitted  = "not_submitted"
 	CodeRefused       = "refused"
 	CodeUnsupported   = "unsupported"
 	CodeTmuxMissing   = "tmux_missing"
@@ -61,13 +65,34 @@ const (
 // reads what is typed there.
 var ErrSessionExited = errors.New("the session's program has ended, so it can't take input; start it again")
 
+// NotSubmittedError is a prompt the agent never took (submit.go): typed,
+// it never showed in the agent's input box, or stayed there through two
+// Enters. Kept says it is still there because the box could not be cleared,
+// so whoever sent it must not send it again from scratch (it would go twice
+// once someone presses Enter there). Leftover says this one was not typed at
+// all: the box still holds an earlier prompt pierd could not send nor clear.
+type NotSubmittedError struct{ Kept, Leftover bool }
+
+func (e *NotSubmittedError) Error() string {
+	switch {
+	case e.Kept:
+		return "the agent didn't take the prompt, which is still in its input box: press Enter in its terminal to send it, or clear it there"
+	case e.Leftover:
+		return "the agent's input box still holds an earlier prompt that pierd could not send, so this one was not typed: send or clear that one in the agent's terminal, then send this again"
+	}
+	return "the agent didn't take the prompt, so nothing was sent; try again"
+}
+
 // errTmuxMissing is what every tmux call says on a box without it.
 var errTmuxMissing = errors.New("tmux is not installed on this box")
 
 // codeFor names an error for clients.
 func codeFor(err error) string {
 	var he httpError
+	var ns *NotSubmittedError
 	switch {
+	case errors.As(err, &ns):
+		return CodeNotSubmitted
 	case errors.Is(err, ErrSessionExited):
 		return CodeSessionExited
 	case errors.Is(err, ErrSessionExists):
@@ -134,7 +159,15 @@ func exitedPane(msg string) bool {
 	return strings.Contains(msg, "pane has exited") || strings.Contains(msg, "pane is dead")
 }
 
-// writeErr answers with err, its status and its code.
+// writeErr answers with err, its status and its code; not_submitted also
+// says whether the prompt was kept in the agent's box.
 func writeErr(w http.ResponseWriter, err error) {
+	var ns *NotSubmittedError
+	if errors.As(err, &ns) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusFor(err))
+		json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "code": CodeNotSubmitted, "kept": ns.Kept})
+		return
+	}
 	writeCoded(w, statusFor(err), err.Error(), codeFor(err))
 }

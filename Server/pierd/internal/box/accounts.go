@@ -162,7 +162,10 @@ func (l *Locations) SetLocationAccounts(name string, choice map[string]string) e
 }
 
 // prepareAccountDir puts pierd's hooks, its status line (Claude) and the
-// box's skills in an account's folder.
+// box's skills in an account's folder, and answers in it the questions the
+// agent would stop its first sessions at: its first-run screens (a new
+// Claude Code account), the bypass mode's warning, trusting each of the
+// box's projects, and Codex's review of pierd's hooks.
 func (b *Box) prepareAccountDir(a Account) error {
 	if err := os.MkdirAll(a.Dir, 0o700); err != nil {
 		return err
@@ -179,6 +182,17 @@ func (b *Box) prepareAccountDir(a Account) error {
 		if _, err := integrations.InstallStatusLine(filepath.Join(a.Dir, "settings.json"), bin); err != nil {
 			return err
 		}
+		if !a.Builtin {
+			// An account pierd made: the theme its first run would ask for,
+			// and its first-run screens seen, so its first task goes straight
+			// to work. Signing in is /login (loginAccount).
+			if _, err := integrations.PrepareClaudeSettings(filepath.Join(a.Dir, "settings.json"), "dark"); err != nil {
+				return err
+			}
+			if _, err := integrations.MarkClaudeOnboarded(integrations.ClaudeConfigFile(a.Dir, "")); err != nil {
+				logf("pierd: %s: %v", a.Dir, err)
+			}
+		}
 	case "codex":
 		if _, err := integrations.InstallCodexHooks(filepath.Join(a.Dir, "hooks.json"), bin); err != nil {
 			return err
@@ -187,6 +201,7 @@ func (b *Box) prepareAccountDir(a Account) error {
 			return err
 		}
 	}
+	b.trustProjectsFor(a)
 	b.syncSkills()
 	return nil
 }
@@ -525,22 +540,47 @@ func (b *Box) loginAccount(w http.ResponseWriter, r *http.Request) error {
 	if err := b.prepareAccountDir(a); err != nil {
 		return err
 	}
-	// A new folder's Claude Code starts with its sign-in.
-	command := "claude"
+	// Claude Code opens on its sign-in (its first-run screens are marked
+	// seen in the folders pierd makes, so /login is how it signs in).
+	command := "claude /login"
 	if a.Agent == "codex" {
 		command = "codex login --device-auth"
 	}
-	env := []string{agentDirVar[a.Agent] + "=" + a.Dir}
-	home, _ := os.UserHomeDir()
+	// An added account's folder; the agent's own one is its default, which
+	// naming it would change for Claude Code (its config and its macOS
+	// keychain entry follow CLAUDE_CONFIG_DIR being set at all).
+	var env []string
+	if !a.Builtin {
+		env = []string{agentDirVar[a.Agent] + "=" + a.Dir}
+	}
+	dir := b.signInDir(a, env)
 	name := "login-" + slug(a.ID, 40)
 	b.Sessions.Kill(r.Context(), name)
-	sess, err := b.Sessions.create(r.Context(), name, "", home, command, "", env, nil)
+	sess, err := b.Sessions.create(r.Context(), name, "", dir, command, "", env, nil)
 	if err != nil {
 		return err
 	}
-	b.publish(r, "session.started", map[string]any{"name": sess.Name, "path": home, "command": command})
+	b.publish(r, "session.started", map[string]any{"name": sess.Name, "path": dir, "command": command})
 	writeJSON(w, sess)
 	return nil
+}
+
+// signInDir is where a sign-in terminal runs: an empty folder of pierd's
+// own, which Claude Code is told it trusts. In the home folder it would ask
+// first, every time (it never keeps an answer about the home folder).
+func (b *Box) signInDir(a Account, env []string) string {
+	home, _ := os.UserHomeDir()
+	if b.StateDir == "" {
+		return home
+	}
+	dir := filepath.Join(b.StateDir, "sign-in")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return home
+	}
+	if a.Agent == "claude" {
+		b.pretrust(dir, env, "claude")
+	}
+	return dir
 }
 
 // enableLimits puts pierd's status line in the Claude accounts that lack it,

@@ -249,7 +249,8 @@ func TestAChatTrustsItsOwnFolder(t *testing.T) {
 // (out/trusted), and reads prompts a line at a time (an empty one does
 // nothing); with SPIN set, while a spinner runs on, as it does working on
 // that prompt. SLOW keeps the question drawn that many seconds after it is
-// answered; DROP loses the first Enter, LOSE the first arrow key.
+// answered; DROP loses the first Enter, LOSE the first arrow key; FAR draws
+// its rows too far apart to read as one menu, so only a person answers.
 func trustingAgent(t *testing.T, out string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "claude")
@@ -257,9 +258,11 @@ func trustingAgent(t *testing.T, out string) string {
 out='` + out + `'
 stty raw -echo
 yes=0 dropped=0 lost=0
+gap=''
+[ -n "$FAR" ] && gap='\r\n\r\n\r\n\r\n'
 menu() {
 	printf '\033[2J\033[H Accessing workspace:\r\n\r\n Quick safety check: Is this a project you created or one you trust?\r\n\r\n'
-	if [ $yes = 1 ]; then printf '   No, exit\r\n ❯ Yes, I trust this folder\r\n'; else printf ' ❯ No, exit\r\n   Yes, I trust this folder\r\n'; fi
+	if [ $yes = 1 ]; then printf "   No, exit\r\n$gap ❯ Yes, I trust this folder\r\n"; else printf " ❯ No, exit\r\n$gap   Yes, I trust this folder\r\n"; fi
 	printf '\r\n Enter to confirm · Esc to cancel\r\n'
 }
 menu
@@ -300,11 +303,17 @@ while IFS= read -r line; do [ -n "$line" ] && echo "$line" >> "$out/got"; printf
 }
 
 // An agent started with a prompt, in a folder it hasn't trusted yet,
-// stops at its trust question. Prompts sent meanwhile, even "now", are
-// held rather than typed into the question (which would drop them, and
-// whose Enter would answer "No, exit"). Once the person answers, the agent
-// runs the prompt it was started with, then the held ones.
+// stops at its trust question, and one pierd cannot read waits for the
+// person. Prompts sent meanwhile, even "now", are held rather than typed
+// into the question (which would drop them, and whose Enter would answer
+// "No, exit"). Once the person answers, the agent runs the prompt it was
+// started with, then the held ones.
 func TestPromptsWaitForTheTrustQuestion(t *testing.T) {
+	// pierd tries its own answer a few times in a project's folder before it
+	// tells the person: quickly, here.
+	retry, grace := trustRetry, trustGrace
+	trustRetry, trustGrace = 300*time.Millisecond, 500*time.Millisecond
+	defer func() { trustRetry, trustGrace = retry, grace }()
 	turns := &Turns{}
 	var bx *Box
 	c, bus := servedBox(t, func(b *Box) { b.Turns = turns; bx = b })
@@ -315,7 +324,10 @@ func TestPromptsWaitForTheTrustQuestion(t *testing.T) {
 	repo := gitRepo(t)
 	call(t, c, "POST", "/v1/locations", "", map[string]string{"name": "shop", "path": repo}, nil)
 	out := t.TempDir()
-	fake := trustingAgent(t, out)
+	fake := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexport FAR=1\nexec "+shellQuote(trustingAgent(t, out))+" \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if st := call(t, c, "PUT", "/v1/locations/shop/config", "", map[string]any{"local": RepoConfig{Agents: []AgentPreset{{ID: "claude", Name: "Claude Code", Command: fake}}}}, nil); st != 200 {
 		t.Fatalf("config = %d", st)
 	}
@@ -394,5 +406,54 @@ func TestPromptsWaitForTheTrustQuestion(t *testing.T) {
 	}
 	if got, _ := turns.Get("fix#1"); got.State != "finished" || len(got.Waits) == 0 || got.Waits[0].Reason != "startup question" {
 		t.Fatalf("the first turn = %+v", got)
+	}
+}
+
+// The folder of a project the person registered is trusted: pierd tells
+// the agent up front, and when it asks anyway (its config elsewhere, as
+// this stand-in's is) pierd answers from its screen, so the task's first
+// prompt runs without stopping, and nobody is told it waits.
+func TestAProjectFolderIsTrustedFromItsScreen(t *testing.T) {
+	turns := &Turns{}
+	var bx *Box
+	c, bus := servedBox(t, func(b *Box) { b.Turns = turns; bx = b })
+	turns.Attach(bus)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go turns.Run(ctx, bx)
+	var mu sync.Mutex
+	var waits []string
+	stop := bus.Observe(func(e events.Event) {
+		if e.Type == adapters.Waiting {
+			mu.Lock()
+			waits = append(waits, fmt.Sprint(e.Data["session"], " ", e.Data["reason"]))
+			mu.Unlock()
+		}
+	})
+	defer stop()
+	repo := gitRepo(t)
+	call(t, c, "POST", "/v1/locations", "", map[string]string{"name": "shop", "path": repo}, nil)
+	out := t.TempDir()
+	fake := trustingAgent(t, out)
+	if st := call(t, c, "PUT", "/v1/locations/shop/config", "", map[string]any{"local": RepoConfig{Agents: []AgentPreset{{ID: "claude", Name: "Claude Code", Command: fake}}}}, nil); st != 200 {
+		t.Fatalf("config = %d", st)
+	}
+	read := func(f string) string {
+		b, _ := os.ReadFile(filepath.Join(out, f))
+		return string(b)
+	}
+	var sess Session
+	if st := call(t, c, "POST", "/v1/sessions", "", SessionRequest{Location: "shop", Name: "fix", Agent: "claude", Prompt: "fix the flaky test"}, &sess); st != 200 {
+		t.Fatalf("start = %d %+v", st, sess)
+	}
+	defer call(t, c, "DELETE", "/v1/sessions/fix", "", nil, nil)
+	waitUntil(t, "the agent to be trusted", 15*time.Second, func() bool { return read("trusted") != "" })
+	if got := read("got"); got != "ran: fix the flaky test\n" || read("exited") != "" || read("swallowed") != "" {
+		t.Fatalf("got %q, exited %q, typed into the question %q", got, read("exited"), read("swallowed"))
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(waits) != 0 {
+		t.Fatalf("told the person the task waits: %v", waits)
 	}
 }

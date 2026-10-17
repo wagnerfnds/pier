@@ -111,7 +111,7 @@ enum PushRegistrar {
         case .transport, .timeout, .tls: return .unreachable
         case .unauthorized: return .failed("unauthorized")
         case .pinMismatch: return .failed("pin")
-        case .api(let status, let message, _): return .failed("\(status) \(message)")
+        case .api(let status, let message, _, _): return .failed("\(status) \(message)")
         default: return .failed(e.localizedDescription)
         }
     }

@@ -80,6 +80,12 @@ type Box struct {
 	envLocks sync.Map
 	// prep is how each worktree's preparation went (prepare.go).
 	prep prepStates
+	// leftovers are the sessions whose agent's input box holds a prompt pierd
+	// typed and could neither send nor clear (submit.go): session → its sign.
+	leftovers sync.Map
+	// typed are recent sends that typed and did not go, by session and idem
+	// key (sendPrompt): a retry with the same key gets the same answer.
+	typed sync.Map
 	// Publisher, when set, is the relay the box's public links go through.
 	Publisher Publisher
 	// Exe is pierd's own binary, for the hooks and status line it puts in
@@ -206,9 +212,12 @@ func badRequest(format string, args ...any) error {
 
 func statusFor(err error) int {
 	var he httpError
+	var ns *NotSubmittedError
 	switch {
 	case errors.As(err, &he):
 		return he.status
+	case errors.As(err, &ns):
+		return http.StatusConflict
 	case errors.Is(err, ErrUnknownLocation), errors.Is(err, ErrUnknownWorktree), errors.Is(err, ErrUnknownSession), errors.Is(err, ErrUnknownUnit):
 		return http.StatusNotFound
 	case errors.Is(err, ErrSessionExists), errors.Is(err, ErrSessionExited):
@@ -302,6 +311,8 @@ func (b *Box) addLocation(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// Registered by the person: the agents need not ask about it.
+	b.trustLocationDir(loc.Name, loc.Path)
 	b.publish(r, "location.added", map[string]any{"location": loc.Name, "path": loc.Path})
 	writeJSON(w, loc)
 	return nil
@@ -363,6 +374,8 @@ func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest)
 		return Worktree{}, err
 	}
 	b.own(wt.Path)
+	// Made by pierd for the project: the agents need not ask about it.
+	b.trustLocationDir(loc.Name, wt.Path)
 	created := map[string]any{
 		"location": loc.Name, "name": wt.Name, "path": wt.Path, "branch": wt.Branch,
 	}
