@@ -120,7 +120,16 @@ func AgentCommandWith(p AgentPreset, prompt, model, effort string) (string, erro
 	if agentOf(cmd) == "claude" && !strings.Contains(cmd, "dangerously-skip-permissions") && claudeBypassOffered() {
 		// Bypass among the modes Shift+Tab cycles through, so the app's mode
 		// menu can reach it; the session still starts in its default mode.
-		cmd += " " + claudeBypassFlag
+		// With the flag, Claude Code 2.1.30x first asks a person to accept
+		// bypass mode, and waits there: skipBypassWarning skips that question
+		// for this process alone. A command that brings settings of its own
+		// gets no flag, since a second --settings would replace them.
+		switch {
+		case strings.Contains(cmd, "skipDangerousModePermissionPrompt"):
+			cmd += " " + claudeBypassFlag
+		case !strings.Contains(cmd, "--settings"):
+			cmd += " " + claudeBypassFlag + " --settings " + shellQuote(skipBypassWarning)
+		}
 	}
 	if model != "" {
 		if !modelWord.MatchString(model) || strings.HasPrefix(model, "-") {
