@@ -232,14 +232,14 @@ func (b *Box) setMode(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return "", err
 		}
+		if strings.Contains(screen, bypassWarning) {
+			// Asked where neither the account's settings nor the session's
+			// own accept it already (skipDangerousModePermissionPrompt):
+			// never answered with keys from here.
+			return "", httpError{http.StatusConflict, "Claude Code asks in its screen to confirm bypass permissions (once for this account): answer it there"}
+		}
 		if adapters.ScreenState(screen) == "waiting" {
 			return "", httpError{http.StatusConflict, "the agent is showing a question; answer it first"}
-		}
-		if strings.Contains(screen, bypassWarning) {
-			// Asked once per account where its settings do not accept it
-			// already (skipDangerousModePermissionPrompt): never answered
-			// with keys from here.
-			return "", httpError{http.StatusConflict, "Claude Code asks in its screen to confirm bypass permissions (once for this account): answer it there"}
 		}
 		return claudeControls(screen).Mode, nil
 	}

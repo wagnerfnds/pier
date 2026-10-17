@@ -324,9 +324,10 @@ func (b *Box) beforeCtx(ctx context.Context, gateFrom, typ string, data map[stri
 	return b.beforeRepoCtx(ctx, e)
 }
 
-// skipBypassWarning is the setting a setup agent's Claude Code is started
-// with (--settings, a layer of its own for that process): bypass mode's
-// warning, which would wait for a person, is not shown. Claude Code reads
+// skipBypassWarning is the setting every Claude Code session pierd starts
+// with bypass among its modes gets (--settings, a layer of its own for that
+// process): bypass mode's warning, which would wait for a person, is not
+// shown, and the person's own settings stay as they are. Claude Code reads
 // the key from its flag settings for that warning (2.1.30x).
 const skipBypassWarning = `{"skipDangerousModePermissionPrompt":true}`
 

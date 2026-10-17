@@ -213,6 +213,25 @@ func TestClaudeStartsWithBypassAmongItsModes(t *testing.T) {
 		if has := strings.Contains(got, claudeBypassFlag); has != want {
 			t.Errorf("%s: %q", version, got)
 		}
+		// The warning the flag brings up at start is skipped for that
+		// process: Claude Code would otherwise wait there for a person.
+		if skips := strings.Contains(got, "--settings "+shellQuote(skipBypassWarning)); skips != want {
+			t.Errorf("%s: bypass warning not skipped: %q", version, got)
+		}
+	}
+	// A setup agent's command, which skips the warning itself, gets the
+	// flag and keeps its one --settings; a preset with settings of its own
+	// gets no flag (a second --settings would replace them).
+	fakeAgentCLIs(t, "2.1.302", true)
+	finder := &agentpath.Finder{NoCache: true, NoNPM: true, SystemDirs: []string{}}
+	agentFinder = func() *agentpath.Finder { return finder }
+	setup := AgentPreset{ID: "claude", Command: "claude --settings " + shellQuote(skipBypassWarning) + " --permission-mode bypassPermissions"}
+	if got, _ := AgentCommandWith(setup, "", "", ""); strings.Count(got, claudeBypassFlag) != 1 || strings.Count(got, "--settings") != 1 {
+		t.Errorf("setup agent: %q", got)
+	}
+	own := AgentPreset{ID: "claude", Command: "claude --settings /home/me/strict.json"}
+	if got, _ := AgentCommandWith(own, "", "", ""); strings.Contains(got, claudeBypassFlag) || strings.Count(got, "--settings") != 1 {
+		t.Errorf("own settings: %q", got)
 	}
 	// A preset that already starts in bypass is left alone.
 	got, _ := AgentCommandWith(AgentPreset{ID: "claude", Command: "claude --dangerously-skip-permissions"}, "", "", "")
