@@ -3,7 +3,7 @@ import PierKit
 
 /// A box's settings page on the navigation stack (so a screen they open, such as the sign-in terminal, comes back to them).
 struct BoxSettingsRoute: Hashable {
-    enum Page: Hashable { case projects, accounts, variables }
+    enum Page: Hashable { case projects, accounts, variables, mcp }
     let box: String
     let page: Page
 }
@@ -15,6 +15,7 @@ struct BoxSettingsDestination: View {
         case .projects: BoxProjectsSettingsScreen(box: route.box)
         case .accounts: AccountsScreen(box: route.box)
         case .variables: BoxVariablesScreen(box: route.box)
+        case .mcp: MCPServersScreen(box: route.box)
         }
     }
 }

@@ -222,7 +222,8 @@ func (b *Box) createAgentSession(ctx context.Context, name, location, dir, comma
 }
 
 // sessionEnv is the environment a session in dir gets: its worktree's
-// (ports, the repository's and the box's env), or none outside one.
+// (ports, the repository's and the box's env), or none outside one; and, in
+// every session, the tokens Codex reads for the box's MCP servers.
 func (b *Box) sessionEnv(ctx context.Context, dir string) []string {
 	loc, wt, ok := b.worktreeAt(ctx, dir)
 	if !ok {
@@ -231,11 +232,11 @@ func (b *Box) sessionEnv(ctx context.Context, dir string) []string {
 		for k, v := range b.accountVars("") {
 			env = append(env, k+"="+v)
 		}
-		return env
+		return append(env, b.mcpSessionEnv()...)
 	}
 	env, err := b.WorktreeEnv(ctx, loc.Name, wt)
 	if err != nil {
 		return nil
 	}
-	return env
+	return append(env, b.mcpSessionEnv()...)
 }

@@ -166,7 +166,7 @@ import Testing
     @Test func commandQuotesTheBaseAndEmbedsThePrompt() {
         let c = AIDraft.command(base: "it's", task: "Corrija o login")
         #expect(c.contains("origin/'it'\\''s'"))
-        #expect(c.contains("--model haiku"))
+        #expect(c.contains("-p --model haiku $SM") && c.contains(AIDraft.strictMCPProbe))
         #expect(c.contains("exit 3"))
     }
 }

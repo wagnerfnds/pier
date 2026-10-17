@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -102,6 +103,17 @@ type Box struct {
 	// last said of its sign-in (doctor.go).
 	logins loginStore
 	ghAuth ghAuthCache
+	// mcp is the sync of the box's MCP servers into its accounts (mcp.go).
+	mcp mcpState
+	// Log, when set, takes what pierd notes for the box's owner in its log
+	// (an MCP record it could not read).
+	Log *log.Logger
+}
+
+func (b *Box) logf(format string, args ...any) {
+	if b.Log != nil {
+		b.Log.Printf(format, args...)
+	}
 }
 
 // Mount registers the box's routes on s. They are reachable by paired
@@ -147,6 +159,9 @@ func (b *Box) Mount(s *wire.Server) {
 	route("DELETE /v1/logins/{id}", b.deleteLogin)
 	route("POST /v1/limits/enable", b.enableLimits)
 	route("PUT /v1/locations/{name}/accounts", b.putLocationAccounts)
+	route("GET /v1/mcp", b.getMCP)
+	route("PUT /v1/mcp/{name}", b.putMCP)
+	route("DELETE /v1/mcp/{name}", b.deleteMCP)
 	route("GET /v1/shares", b.listShares)
 	route("POST /v1/shares", b.addShare)
 	route("DELETE /v1/shares/{name}", b.removeShare)

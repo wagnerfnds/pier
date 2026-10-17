@@ -1,0 +1,16 @@
+{
+  "name": "handmade",
+  "transport": "http",
+  "url": "https://tools.example.com/mcp",
+  "token_set": true,
+  "token_var": "PIER_MCP_HANDMADE_TOKEN",
+  "agents": [
+    "claude",
+    "codex"
+  ],
+  "enabled": true,
+  "problems": [
+    "Claude Code: already has a server named handmade that pierd did not add; it is left as it is",
+    "Codex: already has a server named handmade that pierd did not add; it is left as it is"
+  ]
+}

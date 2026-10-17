@@ -428,6 +428,9 @@ func (b *Box) addAccount(w http.ResponseWriter, r *http.Request) error {
 	if err := b.saveAccounts(f); err != nil {
 		return err
 	}
+	// The box's MCP servers reach the new folder too, in the background:
+	// the agent's CLI takes a moment per server.
+	b.syncMCPSoon()
 	b.publish(r, "account.added", map[string]any{"id": id, "agent": a.Agent, "name": name})
 	writeJSON(w, AccountView{Account: a, Projects: []string{}})
 	return nil

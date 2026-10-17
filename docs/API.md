@@ -51,7 +51,7 @@ notifications).
 | Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `not_submitted` (409, 4.3: the agent never took a prompt typed into it; the body also has `kept`), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `unsaved_work` (409, 2.8), `space_not_empty`, `space_has_files` (409, 2.9), `docker_missing` (501), `gh_missing` (501), `gh_auth` (428), `tool_missing` (424, 2.10.1), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
-| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `tools` (2.13) and `logins` (2.10.1), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
+| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `tools` (2.13), `logins` (2.10.1) and `mcp` (2.14), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
 
 ### 0.3 Naming and addressing
 
@@ -420,7 +420,7 @@ never move out of a space. The projects folder cannot be the home folder or one 
 * `runtime`: exactly one of `preset` (`php:<v>` builds `php:<v>-cli` with Composer and the usual extensions; `node:<v>`,
   `python:<v>`, `ruby:<v>`, `go:<v>` use the official images), `image` (with `commands`), or `project_dockerfile: true`
   (the repository's `Dockerfile`, with `commands`). Each command gets a launcher in pierd's folder
-  (`~/.pier/box/env/<loc>/bin`) that runs it with `docker run --rm --network host --user <uid>` in the image, on the
+  (`$PIER_HOME/box/env/<loc>/bin`, default `~/.config/pier/box/…`) that runs it with `docker run --rm --network host --user <uid>` in the image, on the
   worktree's folder mounted at the same path, with the caller's variables. That folder is first on `PATH` (and in
   `PIER_ENV_BIN`) for everything run in the project's worktrees: sessions, agents, services, setup scripts, exec.
 * `containers`: `{name, image, port?, env?}`, each run as a managed unit (`ctr-<loc>-<name>`) published on
@@ -449,12 +449,13 @@ for Codex. The agent's own folder (`~/.claude`, `~/.codex`) is its built-in acco
 * `GET /v1/accounts` → `[{id, agent, name, dir, builtin?, created?, signed_in, signed_in_known, default?, projects[],
   limits?, limits_ready}]`. `signed_in` from the credentials file in the folder (`signed_in_known: false` where it
   cannot tell: Claude Code on macOS keeps them in the Keychain). `projects`: the locations whose agents use it.
-* `POST /v1/accounts {agent, name}` makes a folder under `~/.pier/box/accounts/<id>` with pierd's hooks (and, for
-  Claude, its status line and the installed skills), ready to work at once: every project already on the box trusted
+* `POST /v1/accounts {agent, name}` makes a folder under `$PIER_HOME/box/accounts/<id>` (default
+  `~/.config/pier/box/accounts/<id>`) with pierd's hooks (and, for Claude, its status line and the installed skills),
+  ready to work at once: every project already on the box trusted
   there (3.4), Codex's review of pierd's hooks answered, and, for Claude Code, its first-run screens marked seen
   (`hasCompletedOnboarding` in the folder's `.claude.json`, the theme `dark`) and the bypass mode's warning accepted
   (`skipDangerousModePermissionPrompt` in its `settings.json`, 4.4; the built-in account's own settings are left as
-  they are). `POST /v1/accounts/{id}/login` starts the account's sign-in (2.10.1) and answers its session, with `login`
+  they are); the box's MCP servers (2.14) follow a moment later. `POST /v1/accounts/{id}/login` starts the account's sign-in (2.10.1) and answers its session, with `login`
   (the sign-in's id): an app that opens it as a terminal sees the CLI's sign-in there (`claude auth login`, `codex login
   --device-auth`; the session is a terminal, not an agent: listed with no `agent`, so the app opens it as a terminal,
   where copy and paste work); one with `logins` uses `POST /v1/logins` instead. The built-in account signs in on its own
@@ -472,7 +473,7 @@ for Codex. The agent's own folder (`~/.claude`, `~/.codex`) is its built-in acco
   its status line input (`rate_limits.five_hour` / `seven_day`, documented at code.claude.com/docs/en/statusline,
   claude.ai subscriptions only, after the account's first reply): pierd's status line (`pierd statusline`, put in an
   account's `settings.json`; a status line already there is kept and run behind it with `--then`) keeps the latest per
-  account in `~/.pier/box/limits/`. `limits_ready: false` means the account's status line is not pierd's yet: `POST
+  account in `$PIER_HOME/box/limits/`. `limits_ready: false` means the account's status line is not pierd's yet: `POST
   /v1/limits/enable` puts it in every Claude account. Codex's come from the last `rate_limits` of the newest session
   log in the account's folder (`sessions/YYYY/MM/DD/*.jsonl`, `primary` / `secondary` windows; undocumented, read as
   Codex writes it). A window past its reset is left out.
@@ -546,7 +547,7 @@ A worktree's dev server at a public URL through the box's relay (PROTOCOL.md §1
   a port of the worktree's own block (`$PIER_PORT`…) or one its processes listen on; `hours` 24 by default, at most 168.
   501 without a relay ("this box has no tunnel"), or when the relay serves no links. Gate `before:share.create`.
 * `GET /v1/shares` lists the box's links; `DELETE /v1/shares/{name}` takes one down. Links are kept across restarts
-  (`~/.pier/box/shares.json`) and published again; expired ones go by themselves (`share.expired`). Removing the
+  (`$PIER_HOME/box/shares.json`) and published again; expired ones go by themselves (`share.expired`). Removing the
   worktree or the project takes its links down. Events `share.created`, `share.removed`.
 * The capability appears when the box has a relay; whether that relay serves links shows on the first `POST`.
 
@@ -572,6 +573,57 @@ A worktree's dev server at a public URL through the box's relay (PROTOCOL.md §1
   (or that a restart of pierd cut it short); `log` is that install's log. 400 for another tool. Gate `before:tools.install {tools}`. Events `tool.installed {tool,
   path, version}` and `tool.failed {tool, log}` (envelope `error`). `pierd tools install` and `pierd setup` run the same
   installs on the box.
+
+### 2.14 MCP servers for the agents (capability `mcp`)
+
+Servers the box's agents can use (a company's API behind a URL and a token, say), added once for the whole box. pierd
+keeps the list in `$PIER_HOME/box/mcp.json` (mode 0600: the tokens are in it) and writes each server into every Claude
+Code and Codex account (2.10) through the agents' own CLIs, which keep their files whole while agents run: `claude mcp
+add --scope user` on each Claude account (its folder's `.claude.json`; the built-in account's is `~/.claude.json`),
+`codex mcp add` on each `CODEX_HOME`. That happens when a server is saved, when an account is added and when pierd
+starts (an entry removed by hand comes back); pierd lets a sync finish before it stops (10 s at most). Agents already
+running keep the servers they started with.
+
+pierd records each entry it writes (`mcp-written.json`) the moment the CLI is done, and only ever removes or rewrites an
+entry that is still as it wrote it. A server the person added by hand stays, even one of the same name, and so does an
+entry of pierd's they changed by hand: that account is left alone and `problems` says so. An entry exactly as pierd would
+write it counts as pierd's even when the record lacks it (pierd stopped between a write and its record; a record it
+cannot read is kept as `mcp-written.json.bad` and said in pierd's log).
+
+* `GET /v1/mcp[?status=1|deep]` → `{servers: [{name, transport, url?, command?, args?, headers?, token_set, token_var?,
+  env?, agents, enabled, problems?, status?}]}`. A token never comes back: `token_set` says whether there is one.
+  `problems` are what the last sync could not do, one line per account, with tokens and variables' values taken out.
+  `status` adds, by agent, how its default account sees the server, `{state, issue?, account}`. `status=1` starts
+  nothing of the account's: it reads the account's configuration (Claude Code's `.claude.json`, `codex mcp list
+  --json`) and makes pierd's own MCP `initialize` with each http server, sending what that agent sends (Claude Code the
+  token and the headers, Codex the token). `status=deep` asks Claude Code's own `claude mcp list` instead (read even
+  when it ends badly), which starts every server the account has, the person's own too, and takes up to about 20
+  seconds: only for an explicit check. `state` is `connected`, `failed`, `needs_auth`, `configured` (a stdio server:
+  only the deep check starts one), `disabled`, `missing` (not in the account's configuration), `taken` (a server of
+  that name the person added), `changed` (pierd's entry, changed by hand since), `unavailable` (the agent's CLI is not
+  on the box), `pending` or `unknown`.
+* `PUT /v1/mcp/{name}` with `{transport?: "http", url, headers?, token?, agents?, enabled?}` or `{transport: "stdio",
+  command, args?, env?, agents?, enabled?}` adds or replaces a server, writes it into the accounts and answers it as
+  `GET` shows it (with this sync's `problems`). Names: `[a-z0-9_-]{1,40}`, and no two that share a token variable
+  (`my-server`, `my_server`). `token` left out keeps the stored one, `""` removes it; it goes out as `Authorization:
+  Bearer <token>`, so `headers` may not hold `Authorization`. The token is printable ASCII without spaces, a header's
+  value printable ASCII (at most 20 headers, 8 KB each; a body up to 1 MB). `agents` defaults to both, `enabled` to
+  true; a server turned off leaves every account and stays on the list. A Codex that writes the entry and then waits
+  for a sign-in (a server that offers OAuth) keeps it, and `problems` says to run `codex mcp login <name>` on the box.
+  `DELETE /v1/mcp/{name}` takes it off the list and out of the accounts; a name the box does not have is 404
+  `not_found`, before any gate. Event `mcp.changed {names, removed?}` (never a token or a URL); gate
+  `before:mcp.change` (`{name, enabled, agents}`, or `{name, removed: true}`).
+* **Tokens**: Claude Code keeps the token in its entry's header, as its CLI stores one. Codex's entry names a variable
+  instead (`bearer_token_env_var`, `PIER_MCP_<NAME>_TOKEN` with the name upper-cased and `-` as `_`, the server's
+  `token_var`), which pierd gives every session it starts (worktrees, chats, home terminals), so the token is never
+  written into Codex's configuration. Codex's CLI takes no other headers: `headers` reach Claude Code only. A stdio
+  server takes its secrets in `env` (written into each agent's configuration as given, and shown back like the box's
+  variables), not in `token`. The token passes through `claude mcp add`'s arguments, and through tmux's when a session
+  starts, as the box's variables do: on a box shared with other users, mount `/proc` with `hidepid=2` so they cannot
+  read other people's command lines.
+* The app's quick helpers (titles, commit and PR drafts, next steps, Falar's router: `claude -p --model haiku` through
+  `exec`, `AIDraft.claudeArgs`) run with `--strict-mcp-config` when the box's Claude Code knows the flag
+  (`AIDraft.strictMCPProbe`), so none of them starts the account's MCP servers.
 
 ---
 
@@ -1090,7 +1142,8 @@ path}` (2.6.1), `location.added`, `location.removed` (`purged`, `freed`
 after a removal from the disk), `clone.started|finished|failed` (2.8), `settings.changed`, `space.added|removed`,
 `environment.changed|started|ready|failed` (2.9), `account.added|changed|removed`, `location.accounts` (2.10),
 `login.changed {id, tool, account?, state}` (2.10.1), `tool.installed|failed` (2.13),
-`env.changed`, `skills.changed` (2.11), `share.created|removed|expired` (2.12), `config.changed`,
+`env.changed`, `skills.changed` (2.11), `share.created|removed|expired` (2.12), `mcp.changed {names, removed?}`
+(2.14), `config.changed`,
 `service.started|stopped|failed`, `file.written {location, worktree, path, file, size}` (a save through `PUT
 .../file`, 2.7; `path` is the worktree's folder, `file` the saved file relative to it).
 
@@ -1316,7 +1369,9 @@ against a live box with `pierctl selftest` and against captured fixtures (`Tests
 
 `BoxAPI` adds `pairInvite()`, the Home commands (`BoxAPI+Home.swift`), the tools and sign-ins (`BoxAPI+Logins.swift`:
 `tools()`, `installTools(_:)`, `startLogin(tool:account:)`, `login(id:)`, `logins()`, `sendLoginCode(id:code:)`,
-`cancelLogin(id:)`; 2.10.1, 2.13) and `events(since:onState:)`. `PushClient`
+`cancelLogin(id:)`; 2.10.1, 2.13), the routes of 2.8–2.12 and 2.14 (`BoxAPI+Projects.swift`: projects, environments,
+accounts, variables, skills, public links, and `mcpServers(status:deep:)`, `setMCPServer(name:_:)`, `removeMCPServer(name:)`)
+and `events(since:onState:)`. `PushClient`
 covers `/v1/push/*` (PUSH.md). `events` reconnects with backoff (1 s doubling to 30 s, ±20 % jitter), resumes with
 `?since=<max seq>`, skips keepalives and undecodable lines, and ends only on non-retryable errors (revoked, pin
 mismatch, 4xx).
@@ -1333,6 +1388,7 @@ with defaults and a tolerant decoder (missing keys, `null` lists).
 | `Models/FileModels.swift` | `DirListing`, `FileEntry`, `WorktreeFile`, `FileWrite` |
 | `Models/AccountModels.swift` | `AgentAccount`, `AccountLimits`, `LimitWindow`, `BoxVariables`, `BoxSkill`, `PublicLink` (2.10–2.12) |
 | `Models/LoginModels.swift` | `BoxTool`, `Login` (2.10.1, 2.13) |
+| `Models/MCPModels.swift` | `MCPServerList`, `MCPServer`, `MCPAgentStatus`, `MCPServerUpdate` (2.14) |
 | `Models/EnvironmentModels.swift` | `BoxSettings`, `ProjectSpace`, `DockerState`, `ProjectEnvironment`, `EnvRuntime`, `EnvContainer`, `EnvironmentView` (2.9) |
 | `Models/ProjectModels.swift` | `GitHubRepos`, `GitHubRepo`, `CloneRequest`, `ProjectClone`, `ProjectDisk`, `ProjectPurge`, `WorktreeServiceDetail` (2.8; called through `BoxAPI+Projects.swift`) |
 | `Models/SessionModels.swift` | `Session`, `Ask`, `TaskRequest`, `TaskResult`, `SessionRequest`, `SendResult`, `InterruptResult`, `SessionControls`, `HeldPrompt`, `Turn`, `WaitResult`, `Draft`, `Attachment` |
@@ -1359,5 +1415,6 @@ Use explicit `CodingKeys`, not `.convertFromSnakeCase`: keys are mixed (`oldStar
 | `Accounts` | a limit window's label (5h, 7d), the tightest window and how worrying it is, the account a project's agents use, which variables are secrets, valid variable names (2.10, 2.11) |
 | `SignIn` | where the sign-in sheet is at each state of a sign-in, a pasted code cleaned up, a health card's Entrar / Instalar, the onboarding's "Contas" rows (2.10.1, 2.13) |
 | `BoxHealth` | the doctor checks that need a hand, as Inbox cards (1.3) |
+| `MCPServers` | what pierd takes for an MCP server (name, URL, header, token), a name suggested from its URL, its token's variable, and what a row says: each agent's state and the server's health over them (2.14) |
 | `Environments` | the runtimes and service containers the environment screen offers by version, a saved environment read back as those choices, its one-line summary, valid container and space names (2.9) |
 | `Projects` | the project screens' rules for 2.8: what can be sent as a repository link, the GitHub list's search, a repository's location on the box, a worktree's dev servers and their preview URLs, its port block, what removing a project would lose |

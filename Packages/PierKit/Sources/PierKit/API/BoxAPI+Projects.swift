@@ -151,3 +151,27 @@ extension BoxAPI {
         _ = try await call(.delete, "/v1/shares/\(Self.seg(name))")
     }
 }
+
+// MCP servers for every agent account of the box (capability `mcp`, docs/API.md §2.13).
+
+extension BoxAPI {
+    /// The box's MCP servers. With `status`, how each agent's default account sees them: whether its configuration has
+    /// pierd's entry, and the box's own handshake with each http server (nothing of the account's starts). `deep` asks
+    /// Claude Code's own list instead, which starts every server the account has and can take about 20 seconds: only
+    /// for an explicit check.
+    public func mcpServers(status: Bool = false, deep: Bool = false) async throws -> [MCPServer] {
+        let list: MCPServerList = try await get(Self.url("/v1/mcp", [("status", deep ? "deep" : status ? "1" : nil)]))
+        return list.servers
+    }
+
+    /// Add a server or replace one; the box writes it into every account before answering (`problems` says what it
+    /// could not do).
+    public func setMCPServer(name: String, _ server: MCPServerUpdate) async throws -> MCPServer {
+        try decode(try await call(.put, "/v1/mcp/\(Self.seg(name))", body: server).data)
+    }
+
+    /// Take a server off the box and out of every account it was written into.
+    public func removeMCPServer(name: String) async throws {
+        _ = try await call(.delete, "/v1/mcp/\(Self.seg(name))")
+    }
+}

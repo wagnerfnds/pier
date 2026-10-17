@@ -463,7 +463,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
         case (.get, "info"):
             // pierd with the file routes.
             var info = Self.fixtureObject(MockFixtures.info)
-            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare", "tools", "logins"]
+            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare", "tools", "logins", "mcp"]
                 // Terminals stream (`-mockTTY 0`: a box before them, its screen read every second).
                 + (UserDefaults.standard.string(forKey: "mockTTY") == "0" ? [] : ["tty"])
             return (200, Self.json(info))

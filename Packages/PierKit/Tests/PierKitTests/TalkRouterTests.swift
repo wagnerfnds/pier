@@ -99,7 +99,7 @@ import Testing
         let prompt = "it's \"quoted\" $(rm -rf /) `x`"
         let cmd = TalkRouter.command(prompt: prompt)
         #expect(cmd.hasPrefix(": pier-talk;"))
-        #expect(cmd.contains("-p --model haiku"))
+        #expect(cmd.contains("-p --model haiku $SM") && cmd.contains(AIDraft.strictMCPProbe))
         #expect(!cmd.contains("rm -rf"))
         let b64 = try #require(cmd.range(of: "printf %s '").map { cmd[$0.upperBound...] }?.prefix { $0 != "'" })
         #expect(String(decoding: Data(base64Encoded: String(b64)) ?? Data(), as: UTF8.self) == prompt)

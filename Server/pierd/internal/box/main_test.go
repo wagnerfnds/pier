@@ -10,6 +10,11 @@ import (
 // Rebases and merges make commits, which git refuses without an identity;
 // a fresh CI machine has none.
 func TestMain(m *testing.M) {
+	// The stand-in claude and codex of the MCP tests are this binary run
+	// again (mcp_test.go).
+	if tool := os.Getenv("FAKE_AGENT_CLI"); tool != "" {
+		os.Exit(fakeAgentCLI(tool, os.Args[1:]))
+	}
 	for k, v := range map[string]string{
 		"GIT_AUTHOR_NAME": "pier test", "GIT_AUTHOR_EMAIL": "test@example.com",
 		"GIT_COMMITTER_NAME": "pier test", "GIT_COMMITTER_EMAIL": "test@example.com",
