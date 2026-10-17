@@ -89,9 +89,11 @@ type loginRun struct {
 	cancel    context.CancelFunc
 	// gh's two questions are answered once: git through gh's credentials (yes), and Enter to go on.
 	gitAnswered, enterPressed bool
-	// codeSent and prompts: a code went in while Claude Code showed that many paste prompts.
+	// codeSent and prompts: a code went in while Claude Code showed that many paste prompts. code is the last one
+	// typed, kept only to take it out of the error a failure quotes from the screen.
 	codeSent bool
 	prompts  int
+	code     string
 }
 
 type loginStore struct {
@@ -164,6 +166,12 @@ func (s *loginStore) running(session string) []string {
 func finished(l *loginRun, state, why string) {
 	if l.Finished != nil {
 		return
+	}
+	// The screen a failure quotes can show the code typed into it, or the one-time code: neither stays in the error.
+	for _, secret := range []string{l.code, l.UserCode} {
+		if len(secret) >= 4 {
+			why = strings.ReplaceAll(why, secret, "…")
+		}
 	}
 	now := time.Now().UTC()
 	l.State, l.Error, l.Finished = state, why, &now
@@ -394,7 +402,7 @@ func (b *Box) startLogin(r *http.Request, tool, account string) (Login, Session,
 		_, after, _ := b.logins.with(id, func(l *loginRun) { finished(l, LoginFailed, "another sign-in to the same account started") })
 		b.publishLogin(origin(r), after)
 	}
-	b.Sessions.Kill(ctx, name)
+	b.endLoginSession(origin(r), name)
 	command := shellQuote(f.Path) + " " + loginCommand[tool]
 	sess, err := b.Sessions.createSized(ctx, name, "", dir, command, "", env, nil, loginCols, loginRows)
 	if err != nil {
@@ -421,6 +429,14 @@ func (b *Box) publishLogin(origin string, l Login) {
 		data["account"] = l.Account
 	}
 	b.Events.Publish(events.Event{Type: "login.changed", Box: b.Name, Origin: origin, Data: data})
+}
+
+// endLoginSession ends a sign-in's session and says so, as ending any session does: the session lists and the turn
+// ledger let go of it.
+func (b *Box) endLoginSession(origin, name string) {
+	if b.Sessions.Kill(context.Background(), name) == nil {
+		b.Events.Publish(events.Event{Type: "session.stopped", Box: b.Name, Origin: origin, Data: map[string]any{"name": name}})
+	}
 }
 
 // update changes a sign-in and says so when its state moved.
@@ -453,7 +469,7 @@ func (b *Box) runLogin(ctx context.Context, origin, id string) {
 			b.updateLogin(origin, id, func(l *loginRun) {
 				finished(l, LoginFailed, fmt.Sprintf("the sign-in took more than %d minutes; start it again", int(loginTimeout.Minutes())))
 			})
-			b.Sessions.Kill(context.Background(), run.Session)
+			b.endLoginSession(origin, run.Session)
 			return
 		}
 		dead, status, err := b.Sessions.paneExit(ctx, run.Session)
@@ -509,7 +525,7 @@ func (b *Box) finishLogin(ctx context.Context, origin, id string, status int, sc
 		cmd.Run()
 	}
 	b.updateLogin(origin, id, func(l *loginRun) { finished(l, state, why) })
-	b.Sessions.Kill(context.Background(), run.Session)
+	b.endLoginSession(origin, run.Session)
 	if state == LoginDone && run.Account != "" {
 		// Its account reads as signed in now.
 		b.Events.Publish(events.Event{Type: "account.changed", Box: b.Name, Origin: origin, Data: map[string]any{"id": run.Account}})
@@ -613,7 +629,7 @@ func (b *Box) loginCode(w http.ResponseWriter, r *http.Request) error {
 	}
 	l, _ := b.updateLogin(origin(r), id, func(l *loginRun) {
 		if l.Finished == nil {
-			l.codeSent, l.prompts = true, prompts
+			l.codeSent, l.prompts, l.code = true, prompts, code
 			l.State, l.Error = LoginWaiting, ""
 		}
 	})
@@ -629,9 +645,7 @@ func (b *Box) deleteLogin(w http.ResponseWriter, r *http.Request) error {
 		return errUnknownLogin
 	}
 	l, _ := b.updateLogin(origin(r), id, func(l *loginRun) { finished(l, LoginFailed, "canceled") })
-	if err := b.Sessions.Kill(r.Context(), run.Session); err != nil && !errors.Is(err, ErrUnknownSession) {
-		return err
-	}
+	b.endLoginSession(origin(r), run.Session)
 	writeJSON(w, l)
 	return nil
 }

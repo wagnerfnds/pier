@@ -118,6 +118,7 @@ func fakeCLIs(t *testing.T, which ...string) (state string) {
     printf 'Paste code here if prompted > '
     read code
     if [ "$code" = "good#state" ]; then echo "Login successful."; touch "$S/claude-ok"; exit 0; fi
+    if [ "$code" = "spent#state" ]; then echo "OAuth error: invalid_grant for $code"; exit 1; fi
     echo "OAuth error: Invalid code"
   done ;;
 "auth status")
@@ -360,7 +361,9 @@ func TestSignInsThatFail(t *testing.T) {
 func TestSignInsCanceledReplacedAndFromTheAccountsRoute(t *testing.T) {
 	fakeCLIs(t, "codex")
 	var bx *Box
-	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir(); bx = b })
+	c, bus := servedBox(t, func(b *Box) { b.StateDir = t.TempDir(); bx = b })
+	seen, stop := bus.Subscribe()
+	defer stop()
 
 	var first, second Login
 	call(t, c, "POST", "/v1/logins", "", map[string]string{"tool": "codex"}, &first)
@@ -387,6 +390,17 @@ func TestSignInsCanceledReplacedAndFromTheAccountsRoute(t *testing.T) {
 	if !sessionGone(t, bx, "login-codex") {
 		t.Error("the canceled sign-in's session stayed")
 	}
+	// Its end is said as any session's is: the app's lists and the turn ledger let go of it.
+	for stopped := 0; stopped < 2; {
+		select {
+		case e := <-seen:
+			if e.Type == "session.stopped" && e.Data["name"] == "login-codex" {
+				stopped++ // the replaced sign-in's session, then the canceled one's
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("session.stopped for login-codex: %d of 2", stopped)
+		}
+	}
 	if status := call(t, c, "GET", "/v1/logins/nope", "", nil, nil); status != 404 {
 		t.Fatalf("an unknown sign-in = %d", status)
 	}
@@ -407,5 +421,19 @@ func TestSignInTimesOut(t *testing.T) {
 	}
 	if !sessionGone(t, bx, l.Session) {
 		t.Error("the session of a sign-in that timed out stayed")
+	}
+}
+
+// A sign-in that fails quotes the CLI's last lines, but not the code that was typed into it.
+func TestFailedSignInKeepsTheCodeOutOfItsError(t *testing.T) {
+	fakeCLIs(t, "claude")
+	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir() })
+	var l Login
+	call(t, c, "POST", "/v1/logins", "", map[string]string{"tool": "claude"}, &l)
+	waitLogin(t, c, l.ID, func(l Login) bool { return l.State == LoginEnterCode })
+	call(t, c, "POST", "/v1/logins/"+l.ID+"/code", "", map[string]string{"code": "spent#state"}, nil)
+	l = waitLogin(t, c, l.ID, func(l Login) bool { return l.Finished != nil })
+	if l.State != LoginFailed || !strings.Contains(l.Error, "invalid_grant") || strings.Contains(l.Error, "spent#state") {
+		t.Fatalf("failed = %+v", l)
 	}
 }

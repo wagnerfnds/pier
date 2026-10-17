@@ -498,8 +498,8 @@ status agrees (`claude auth status --json`, `codex login status`, `gh auth statu
   account, 400 for an account of another agent. Gate `before:login.start {tool, account}`.
 * `state`: `starting`; `open_link` (the link is ready, and for Codex and GitHub the one-time code `user_code` to type on
   its page); `enter_code` (Claude Code waits for the code its page shows: `needs_code`); `waiting` (the code went in);
-  `done`; `failed` (`error`: the CLI's last lines, `canceled`, or that it took more than 15 minutes, after which its session
-  ends). `finished` is set with the last two.
+  `done`; `failed` (`error`: the CLI's last lines with any code typed or shown taken out, `canceled`, or that it took more
+  than 15 minutes, after which its session ends). `finished` is set with the last two.
 * `GET /v1/logins/{id}`; `GET /v1/logins` (those of the last hour, newest first). The app reads the one it shows every
   1.5 s, and at once on `login.changed`.
 * `POST /v1/logins/{id}/code {code}` types the code into Claude Code, then Enter: one line of up to 4096 characters (400
@@ -508,7 +508,7 @@ status agrees (`claude auth status --json`, `codex login status`, `gh auth statu
 * Event `login.changed {id, tool, account?, state}` on each change of state, never with the link or the code (events are
   kept in the journal). A sign-in done for an account also publishes `account.changed {id}`; GitHub's runs `gh auth
   setup-git` once done. Meanwhile the session is an ordinary one (`GET /v1/sessions` lists it, the app's "Abrir no
-  terminal" shows it); it ends with the sign-in.
+  terminal" shows it); it ends with the sign-in (`session.stopped`).
 
 ### 2.11 The box's variables and skills (capability `box.env`)
 
