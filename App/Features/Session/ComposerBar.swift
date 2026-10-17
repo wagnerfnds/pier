@@ -133,14 +133,21 @@ struct ComposerBar: View {
     }
 
     private func load(_ item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { return }
-        let maxSide: CGFloat = 2000
-        let scale = min(1, maxSide / max(img.size.width, img.size.height))
-        let size = CGSize(width: img.size.width * scale, height: img.size.height * scale)
-        let resized = UIGraphicsImageRenderer(size: size).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
-        guard let jpeg = resized.jpegData(compressionQuality: 0.85) else { return }
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        // Decoding, scaling and encoding a photo takes a good part of a second: not on the main thread, where the
+        // composer would stop taking keys meanwhile.
+        let prepared = await Task.detached(priority: .userInitiated) { () -> (jpeg: Data, thumbnail: UIImage?)? in
+            guard let img = UIImage(data: data) else { return nil }
+            let maxSide: CGFloat = 2000
+            let scale = min(1, maxSide / max(img.size.width, img.size.height))
+            let size = CGSize(width: img.size.width * scale, height: img.size.height * scale)
+            let resized = UIGraphicsImageRenderer(size: size).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
+            guard let jpeg = resized.jpegData(compressionQuality: 0.85) else { return nil }
+            return (jpeg, resized.preparingThumbnail(of: CGSize(width: 120, height: 120)))
+        }.value
+        guard let prepared else { return }
         let stamp = Int(Date().timeIntervalSince1970)
-        await vm.attach(data: jpeg, name: "foto-\(stamp).jpg", thumbnail: resized.preparingThumbnail(of: CGSize(width: 120, height: 120)))
+        await vm.attach(data: prepared.jpeg, name: "foto-\(stamp).jpg", thumbnail: prepared.thumbnail)
     }
 
     private var closedBanner: some View {

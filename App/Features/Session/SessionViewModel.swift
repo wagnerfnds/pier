@@ -359,7 +359,7 @@ final class SessionViewModel {
                     if grew || d.status?.word != draft?.status?.word || d.agent != draft?.agent { draft = d }
                     unchanged = grew ? 0 : unchanged + 1
                 case .failure(let e):
-                    if LinkWatch.isLinkFailure(e) { await noteLinkFailure() }
+                    if LinkWatch.isLinkFailure(e) { await noteFailure([e]) }
                     unchanged += 1
                 }
             } else if draft != nil {
@@ -388,6 +388,21 @@ final class SessionViewModel {
     private func linkAnswered() {
         link.succeeded()
         if linkTrouble { linkTrouble = false }
+    }
+
+    /// Requests that failed on the way to the box. Ones that only ran past their deadline may mean a box that is slow
+    /// (the first read of a long record, git over every worktree) rather than a dead connection: a quick question to the
+    /// box tells them apart first, because dropping the connection restarts every terminal stream on it (each replays
+    /// its scrollback) and the event stream.
+    private func noteFailure(_ errors: [Error]) async {
+        if errors.allSatisfy({ ($0 as? PierError).map { if case .timeout = $0 { true } else { false } } ?? false }) {
+            let client = client
+            if case .success = await Self.attempt(.seconds(3), { try await client.info() }) {
+                linkAnswered()
+                return
+            }
+        }
+        await noteLinkFailure()
     }
 
     /// A request failed on the connection: say so, and after a second one drop the connection so the next request dials
@@ -445,7 +460,7 @@ final class SessionViewModel {
         if outcomes.contains(where: { $0 == nil }) {
             linkAnswered()
         } else if !outcomes.isEmpty, outcomes.allSatisfy({ $0.map(LinkWatch.isLinkFailure) ?? false }) {
-            await noteLinkFailure()
+            await noteFailure(outcomes.compactMap { $0 })
         }
 
         // Observable state is written only when it changed: every write re-renders the screen, and this runs every 1.5 s.
