@@ -15282,6 +15282,216 @@
           }
         }
       }
+    },
+    "Diagnóstico" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostics"
+          }
+        }
+      }
+    },
+    "Fica tudo neste aparelho. Compartilhar junta os arquivos num .zip para você mandar para a gente; nada sai daqui sem você." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everything stays on this device. Share puts the files in a .zip for you to send us; nothing leaves without you."
+          }
+        }
+      }
+    },
+    "Travamentos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hangs"
+          }
+        }
+      }
+    },
+    "Nenhum travamento anotado." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hangs noted."
+          }
+        }
+      }
+    },
+    "Sempre que a tela fica parada por mais de meio segundo, o Pier anota quando, por quanto tempo e em que parte do app." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whenever the screen freezes for more than half a second, Pier notes when, for how long and in which part of the app."
+          }
+        }
+      }
+    },
+    "Relatórios do sistema" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System reports"
+          }
+        }
+      }
+    },
+    "Nenhum relatório ainda." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No reports yet."
+          }
+        }
+      }
+    },
+    "O sistema entrega estes relatórios (travamentos, uso alto de CPU, falhas, escrita em disco) na abertura seguinte do app ou uma vez por dia." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The system delivers these reports (hangs, high CPU use, crashes, disk writes) the next time the app opens or once a day."
+          }
+        }
+      }
+    },
+    "Apagar o diagnóstico?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete the diagnostics?"
+          }
+        }
+      }
+    },
+    "Os travamentos anotados e os relatórios guardados neste aparelho são apagados." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The hangs noted and the reports kept on this device are deleted."
+          }
+        }
+      }
+    },
+    "parte do app não marcada" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "unmarked part of the app"
+          }
+        }
+      }
+    },
+    "o app fechou ainda travado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "the app closed while still frozen"
+          }
+        }
+      }
+    },
+    "em segundo plano" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "in the background"
+          }
+        }
+      }
+    },
+    "inativo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "inactive"
+          }
+        }
+      }
+    },
+    "teste" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "test"
+          }
+        }
+      }
+    },
+    "Travamento" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hang"
+          }
+        }
+      }
+    },
+    "Uso alto de CPU" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "High CPU use"
+          }
+        }
+      }
+    },
+    "Falha" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crash"
+          }
+        }
+      }
+    },
+    "Muita escrita em disco" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heavy disk writes"
+          }
+        }
+      }
+    },
+    "Abertura lenta" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slow launch"
+          }
+        }
+      }
+    },
+    "Outro" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

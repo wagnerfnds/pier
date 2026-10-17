@@ -41,7 +41,8 @@ Tools/pierctl/              # macOS CLI client for end-to-end checks against a r
 Tools/chat-e2e/             # a real chat timed end to end on a box, through pierd's local socket (docs/CHAT-QUALITY.md)
 App/                        # the app target (SwiftUI)
   PierApp.swift
-  Core/        AppModel (@Observable), BoxConnection, EventHub, Router/Routes, Notifications, PushManager, LiveActivities
+  Core/        AppModel (@Observable), BoxConnection, EventHub, Router/Routes, Notifications, PushManager, LiveActivities,
+               Diagnostics (MetricKit, the main thread's watchdog, Perf signposts)
   Features/    Board, Compose, Dashboard (Home), Dots, Housekeeping (Faxina), Inbox, MenuBar, Navigation, Onboarding,
                Palette, Projects, PullRequests, Review, Session, Settings, Talk
   Intents/     App Intents and App Shortcuts
@@ -106,8 +107,8 @@ them:
   by widgets and Live Activities.
 - **Identifiers of an install**: bundle id, App Group, keychain groups, keychain service, background task and widget
   kind all follow `PIER_BUNDLE_ID` / `PIER_KEYCHAIN_SERVICE`, set in `Config/Signing.xcconfig`.
-- **Application Support folder**: iPhone/iPad builds keep `prefs.json`, `home-cache.json` and `next-steps.json` in
-  `Application Support/Pier`. The Mac keeps its folder named after the bundle id.
+- **Application Support folder**: iPhone/iPad builds keep `prefs.json`, `home-cache.json`, `next-steps.json` and the
+  `diagnostics` folder in `Application Support/Pier`. The Mac keeps its folder named after the bundle id.
 - **Keychain migration flag** `keychain.migratedToShared.v1` (UserDefaults) and the app-only keychain group move,
   unchanged.
 - **Third-party notices** for pierd are in the repository's `NOTICE`.
@@ -448,6 +449,29 @@ margins) and `-widgetGallery activity` draws it capped and clipped the same way.
 a stale date an hour out, as pierd pushes it (the agent can run again on the person's next words and the same activity
 follows it); only an exit (`ended`) ends the activity. Debug `-openLink pier://…` opens a link as if tapped.
 
+## Diagnóstico (hangs in the field)
+
+`App/Core/Diagnostics.swift`, started first thing at launch (`AppDelegate`), keeps what the person can send us when the
+app hangs, in the `diagnostics` folder of the Application Support folder (above). Ajustes › Sobre › Diagnóstico lists
+it newest first, shares it as one .zip (with `about.json`: the app's version and build, the system, the model; nothing
+about the person) and deletes it. Nothing leaves the device unless the person shares it.
+
+- **MetricKit** (`MetricReports`, subscribed to `MXMetricManager`): every diagnostic payload the system delivers
+  (hangs, CPU exceptions, crashes, disk-write exceptions; usually on the launch after the one they happened in) as the
+  system wrote it (`jsonRepresentation()`), in `metrickit-<UTC date>-<kinds>.json`, the newest 20.
+- **The watchdog** (`MainThreadWatch`): a thread of its own (not a task a busy pool could starve) pings the main queue
+  every 250 ms; an answer later than 500 ms is a stall, noted with when it started, how long it lasted, the `Perf` region
+  the main thread was in while it was stuck, the app's state (active, inactive, background) and the build, the last 100
+  in `stalls.json` (written 2 s after a change, off the main thread, and at once when the app goes to the background or
+  quits). A stall still going is written as it grows, so one the person ends with a force quit is there at the next
+  launch, as at least that long. It pauses in the background on the iPhone and the iPad (a suspended app is not a stuck
+  one) and never on the Mac, which keeps working with its window closed. Under `-uiTestMock` it stays off unless
+  `-diagnosticsSelfTest` asks for it; MetricKit is always on.
+- **`Perf`**: `Perf.interval("name") { … }`, or `let s = Perf.begin("name")` … `Perf.end(s)`, around a hot path: an
+  `OSSignposter` interval in the app's subsystem, category `perf`, for Instruments (about half a microsecond when
+  nothing records), and, begun on the main thread, the region the watchdog names. A region that spans an `await` stays
+  open while suspended, so synchronous work is better wrapped with `interval`.
+
 ## DEBUG launch arguments (simulator automation)
 
 `-pairLink <pier://…>`, `-openSession [<box>/]<name>` (with `-sessionNewTerminal 1`: a terminal tab opens beside it),
@@ -461,7 +485,10 @@ the open conversation, scrolled and while a reply streams: `CHAT-PERF {...}` on 
 `-debugStartActivity 1`, `-debugActivitySession <name>` (a Live Activity for that one session, a finished turn's to see its
 reply on the Lock Screen; `LiveActivityShots` with `TEST_RUNNER_ACTIVITY_SHOTS=<dir>` locks the simulator and saves it),
 `-widgetGallery home|lock|activity|island|all`, `-openTalk 1 [-talkText "…" -talkRoute 1]`,
-`-openPalette 1`, `-openFaxina 1`, `-openGitHubRepos 1` (with `-startTab projects`: the GitHub list), `-openProject <loc>[/<worktree>] [-workspaceTab start|files|changes|history|overview|details]
+`-openPalette 1`, `-openFaxina 1`, `-openDiagnostics 1` (with `-startTab settings`: Ajustes › Diagnóstico),
+`-diagnosticsSelfTest 1` (one fake MetricKit report at launch and the main thread held 800 ms inside the
+`diagnostics.selfTest` region 4 s later, so Diagnóstico shows a report and a stall; it turns the watchdog on under
+`-uiTestMock` too), `-openGitHubRepos 1` (with `-startTab projects`: the GitHub list), `-openProject <loc>[/<worktree>] [-workspaceTab start|files|changes|history|overview|details]
 [-openFile <path>]` (a project's workspace); Mac: `-macSurfaceDebug <commands>`, `-macFakeShot <png>`, `-macWindowSize 1280x800`,
 and for the alerts through iCloud (`CloudAlerts`, docs/PUSH.md 8) `-cloudAlertsDiagnose 1` (logs every device's
 subscription), `-cloudAlertsTest 1` (a test alert for the iPhone and iPad), `-cloudAlertsSeed 1` (every field in
