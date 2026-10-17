@@ -1,5 +1,6 @@
 import Foundation
 import PierKit
+import UIKit
 
 /// The person's organisation of projects (sections, renames, hidden) and this device's own marks. JSON in Application
 /// Support; the organisation is also kept in iCloud's key-value store (`SyncedOrganization`), so every device of the
@@ -101,7 +102,17 @@ final class LocalPrefs {
     /// The compose draft lives apart from `data`: it changes on every keystroke, and every view reading any pref (the
     /// sidebar, the Home, the menu bar's payload, the Mac's main menu) would redraw with it. Saved with `data`.
     private(set) var composeDraft = ""
+    /// This device's marks (archived, seen, dismissed, snoozed) live apart from `data` too, each on its own: one is
+    /// written each time a finished turn is looked at, and every view reading the organisation or the archive (the
+    /// sidebar, the Home, the Mac's surface) redrew with it. Saved with `data`, in the same file as ever.
+    private var closedMarks: [String: Date] = [:]
+    private var seenMarks: [String: Date] = [:]
+    private var dismissedMarks: [String: Date] = [:]
+    private var snoozedMarks: [String: Date] = [:]
     private var url: URL
+    /// Writes the file a moment after the last change, off the main thread, one write after the other.
+    @ObservationIgnored private let writer = PrefsWriter()
+    @ObservationIgnored private var pendingWrite: Task<Void, Never>?
 
     /// The prefs are the app's own file (not a test's).
     @ObservationIgnored private let ownFile: Bool
@@ -119,7 +130,13 @@ final class LocalPrefs {
         if UITestMock.enabled { data.composeDraft = "" }
         composeDraft = data.composeDraft
         // The widgets' copy follows these prefs from the start, whatever changed it meanwhile.
-        if url == nil { mirrorForWidgets() }
+        if url == nil { writer.mirror(widgetMirror) }
+        // What is still waiting to be written goes now when the app leaves the front (it may not come back).
+        for name in [UIApplication.didEnterBackgroundNotification, UIApplication.willTerminateNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.flush() }
+            }
+        }
         if ownFile && !Shared.isLocalTest && !UITestMock.enabled {
             NotificationCenter.default.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
                                                    object: NSUbiquitousKeyValueStore.default, queue: .main) { [weak self] _ in
@@ -195,8 +212,10 @@ final class LocalPrefs {
 
     /// Entering or leaving the demo: the prefs of the other side.
     func reload() {
+        flush()
         url = Self.defaultURL
         data = Data()
+        (closedMarks, seenMarks, dismissedMarks, snoozedMarks) = ([:], [:], [:], [:])
         load()
         draftSave?.cancel()
         composeDraft = data.composeDraft
@@ -379,18 +398,19 @@ final class LocalPrefs {
 
     /// Marked as over and nothing happened since (a new turn reopens it by itself).
     func isClosed(box: String, session: Session) -> Bool {
-        guard let at = data.closed["\(box)/\(session.name)"] else { return false }
+        guard let at = closedMarks["\(box)/\(session.name)"] else { return false }
         return at >= (session.stateSince ?? session.created)
     }
     func setClosed(_ closed: Bool, box: String, session: String) {
         let k = "\(box)/\(session)"
         if closed {
-            data.closed[k] = Date()
+            closedMarks[k] = Date()
             // Keep the file small: forget marks older than two weeks.
             let cutoff = Date().addingTimeInterval(-14 * 86400)
-            data.closed = data.closed.filter { $0.value > cutoff }
+            closedMarks = closedMarks.filter { $0.value > cutoff }
         } else {
-            data.closed[k] = nil
+            guard closedMarks[k] != nil else { return }
+            closedMarks[k] = nil
         }
         save()
     }
@@ -400,45 +420,45 @@ final class LocalPrefs {
     /// The person looked at this finished turn (the session screen, or the reply opened in the Inbox); the card stays
     /// until archived, but the badge no longer counts it. A newer turn is unseen again by itself.
     func isSeen(box: String, session: Session) -> Bool {
-        guard let at = data.seen["\(box)/\(session.name)"] else { return false }
+        guard let at = seenMarks["\(box)/\(session.name)"] else { return false }
         return at >= (session.stateSince ?? session.created)
     }
     func markSeen(box: String, session: String) {
         let k = "\(box)/\(session)"
-        if let at = data.seen[k], Date().timeIntervalSince(at) < 1 { return }
-        data.seen[k] = Date()
-        data.seen = Self.pruned(data.seen)
+        if let at = seenMarks[k], Date().timeIntervalSince(at) < 1 { return }
+        seenMarks[k] = Date()
+        seenMarks = Self.pruned(seenMarks)
         save()
     }
 
     /// A question dismissed in the Inbox stays out until the agent asks again (a newer `state_since`).
     func isDismissed(box: String, session: Session) -> Bool {
-        guard let at = data.dismissed["\(box)/\(session.name)"] else { return false }
+        guard let at = dismissedMarks["\(box)/\(session.name)"] else { return false }
         return at == (session.stateSince ?? session.created)
     }
     func setDismissed(_ dismissed: Bool, box: String, session: Session) {
         let k = "\(box)/\(session.name)"
-        data.dismissed[k] = dismissed ? (session.stateSince ?? session.created) : nil
-        data.dismissed = Self.pruned(data.dismissed)
+        dismissedMarks[k] = dismissed ? (session.stateSince ?? session.created) : nil
+        dismissedMarks = Self.pruned(dismissedMarks)
         save()
     }
 
     /// A box health card "ignored for today": out of the Inbox until `until`.
     func isHealthSnoozed(_ id: String) -> Bool {
-        guard let until = data.snoozedHealth[id] else { return false }
+        guard let until = snoozedMarks[id] else { return false }
         return until > Date()
     }
     func snoozeHealth(_ id: String, until: Date) {
-        data.snoozedHealth[id] = until
-        data.snoozedHealth = data.snoozedHealth.filter { $0.value > Date() }
+        snoozedMarks[id] = until
+        snoozedMarks = snoozedMarks.filter { $0.value > Date() }
         save()
     }
 
     /// Forgets every Inbox mark (seen, dismissed, snoozed health cards): what a UI test run leaves behind.
     func resetInboxMarks() {
-        data.seen = [:]
-        data.dismissed = [:]
-        data.snoozedHealth = [:]
+        seenMarks = [:]
+        dismissedMarks = [:]
+        snoozedMarks = [:]
         save()
     }
 
@@ -451,7 +471,9 @@ final class LocalPrefs {
     func section(of key: String) -> UUID? { data.sections.first { $0.projects.contains(key) }?.id }
 
     private func load() {
-        guard let d = try? Foundation.Data(contentsOf: url), let v = try? JSONDecoder().decode(Data.self, from: d) else { return }
+        guard let d = try? Foundation.Data(contentsOf: url), var v = try? JSONDecoder().decode(Data.self, from: d) else { return }
+        (closedMarks, seenMarks, dismissedMarks, snoozedMarks) = (v.closed, v.seen, v.dismissed, v.snoozedHealth)
+        (v.closed, v.seen, v.dismissed, v.snoozedHealth) = ([:], [:], [:], [:])
         data = v
     }
     private func save() {
@@ -463,23 +485,70 @@ final class LocalPrefs {
         writeFile()
     }
 
+    /// Writes the file a quarter of a second after the last change (a drag in the sidebar, a run of marks write many
+    /// times in a row), the encoding and the disk off the main thread.
     private func writeFile() {
-        let fm = FileManager.default
-        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var out = data
-        out.composeDraft = composeDraft
-        if let d = try? JSONEncoder().encode(out) { try? d.write(to: url, options: .atomic) }
-        mirrorForWidgets()
+        guard pendingWrite == nil else { return }
+        pendingWrite = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard let self, !Task.isCancelled else { return }
+            pendingWrite = nil
+            writeNow()
+        }
     }
 
-    /// The widget extension shows display names and honours hidden projects, so mirror them into the App Group. Not a
+    /// Writes what is waiting at once (the app going to the background, the demo switching files).
+    func flush() {
+        guard let p = pendingWrite else { return }
+        p.cancel()
+        pendingWrite = nil
+        writeNow()
+        writer.wait()
+    }
+
+    private func writeNow() {
+        let span = Perf.begin("prefs.write")
+        defer { Perf.end(span) }
+        var out = data
+        out.composeDraft = composeDraft
+        (out.closed, out.seen, out.dismissed, out.snoozedHealth) = (closedMarks, seenMarks, dismissedMarks, snoozedMarks)
+        writer.write(out, to: url)
+        writer.mirror(widgetMirror)
+    }
+
+    /// The widget extension shows display names and honours hidden projects, so these go into the App Group too. Not a
     /// mock run's or the demo's: on the Mac a mock run shares the installed app's group, and made-up projects would
     /// replace the person's.
-    private func mirrorForWidgets() {
-        if UITestMock.enabled || DemoMode.isOn { return }
-        let mirror = SharedDisplayPrefs(renames: data.renames, hidden: data.hidden)
-        let current = SharedDisplayPrefs.load()
-        guard current.renames != mirror.renames || current.hidden != mirror.hidden else { return }
-        mirror.save()
+    private var widgetMirror: SharedDisplayPrefs? {
+        if UITestMock.enabled || DemoMode.isOn { return nil }
+        return SharedDisplayPrefs(renames: data.renames, hidden: data.hidden)
     }
+}
+
+/// The prefs' file and the widgets' copy, written on a queue of their own in the order they were asked for; a write whose
+/// bytes are the ones written last is skipped.
+private final class PrefsWriter: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "pier.prefs", qos: .utility)
+    /// The bytes written last, per file (the demo and a mock run keep files of their own). Only touched on `queue`.
+    private var lastBytes: [URL: Foundation.Data] = [:]
+
+    func write(_ prefs: LocalPrefs.Data, to url: URL) {
+        queue.async {
+            guard let bytes = try? JSONEncoder().encode(prefs), bytes != self.lastBytes[url] else { return }
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if (try? bytes.write(to: url, options: .atomic)) != nil { self.lastBytes[url] = bytes }
+        }
+    }
+
+    func mirror(_ prefs: SharedDisplayPrefs?) {
+        guard let prefs else { return }
+        queue.async {
+            let current = SharedDisplayPrefs.load()
+            guard current.renames != prefs.renames || current.hidden != prefs.hidden else { return }
+            prefs.save()
+        }
+    }
+
+    /// Returns once everything asked so far is written.
+    func wait() { queue.sync {} }
 }

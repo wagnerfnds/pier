@@ -120,7 +120,8 @@ final class SessionSignals {
         defer { end("changes") }
         let conns = model.boxes.filter { $0.state.isOnline }.map { ($0.name, $0.client) }
         let items: [(String, [ReviewItem])] = await withTaskGroup(of: (String, [ReviewItem]).self) { g in
-            for (name, c) in conns { g.addTask { (name, (try? await c.review(all: true)) ?? []) } }
+            // Bounded: git over every worktree of a big box can take long, and the next round asks again.
+            for (name, c) in conns { g.addTask { (name, (try? await SessionViewModel.bounded(.seconds(20)) { try await c.review(all: true) }) ?? []) } }
             return await collect(&g)
         }
         changesAt = Date()

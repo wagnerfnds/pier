@@ -499,3 +499,58 @@ func TestSendsWithoutATurnKeepTheirKeys(t *testing.T) {
 		t.Fatalf("a send without a turn made one: %+v", all)
 	}
 }
+
+// A hook event as POST /v1/events takes it: an agent already at work reporting
+// one more tool is dropped before it reaches the ledger.
+func hookAPI(tr *Turns, bus *events.Bus, typ, session, path, agent string, extra ...string) {
+	d := map[string]any{"path": path, "agent": agent, "session": session}
+	for i := 0; i+1 < len(extra); i += 2 {
+		d[extra[i]] = extra[i+1]
+	}
+	if tr.Redundant(typ, d) {
+		return
+	}
+	bus.Publish(events.Event{Type: typ, Origin: agent, Data: d})
+}
+
+// Since is when the agent entered its state: each tool a working agent runs
+// keeps it (the event never reaches the ledger), while another question, a
+// turn ended or a new turn starting starts a new one.
+func TestStateSinceIsWhenTheStateBegan(t *testing.T) {
+	tr, bus := ledger(t, Session{Name: "shop-claude", Dir: "/srv/shop", Agent: "claude"})
+	s := "shop-claude"
+	since := func() time.Time {
+		st, ok := tr.State(s)
+		if !ok {
+			t.Fatal("no state")
+		}
+		return st.Since
+	}
+	step := func() { time.Sleep(5 * time.Millisecond) }
+	hookAPI(tr, bus, "agent.started", s, "/srv/shop", "claude", "signal", "prompt")
+	working := since()
+	step()
+	hookAPI(tr, bus, "agent.started", s, "/srv/shop", "claude", "signal", "tool")
+	if got := since(); !got.Equal(working) {
+		t.Fatalf("a tool run moved Since from %v to %v", working, got)
+	}
+	hookAPI(tr, bus, "agent.waiting", s, "/srv/shop", "claude", "reason", "permission")
+	asked := since()
+	step()
+	hookAPI(tr, bus, "agent.waiting", s, "/srv/shop", "claude", "reason", "permission")
+	if got := since(); !got.After(asked) {
+		t.Fatalf("a second question kept the first one's Since")
+	}
+	step()
+	hookAPI(tr, bus, "agent.started", s, "/srv/shop", "claude", "signal", "tool") // approved: at work again
+	if got := since(); !got.After(asked) {
+		t.Fatalf("working again after a question kept the question's Since")
+	}
+	hookAPI(tr, bus, "agent.finished", s, "/srv/shop", "claude")
+	ended := since()
+	step()
+	hookAPI(tr, bus, "agent.started", s, "/srv/shop", "claude", "signal", "prompt")
+	if got := since(); !got.After(ended) {
+		t.Fatalf("a new turn kept the last one's Since")
+	}
+}

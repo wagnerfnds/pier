@@ -141,7 +141,7 @@ final class AppModel {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "testKeychainMigration") { SharedKeychain.debugSelfTest() }
         // Test hook: `-uiTestDemoReset 1` starts outside the demo, whatever an earlier run left.
-        if UserDefaults.standard.bool(forKey: "uiTestDemoReset") { DemoMode.isOn = false; prefs.reload() }
+        if UserDefaults.standard.bool(forKey: "uiTestDemoReset") { prefs.flush(); DemoMode.isOn = false; prefs.reload() }
         // `-cloudAlertsSeed 1`: every alert field in CloudKit's development schema; `-cloudAlertsTest 1`: a test alert for
         // the person's iPhone and iPad; `-cloudAlertsDiagnose 1`: the iCloud subscriptions (an iPhone's shows up from the
         // Mac too) in the log.
@@ -164,7 +164,7 @@ final class AppModel {
             loadError = error.localizedDescription
         }
         // The demo comes back where it was left; a box of the person's own has ended it.
-        if DemoMode.isOn { if boxes.isEmpty { addDemoBox() } else { DemoMode.isOn = false; prefs.reload() } }
+        if DemoMode.isOn { if boxes.isEmpty { addDemoBox() } else { prefs.flush(); DemoMode.isOn = false; prefs.reload() } }
         startPathMonitor()
         liveActivities.begin()
         push.begin()
@@ -355,7 +355,7 @@ final class AppModel {
         guard boxes.allSatisfy({ $0.hasLoadedSessions || $0.state != .connecting }) else { return }
         let fetches = boxes.map { BoxFetch(record: $0.record, sessions: $0.hasLoadedSessions && $0.state.isOnline ? $0.sessions : nil) }
         let display = SharedDisplayPrefs(renames: prefs.data.renames, hidden: prefs.data.hidden)
-        WidgetPublisher.publish(WidgetSnapshot.make(from: fetches, prefs: display))
+        WidgetPublisher.publishInBackground(WidgetSnapshot.make(from: fetches, prefs: display))
     }
 
     private func transition(_ c: BoxConnection, _ s: Session, _ to: AgentState?) {
@@ -522,6 +522,8 @@ final class AppModel {
     /// From the onboarding, with no box yet: look around on the demo's box.
     func startDemo() {
         guard boxes.isEmpty else { return }
+        // What is waiting to be written goes to the file it belongs to before the demo switches files.
+        prefs.flush()
         DemoMode.isOn = true
         prefs.reload()
         addDemoBox()
@@ -532,6 +534,8 @@ final class AppModel {
     func stopDemo() {
         guard DemoMode.isOn else { return }
         let demo = demoBox
+        // What is waiting to be written goes to the file it belongs to before the demo switches files.
+        prefs.flush()
         DemoMode.isOn = false
         prefs.reload()
         if let conn = demo {
@@ -542,7 +546,7 @@ final class AppModel {
         UITestMock.headless = nil
         router.resetStacks()
         sessionsChanged()
-        if boxes.isEmpty { WidgetPublisher.publish(.empty, minInterval: 0) }
+        if boxes.isEmpty { WidgetPublisher.publishInBackground(.empty, minInterval: 0) }
     }
 
     private func addDemoBox() {
@@ -573,7 +577,7 @@ final class AppModel {
         try? boxStore.remove(fingerprint: conn.record.fingerprint)
         StateSnapshot.forget(box: conn.name)
         try? reloadBoxes()
-        if boxes.isEmpty { WidgetPublisher.publish(.empty, minInterval: 0) }
+        if boxes.isEmpty { WidgetPublisher.publishInBackground(.empty, minInterval: 0) }
     }
 }
 

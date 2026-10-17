@@ -145,6 +145,7 @@ import AppKit
 final class InboxScreen: NSView, PanelScreenView, PanelDataSink {
     var onAction: ((String) -> Void)? { didSet { controller.onContentChanged = { [weak self] in self?.onAction?("panel:relayout") } } }
     var title: String { strings["menuInbox"] ?? "Inbox" }
+    let reads: Set<String> = ["cards", "current", "pending", "receipt", "dictation"]
     private var strings: [String: String] = [:]
     private lazy var controller = InboxCardController { [weak self] a in self?.onAction?(a) }
     override var isFlipped: Bool { true }
@@ -610,49 +611,66 @@ final class AgentAvatarView: NSView {
     override func accessibilityLabel() -> String? { label }
 }
 
-/// One answer (or a suggested next step): keycap, words, "Recomendado"; green with a check once chosen.
+/// One answer (or a suggested next step): keycap, words, "Recomendado"; green with a check once chosen. A row can be kept
+/// and given new content (`set`), as the agent screen does from one render to the next.
 final class OptionRowView: ClickableView {
-    private let keycap: KeycapView
-    private let titleField: NSTextField
-    private let detailField: NSTextField?
-    private let recommended: PillLabel?
+    private let keycap = KeycapView("")
+    private let titleField = SurfaceStyle.label("", font: PanelStyle.font(14, .medium), color: PanelStyle.text)
+    private let detailField = SurfaceStyle.label("", font: PanelStyle.font(12), color: PanelStyle.textDim)
+    private let recommendedPill = PillLabel("", font: PanelStyle.font(11, .semibold), color: PanelStyle.green, fill: PanelStyle.green.withAlphaComponent(0.16))
+    private var hasDetail = false
+    private var isRecommended = false
     var chosen = false {
         didSet { keycap.chosen = chosen; needsDisplay = true }
     }
 
-    init(number: Int, title: String, detail: String?, recommended: Bool, role: String, strings: [String: String]) {
-        keycap = KeycapView("\(number)")
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        for v in [keycap, titleField, detailField, recommendedPill] as [NSView] { addSubview(v) }
+        detailField.isHidden = true
+        recommendedPill.isHidden = true
+    }
+    required init?(coder: NSCoder) { nil }
+
+    convenience init(number: Int, title: String, detail: String?, recommended: Bool, role: String, strings: [String: String]) {
+        self.init(frame: .zero)
+        set(number: number, title: title, detail: detail, recommended: recommended, role: role, strings: strings)
+    }
+
+    func set(number: Int, title: String, detail: String?, recommended: Bool, role: String, strings: [String: String]) {
         let color: NSColor = switch role {
         case "allow", "always": PanelStyle.green
         case "deny": PanelStyle.red
         default: PanelStyle.text
         }
+        keycap.text = "\(number)"
         keycap.tint = role == "plain" ? PanelStyle.accent : color
-        titleField = SurfaceStyle.label(title, font: PanelStyle.font(14, .medium), color: color)
-        detailField = (detail?.isEmpty == false && detail != title) ? SurfaceStyle.label(detail ?? "", font: PanelStyle.font(12), color: PanelStyle.textDim) : nil
-        self.recommended = recommended ? PillLabel(strings["recommended"] ?? "Recomendado", font: PanelStyle.font(11, .semibold), color: PanelStyle.green,
-                                                   fill: PanelStyle.green.withAlphaComponent(0.16)) : nil
-        super.init(frame: .zero)
-        addSubview(keycap)
-        addSubview(titleField)
-        if let detailField { addSubview(detailField) }
-        if let pill = self.recommended { pill.sizeToFit(); addSubview(pill) }
-        accessibilityTitle = recommended ? "\(number). \(title), \(strings["recommended"] ?? "Recomendado")" : "\(number). \(title)"
+        titleField.stringValue = title
+        titleField.textColor = color
+        hasDetail = detail?.isEmpty == false && detail != title
+        detailField.stringValue = hasDetail ? detail ?? "" : ""
+        detailField.isHidden = !hasDetail
+        isRecommended = recommended
+        recommendedPill.isHidden = !recommended
+        let word = strings["recommended"] ?? "Recomendado"
+        if recommended, recommendedPill.text != word { recommendedPill.text = word; recommendedPill.sizeToFit() }
+        accessibilityTitle = recommended ? "\(number). \(title), \(word)" : "\(number). \(title)"
+        needsLayout = true
+        needsDisplay = true
     }
-    required init?(coder: NSCoder) { nil }
 
-    var height: CGFloat { detailField == nil ? 52 : 60 }
+    var height: CGFloat { hasDetail ? 60 : 52 }
 
     override func layout() {
         super.layout()
         keycap.frame = NSRect(x: 14, y: (bounds.height - 22) / 2, width: 22, height: 22)
         var right = bounds.width - 14
-        if let recommended {
-            right -= recommended.frame.width + 10
-            recommended.frame.origin = NSPoint(x: bounds.width - 14 - recommended.frame.width, y: (bounds.height - recommended.frame.height) / 2)
+        if isRecommended {
+            right -= recommendedPill.frame.width + 10
+            recommendedPill.frame.origin = NSPoint(x: bounds.width - 14 - recommendedPill.frame.width, y: (bounds.height - recommendedPill.frame.height) / 2)
         }
         let x: CGFloat = 14 + 22 + 12
-        if let detailField {
+        if hasDetail {
             titleField.frame = NSRect(x: x, y: 11, width: right - x, height: 18)
             detailField.frame = NSRect(x: x, y: 31, width: right - x, height: 16)
         } else {
@@ -670,7 +688,7 @@ final class OptionRowView: ClickableView {
         (hovered || pressed ? PanelStyle.wash : NSColor.clear).setFill()
         PanelStyle.raised.setFill(); p.fill()
         if hovered || pressed { PanelStyle.wash.setFill(); p.fill() }
-        if recommended != nil { PanelStyle.green.withAlphaComponent(0.35).setStroke(); p.lineWidth = 1; p.stroke() }
+        if isRecommended { PanelStyle.green.withAlphaComponent(0.35).setStroke(); p.lineWidth = 1; p.stroke() }
     }
 }
 
@@ -808,6 +826,9 @@ final class HintPill: NSView {
     private var pending: InboxCardController.Pending?
     private var progress: CGFloat = 0
     private var undoButton: ClickableView?
+    /// What the segments were made for: the same hint again keeps them (an agent's screen renders a few times a second
+    /// while a reply streams in).
+    private var shown: (kind: String, count: Int, pending: InboxCardController.Pending?, receipt: String?, strings: [String: String])?
     var onUndo: (() -> Void)?
     override var isFlipped: Bool { true }
 
@@ -831,6 +852,8 @@ final class HintPill: NSView {
     }
 
     func render(kind: String, count: Int, pending: InboxCardController.Pending?, receipt: String?, strings: [String: String]) {
+        if let s = shown, s.kind == kind, s.count == count, s.pending == pending, s.receipt == receipt, s.strings == strings { return }
+        shown = (kind, count, pending, receipt, strings)
         for s in segments { s.removeFromSuperview() }
         segments = []
         undoButton = nil

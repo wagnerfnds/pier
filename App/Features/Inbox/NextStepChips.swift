@@ -160,7 +160,7 @@ struct SessionNextSteps: View {
         let s = vm.session
         VStack(alignment: .leading, spacing: 8) {
             if s.agentState == .finished, !vm.isRunning, !vm.isWaiting, !vm.isClosed, vm.store.pending.isEmpty,
-               let since = s.stateSince, let reply = Self.lastReply(vm.store.displayItems) {
+               let since = s.stateSince, let reply = Self.lastReply(vm.store.items) {
                 NextStepChips(key: NextSteps.Key(box: vm.box, session: vm.name, since: since), place: s.execPlace, reply: reply,
                               task: s.title, client: vm.client, disabled: vm.sending, heading: "Próximos passos", recipient: s.agentShortName) { text in
                     // The undo window, like the Inbox's chips and the composer: "Desfazer" and nothing goes out.

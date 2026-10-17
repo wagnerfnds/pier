@@ -85,6 +85,32 @@ import Testing
         #expect(ms < 50)
     }
 
+    /// After the box read a long record afresh (a pierd restart, ten idle minutes) the screen fills the hole before the
+    /// fresh window: up to ten pages of 300 older items, merged on the main actor. One item at a time this rebuilt the
+    /// whole index after every insert (seconds for a long conversation); one pass is a few milliseconds.
+    @Test func olderPagesIntoALongConversation() {
+        var newer: [TranscriptItem] = []
+        for i in 0..<3000 { newer.append(TranscriptItem(kind: "text", id: "cl@\(100_000 + i).1", off: Int64(100_000 + i), text: "w")) }
+        var base = TranscriptStore()
+        base.apply(TranscriptPage(source: "claude", items: newer, next: 3000, gen: "g", file: "f"))
+        let pages: [[TranscriptItem]] = (0..<10).map { p in
+            (0..<300).map { i in
+                let off = Int64(100_000 - (p + 1) * 300 + i)
+                return TranscriptItem(kind: "text", id: "cl@\(off).1", off: off, text: "older")
+            }
+        }
+        let ms = median(5) {
+            var s = base
+            for pg in pages { s.prepend(pg) }
+        }
+        let before = median(3) {
+            var items = base.items
+            for pg in pages { items = MergeReference.oneByOne(items, pg) }
+        }
+        print("CHAT-BENCH ten_older_pages_into_3000_ms=\(String(format: "%.2f", ms)) one_by_one_ms=\(String(format: "%.1f", before))")
+        #expect(ms < 100)
+    }
+
     @Test func draftCheckAgainstTheRecord() {
         let items = Self.window() + [TranscriptItem(kind: "user", id: "u", off: 99_999, text: "go"),
                                      TranscriptItem(kind: "text", id: "x", off: 100_000, text: Self.longReply)]

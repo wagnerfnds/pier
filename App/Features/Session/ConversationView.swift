@@ -16,7 +16,8 @@ struct ConversationView: View {
     private var detached: Bool { !scrollState.followsBottom }
     @State private var scrolledUp = false
 
-    private var blocks: [ConversationBlock] { ConversationFold.blocks(vm.store.displayItems, live: vm.isRunning || vm.isWaiting) }
+    /// The view model's rows, folded once per change of the record (`SessionViewModel.blocks`), not on every draw.
+    private var blocks: [ConversationBlock] { vm.blocks }
 
     /// What the stack iterates: an id and where the block is. SwiftUI walks a ForEach's data again and again while
     /// it scrolls, and copying the blocks themselves (each holding whole transcript items) was a tenth of the main thread.
@@ -35,7 +36,7 @@ struct ConversationView: View {
     }
 
     var body: some View {
-        let blocks = self.blocks
+        let blocks = vm.blocks
         let rows = blocks.indices.map { Row(id: blocks[$0].id, index: $0) }
         let tailStart = Self.measuresTail ? ConversationTail.startIndex(in: blocks) : rows.endIndex
         ScrollViewReader { proxy in
@@ -158,7 +159,7 @@ struct ConversationView: View {
         }
         // Suggested replies for a finished turn (Inbox feature): only sent when the person taps one.
         SessionNextSteps(vm: vm).id("next-steps")
-        if vm.store.displayItems.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning, !vm.starting, !vm.showsStartingPrompt { emptyNote }
+        if vm.store.items.isEmpty, vm.store.pending.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning, !vm.starting, !vm.showsStartingPrompt { emptyNote }
         Color.clear.frame(height: 1).id("bottom")
             .onAppear {
                 if #available(iOS 18, *) { return }
@@ -238,7 +239,7 @@ struct ConversationView: View {
                 if scrolledUp { Task { await loadOlder(proxy) } }
             }
             .onChange(of: scrolledUp) { _, up in if up { Task { await loadOlder(proxy) } } }
-        } else if vm.loaded, vm.store.displayItems.count > 6 {
+        } else if vm.loaded, vm.store.items.count + vm.store.pending.count > 6 {
             HStack(spacing: 10) {
                 Rectangle().fill(Theme.stroke).frame(height: 1)
                 Text("Início da conversa").font(.caption2).foregroundStyle(Theme.textFaint).fixedSize()

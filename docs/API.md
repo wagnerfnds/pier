@@ -605,7 +605,7 @@ an idea through, plan what does not exist yet.
 | `location`, `dir`, `command`, `created`, `attached` (tmux clients), `exited` | `exited: true`: the program ended; the pane stays readable but takes no input (`session_exited`). Offer "remove" (DELETE) |
 | `agent` | `claude`, `codex`, ...; empty for shells |
 | `agent_state` | `idle` (at its prompt) \| `running` (working on a turn) \| `waiting` (needs a person) \| `finished` (turn ended); absent for shells and exited sessions. An agent with no hook data reads as `running` |
-| `state_since` | when it entered that state ("waiting 3m") |
+| `state_since` | when it entered that state ("waiting 3m"); each tool a working agent runs keeps it, while another question or another finished turn starts a new one |
 | `preset`, `turn`, `state_seq`, `fidelity` | `fidelity`: `hooks` (exact) \| `partial` \| `screen` (inferred) |
 | `title` | first prompt line (≤ 48 characters) or a rename; empty until there is one |
 | `queued` | prompts held until the agent is idle (4.5) |

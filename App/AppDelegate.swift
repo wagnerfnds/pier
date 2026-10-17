@@ -8,6 +8,8 @@ import Intents
 /// Remote notification plumbing (SwiftUI has no hook for the APNs token).
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // MetricKit and the main thread's watchdog before anything else, so a launch that hangs is already watched.
+        Diagnostics.start()
         // A push action can launch the app in the background: the categories have to exist before the UI does. Merged with
         // the categories a question's choices registered (NotificationChoices), never replacing them.
         Task { await Notifications.registerCategories() }

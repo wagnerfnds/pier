@@ -14,6 +14,8 @@ struct SettingsView: View {
     #if DEBUG
     /// `-openInvite 1` (with `-startTab settings`): opens "Levar para o iPhone".
     @State private var debugInvite = UserDefaults.standard.bool(forKey: "openInvite")
+    /// `-openDiagnostics 1` (with `-startTab settings`): opens Diagnóstico.
+    @State private var debugDiagnostics = UserDefaults.standard.bool(forKey: "openDiagnostics")
     #endif
 
     var body: some View {
@@ -171,6 +173,10 @@ struct SettingsView: View {
                 if let id = model.identity {
                     LabeledContent("Chave") { MonoText(id.fingerprint.short, size: 12) }.listRowBackground(Theme.card)
                 }
+                // The stalls and the system's reports, to send us when the app hangs (App/Core/Diagnostics.swift).
+                NavigationLink { DiagnosticsScreen() } label: { Label("Diagnóstico", systemImage: "stethoscope") }
+                    .accessibilityIdentifier("settings-diagnostics")
+                    .listRowBackground(Theme.card)
             }
         }
         .scrollContentBackground(.hidden)
@@ -192,6 +198,7 @@ struct SettingsView: View {
         .task { await model.notifications.refreshStatus() }
         #if DEBUG
         .navigationDestination(isPresented: $debugInvite) { InviteDeviceScreen() }
+        .navigationDestination(isPresented: $debugDiagnostics) { DiagnosticsScreen() }
         #endif
     }
 }
@@ -296,6 +303,9 @@ struct MacSurfaceSettingsSection: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+        // On screen, coming back to the app reads the permissions at once (`MenuBarBridge`); elsewhere it does not.
+        .onAppear { bridge.settingsRowsShown += 1 }
+        .onDisappear { bridge.settingsRowsShown = max(0, bridge.settingsRowsShown - 1) }
     }
 
     /// Granted: a green check and a word; missing: the explanation, "Permitir…" (the system's dialog) and the pane.

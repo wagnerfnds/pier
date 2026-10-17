@@ -77,10 +77,18 @@ extension PanelScreenView {
     private var anchorFrame = NSRect.zero
     private var edge = EdgeSide.right
     private weak var screen: NSScreen?
+    /// The screen the anchor was given on (its display and its visible frame): the panel moves when either changes.
+    private var anchorScreen: (id: Int, visible: NSRect)?
     private var clickAway: Any?
     private var data: [String: Any] = [:]
     /// The screen the app asked for (a task just started): applied on the next render.
     private var pendingStarted: String?
+    /// A render is under way: a screen's own "re-lay me out" waits for the placing at its end.
+    private var rendering = false
+    /// The frame the panel was last given (an animation may still be on its way there), and when its size last animated
+    /// (system uptime).
+    private var placedFrame = NSRect.zero
+    private var lastAnimation: TimeInterval = -.infinity
 
     var isOpen: Bool { navigator.isOpen && (panel.isVisible || offscreen) }
     var topScreen: PanelScreen? { navigator.top }
@@ -105,8 +113,9 @@ extension PanelScreenView {
 
     // MARK: data
 
-    /// The latest payload from the app (`updateSurface:`): every screen reads what it needs from it.
-    func update(_ data: [String: Any]) {
+    /// The latest payload from the app (`updateSurface:`, every part of it) and the keys this push changed: every screen
+    /// reads what it needs from it, and the one on top draws again only when one of its keys changed.
+    func update(_ data: [String: Any], changed: Set<String>) {
         self.data = data
         if let started = data["started"] as? String, started != pendingStarted {
             pendingStarted = started
@@ -114,15 +123,18 @@ extension PanelScreenView {
             if !panel.isVisible { open() } else { render() }
             return
         }
-        if let d = data["dictation"] as? [String: Any], let target = d["target"] as? String {
+        if changed.contains("dictation"), let d = data["dictation"] as? [String: Any], let target = d["target"] as? String {
             current?.dictation(target: target, active: d["active"] as? Bool ?? false, text: d["text"] as? String ?? "")
         }
-        // An agent that left the list while shown: back to the list.
-        if case .agent(let id)? = navigator.top, let agents = data["agents"] as? [[String: Any]],
-           !agents.contains(where: { ($0["id"] as? String) == id }), data["agentDetail"] == nil {
+        // An agent that left the list while shown: back to the list. (A task just started may be listed a moment later.)
+        let top = navigator.top
+        if case .agent(let id)? = top, !changed.isDisjoint(with: ["agents", "agentDetail", "started"]),
+           let agents = data["agents"] as? [[String: Any]], !agents.contains(where: { ($0["id"] as? String) == id }),
+           data["agentDetail"] == nil, data["started"] as? String != id {
             navigator.agentGone(id)
         }
-        if isOpen { render() }
+        guard isOpen else { return }
+        if navigator.top != top || !((current as? PanelDataSink)?.reads ?? []).isDisjoint(with: changed) { render() }
     }
 
     // MARK: navigation
@@ -210,6 +222,8 @@ extension PanelScreenView {
 
     private func render() {
         guard let top = navigator.top else { return }
+        rendering = true
+        defer { rendering = false }
         let v = view(for: top)
         if let c = current, c !== v {
             // One screen at a time: the others are dropped (an agent view is rebuilt when it comes back).
@@ -221,18 +235,30 @@ extension PanelScreenView {
         place()
     }
 
-    /// A screen's content changed size (text typed, rows added): the panel follows.
+    /// A screen's content changed size (text typed, rows added): the panel follows (once, at the end of a render that
+    /// is under way).
     func relayout() {
-        guard isOpen else { return }
+        guard isOpen, !rendering else { return }
         place()
     }
 
-    /// Beside the tab, the pointer aimed at the tab's Inbox button (or the tab itself); kept on the screen.
+    /// Beside the tab, the pointer aimed at the tab's Inbox button (or the tab itself); kept on the screen. The tab lays
+    /// itself out on every change it draws: the panel is placed again only when what it hangs from moved.
     func anchor(to frame: NSRect, edge: EdgeSide, screen: NSScreen) {
+        let on = (id: screen.displayID, visible: screen.visibleFrame)
+        let moved = frame != anchorFrame || edge != self.edge || anchorScreen.map { $0.id != on.id || $0.visible != on.visible } ?? true
         anchorFrame = frame
         self.edge = edge
         self.screen = screen
-        if panel.isVisible { place() }
+        anchorScreen = on
+        if moved, panel.isVisible { place() }
+    }
+
+    /// The agent on screen is at work (its conversation's live part: a reply being written).
+    private var replyStreaming: Bool {
+        guard case .agent(let id)? = navigator.top, let d = data["agentDetail"] as? [String: Any], d["id"] as? String == id,
+              let c = d["conversation"] as? [String: Any] else { return false }
+        return c["live"] != nil
     }
 
     private func place() {
@@ -246,14 +272,31 @@ extension PanelScreenView {
         x = min(max(x, visible.minX), visible.maxX - size.width)
         root.pointerCenterY = anchorFrame.midY - y
         let frame = NSRect(x: x, y: y, width: size.width, height: size.height)
-        if panel.isVisible, !SurfaceStyle.reduceMotion, panel.frame.size != frame.size {
+        let now = ProcessInfo.processInfo.systemUptime
+        // Already there, or an animation is on its way there.
+        if frame == placedFrame, panel.frame == frame || now - lastAnimation < 0.5 { return }
+        let resized = frame.size != placedFrame.size
+        placedFrame = frame
+        // A new size animates, except while a reply streams in (the panel follows it a few words at a time) or within
+        // half a second of the last animation (a burst of changes jumps instead of queueing animations).
+        if panel.isVisible, !SurfaceStyle.reduceMotion, resized, !replyStreaming, now - lastAnimation >= 0.5 {
+            lastAnimation = now
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.26
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.04)
                 panel.animator().setFrame(frame, display: true)
             }
+        } else if now - lastAnimation < 0.5 {
+            // The last animation may still run: a zero-length one replaces it (a plain setFrame would be undone by it).
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0
+                panel.animator().setFrame(frame, display: false)
+            }
+            root.needsDisplay = true
         } else {
-            panel.setFrame(frame, display: true)
+            // Not drawn on the spot: the panel is drawn with the rest of the window's changes on the next pass.
+            panel.setFrame(frame, display: false)
+            root.needsDisplay = true
         }
     }
 
@@ -309,6 +352,8 @@ extension PanelScreenView {
 
 /// A screen that takes the app's payload.
 @MainActor protocol PanelDataSink: AnyObject {
+    /// The payload's keys `apply` reads: a push that changed none of them leaves the screen as it is.
+    var reads: Set<String> { get }
     func apply(_ data: [String: Any], strings: [String: String])
 }
 
@@ -322,7 +367,7 @@ final class PanelRootView: NSView {
     var onClose: (() -> Void)?
     var onBackgroundClick: (() -> Void)?
     var pointerY: CGFloat = margin + 30
-    var pointerCenterY: CGFloat = 0 { didSet { needsDisplay = true } }
+    var pointerCenterY: CGFloat = 0 { didSet { if pointerCenterY != oldValue { needsDisplay = true } } }
     private(set) var contentHeight: CGFloat = 0
 
     private var edge = EdgeSide.right
@@ -380,12 +425,12 @@ final class PanelRootView: NSView {
             screenView = screen
             scroll.documentView = screen
         }
-        self.title.stringValue = title
+        if self.title.stringValue != title { self.title.stringValue = title }
         back.isHidden = !canGoBack
         back.accessibilityTitle = strings["back"] ?? "Voltar"; back.toolTip = back.accessibilityTitle
         close.accessibilityTitle = strings["close"] ?? "Fechar"; close.toolTip = close.accessibilityTitle
+        // The panel's own drawing (its shape, the header's hairline) follows its size, not the screen in it (`measure`).
         needsLayout = true
-        needsDisplay = true
     }
 
     /// Lays the screen out for the panel's width; the panel's size (chrome and pointer included), capped at `maxHeight`.
@@ -394,6 +439,7 @@ final class PanelRootView: NSView {
     static let pad: CGFloat = PanelStyle.radius
 
     func measure(width: CGFloat, maxHeight: CGFloat, edge: EdgeSide) -> NSSize {
+        let drawn = (self.edge, panelWidth, panelHeight)
         self.edge = edge
         panelWidth = width
         let inner = width - Self.pad * 2
@@ -401,6 +447,7 @@ final class PanelRootView: NSView {
         let wanted = headerHeight + contentHeight + 22
         panelHeight = min(wanted, maxHeight)
         needsLayout = true
+        if drawn != (edge, width, panelHeight) { needsDisplay = true }
         return NSSize(width: width + Self.margin * 2 + Self.pointer.width, height: panelHeight + Self.margin * 2)
     }
 

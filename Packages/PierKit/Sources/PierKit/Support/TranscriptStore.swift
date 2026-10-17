@@ -39,7 +39,21 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
     /// Gap filling stops at 10 pages.
     public static let maxGapPages = 10
 
+    /// Moves whenever what is drawn changes (items or pending prompts), not when only the cursor does: a screen redoes
+    /// its rows from the items by it, and most polls move only `next`. Not kept on disk, and no part of equality.
+    public private(set) var revision = 0
+
     public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case items, next, gen, file, source, reason, signals, crew, artifacts, last, hasMoreBefore, pending, gap
+    }
+
+    public static func == (a: TranscriptStore, b: TranscriptStore) -> Bool {
+        a.items == b.items && a.next == b.next && a.gen == b.gen && a.file == b.file && a.source == b.source
+            && a.reason == b.reason && a.signals == b.signals && a.crew == b.crew && a.artifacts == b.artifacts
+            && a.last == b.last && a.hasMoreBefore == b.hasMoreBefore && a.pending == b.pending && a.gap == b.gap
+    }
 
     public var since: Int { next }
     /// Items to draw: the record plus not-yet-echoed prompts.
@@ -52,10 +66,19 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
     public var openQuestion: TranscriptItem? { items.last(where: { $0.kind == "question" && $0.done != true && $0.answers == nil }) }
 
     /// Forget everything (another session, or the box was switched).
-    public mutating func reset() { self = TranscriptStore() }
+    public mutating func reset() {
+        let r = revision
+        self = TranscriptStore()
+        revision = r &+ 1
+    }
 
-    /// Merge one answer of `transcript(since:gen:)`.
-    public mutating func apply(_ p: TranscriptPage) {
+    /// Merge one answer of `transcript(since:gen:)`. True when it changed anything: most polls bring nothing new, and a
+    /// caller that keeps the store in observable state writes it only then (comparing two whole stores cost a pass over
+    /// every item on each poll).
+    @discardableResult
+    public mutating func apply(_ p: TranscriptPage) -> Bool {
+        let was = Cursor(self)
+        var changed = false
         source = p.source
         reason = p.reason
         // Another conversation (/clear, a new agent run): drop what we hold and take the page as it is.
@@ -66,9 +89,11 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
             gap = nil
             next = 0
             fresh = true
+            changed = true
         }
         if p.reset == true || fresh {
             // The box read the record afresh and answered with the whole window, from `start` (absent = 0).
+            let held = items
             let start = fresh ? 0 : (p.start ?? 0)
             let older = items.filter { ($0.off ?? 0) < start }
             items = older
@@ -79,12 +104,14 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
                 gap = nil
             }
             if older.isEmpty { hasMoreBefore = p.truncated ?? false }
+            if items != held { changed = true }
         } else {
             let wasEmpty = items.isEmpty
-            merge(p.items)
+            if merge(p.items) { changed = true }
             if wasEmpty { hasMoreBefore = p.truncated ?? false }
         }
-        settlePending(by: p.items)
+        if settlePending(by: p.items) { changed = true }
+        if changed { revision &+= 1 }
         next = p.next ?? next
         if let g = p.gen { gen = g }
         if let f = p.file { file = f }
@@ -92,15 +119,41 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
         crew = p.crew ?? crew
         if let a = p.artifacts { artifacts = a }
         if let l = p.last { last = l }
+        return changed || Cursor(self) != was
+    }
+
+    /// Everything `apply` may change besides the items and the pending prompts, to tell whether a poll changed anything.
+    private struct Cursor: Equatable {
+        let source: String?, reason: String?, next: Int, gen: String?, file: String?, signals: Signals?
+        let crew: [CrewMember], artifacts: [ArtifactRef], last: Int64?, hasMoreBefore: Bool, gap: Gap?
+        init(_ s: TranscriptStore) {
+            (source, reason, next, gen, file, signals) = (s.source, s.reason, s.next, s.gen, s.file, s.signals)
+            (crew, artifacts, last, hasMoreBefore, gap) = (s.crew, s.artifacts, s.last, s.hasMoreBefore, s.gap)
+        }
+    }
+
+    /// Keeps the newest `n` items. A conversation left open for hours (the Mac keeps sessions on screen all day) would
+    /// otherwise hold, fold and redraw everything it ever read; what goes is older history, which scrolling up
+    /// ("Mensagens anteriores") reads from the box again. True when it dropped anything.
+    @discardableResult
+    public mutating func trim(keeping n: Int) -> Bool {
+        guard n >= 0, items.count > n else { return false }
+        items.removeFirst(items.count - n)
+        hasMoreBefore = true
+        revision &+= 1
+        // A hole after a reset sits between the older items held and the fresh window: once those older items are gone
+        // there is no hole to fill, only more history before.
+        if let g = gap, let first = items.first?.off, first > g.after { gap = nil }
+        return true
     }
 
     /// Spec helper: items from a `before` page, oldest first. Merges them by offset (a plain prepend while scrolling up).
-    public mutating func prepend(_ older: [TranscriptItem]) { merge(older) }
+    public mutating func prepend(_ older: [TranscriptItem]) { if merge(older) { revision &+= 1 } }
 
     /// Merge a `transcriptBefore` page (scroll-up or gap fill). Returns the next `before` to request while a gap is still open.
     @discardableResult
     public mutating func absorbHistory(_ page: TranscriptPage) -> Int64? {
-        merge(page.items)
+        if merge(page.items) { revision &+= 1 }
         if gap == nil {
             hasMoreBefore = page.more ?? false
             return nil
@@ -123,15 +176,22 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
     public mutating func addPendingUser(_ text: String, id: String = "pending-\(UUID().uuidString)") -> TranscriptItem {
         let item = TranscriptItem(kind: "user", id: id, text: text, pending: true)
         pending.append(item)
+        revision &+= 1
         return item
     }
 
-    public mutating func removePending(id: String) { pending.removeAll { $0.id == id } }
+    public mutating func removePending(id: String) {
+        let count = pending.count
+        pending.removeAll { $0.id == id }
+        if pending.count != count { revision &+= 1 }
+    }
 
     // MARK: merging
 
-    private mutating func settlePending(by incoming: [TranscriptItem]) {
-        guard !pending.isEmpty else { return }
+    /// True when an echo settled a pending prompt.
+    private mutating func settlePending(by incoming: [TranscriptItem]) -> Bool {
+        guard !pending.isEmpty else { return false }
+        let count = pending.count
         for it in incoming {
             let echo: String
             switch it.kind {
@@ -142,6 +202,7 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
             }
             if let i = pending.firstIndex(where: { Self.echoes(echo, sent: $0.text ?? "") }) { pending.remove(at: i) }
         }
+        return pending.count != count
     }
 
     /// Whether a line of the record is the prompt that was sent. The box keeps a prompt's first 4000 bytes and marks the
@@ -164,32 +225,75 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
         s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 
-    /// Upsert by `id` (replace in place), else insert by `off` (append when it has none or is the newest).
-    private mutating func merge(_ incoming: [TranscriptItem]) {
-        guard !incoming.isEmpty else { return }
-        var index: [String: Int] = [:]
-        for (i, it) in items.enumerated() { index[it.id] = i }
-        var needsReindex = false
+    /// Upsert by `id` (replace in place), else insert by `off` (append when it has none or is the newest). One pass: the
+    /// index is built once and the items older than the newest held go in together at the end. Inserted one at a time
+    /// they rebuilt the whole index after each one, and a page of history (gap filling after the box read the record
+    /// afresh, scrolling up) took seconds on the main thread in a long conversation. True when anything changed.
+    @discardableResult
+    private mutating func merge(_ incoming: [TranscriptItem]) -> Bool {
+        guard !incoming.isEmpty else { return false }
+        var index = Self.positions(of: items)
+        var changed = false
+        var older: [TranscriptItem] = []
+        var olderAt: [String: Int] = [:]
         for it in incoming {
-            if needsReindex {
-                index = [:]
-                for (i, x) in items.enumerated() { index[x.id] = i }
-                needsReindex = false
-            }
             if let i = index[it.id] {
-                items[i] = it
+                if items[i] != it { items[i] = it; changed = true }
                 continue
             }
+            // The same item twice in one answer: its last copy, in the first one's place.
+            if let j = olderAt[it.id] { older[j] = it; continue }
             if let off = it.off, let last = items.last?.off, off < last {
-                // older than the newest held item: insert in order
-                var at = items.count
-                while at > 0, let o = items[at - 1].off, o > off { at -= 1 }
-                items.insert(it, at: at)
-                needsReindex = true
-            } else {
-                index[it.id] = items.count
-                items.append(it)
+                olderAt[it.id] = older.count
+                older.append(it)
+                continue
             }
+            // An item without an offset (pierd leaves out offset 0) ends the search for an older item's place: the
+            // older ones that came before it go in first, as they did one at a time.
+            if it.off == nil, !older.isEmpty {
+                insertOlder(older)
+                older = []
+                olderAt = [:]
+                index = Self.positions(of: items)
+            }
+            index[it.id] = items.count
+            items.append(it)
+            changed = true
         }
+        guard !older.isEmpty else { return changed }
+        insertOlder(older)
+        return true
+    }
+
+    private static func positions(of items: [TranscriptItem]) -> [String: Int] {
+        var index: [String: Int] = [:]
+        index.reserveCapacity(items.count)
+        for (i, it) in items.enumerated() { index[it.id] = i }
+        return index
+    }
+
+    /// Puts items older than the newest held in place as inserting them one by one did: each goes right after the last
+    /// held item that has no offset or one not past its own, equal offsets in the order they came. Their offsets grow
+    /// along `sorted`, so that place only moves right: one pointer walks the list once from its end.
+    private mutating func insertOlder(_ older: [TranscriptItem]) {
+        let sorted = older.enumerated().sorted { a, b in
+            let x = a.element.off ?? 0, y = b.element.off ?? 0
+            return x != y ? x < y : a.offset < b.offset
+        }.map(\.element)
+        var at = [Int](repeating: 0, count: sorted.count)
+        var j = items.count - 1
+        for k in stride(from: sorted.count - 1, through: 0, by: -1) {
+            let off = sorted[k].off ?? 0
+            while j >= 0, let o = items[j].off, o > off { j -= 1 }
+            at[k] = j + 1
+        }
+        var out: [TranscriptItem] = []
+        out.reserveCapacity(items.count + sorted.count)
+        var k = 0
+        for i in 0...items.count {
+            while k < sorted.count, at[k] == i { out.append(sorted[k]); k += 1 }
+            if i < items.count { out.append(items[i]) }
+        }
+        items = out
     }
 }

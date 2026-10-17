@@ -28,8 +28,11 @@ final class SessionViewModel {
     var store = TranscriptStore() {
         didSet {
             // A command/tool can be replaced at the same cursor. Observe rendered content, including pending
-            // prompts, without comparing the transcript from a SwiftUI body or reacting to metadata-only polls.
-            if oldValue.items != store.items || oldValue.pending != store.pending {
+            // prompts, without reacting to metadata-only polls: the store's own revision says when what is drawn
+            // changed (comparing every item here ran on every poll's write), and the counts and the newest id tell
+            // one store from another (one read from disk).
+            if oldValue.revision != store.revision || oldValue.items.count != store.items.count
+                || oldValue.pending.count != store.pending.count || oldValue.items.last?.id != store.items.last?.id {
                 conversationContentRevision &+= 1
             }
         }
@@ -242,10 +245,51 @@ final class SessionViewModel {
     /// What to offer in the "Revisar" card at the end of a finished turn: this turn's edits, else uncommitted changes.
     var reviewCard: (changes: TurnChanges, uncommittedOnly: Bool)? {
         guard !isRunning, !isWaiting, reviewTarget != nil else { return nil }
-        if let t = TurnChanges.lastTurn(store.displayItems) { return (t, false) }
+        if let t = folded.lastTurn { return (t, false) }
         if let u = uncommitted { return (u, true) }
         return nil
     }
+
+    /// The conversation as rows (`ConversationFold`): worked out once per change of the record, not on every draw. A
+    /// screen draws again on every observable change it reads, several times a second while an agent works, and folding
+    /// a long conversation each time held the main thread.
+    var blocks: [ConversationBlock] { folded.blocks }
+
+    /// What the rows were folded from: the store's revision (it moves when items or pending prompts change, not when a
+    /// poll only moves the cursor), plus what tells one store from another (one read from disk, a reset).
+    private struct FoldKey: Equatable {
+        let revision: Int
+        let count: Int
+        let pending: Int
+        let first: String?
+        let last: String?
+        let live: Bool
+    }
+    private struct Folded {
+        let key: FoldKey
+        let blocks: [ConversationBlock]
+        let lastTurn: TurnChanges?
+    }
+    @ObservationIgnored private var foldCache: Folded?
+
+    private var folded: Folded {
+        // Read through the observable property, so whoever draws these rows follows the record's changes.
+        let store = self.store
+        let key = FoldKey(revision: store.revision, count: store.items.count, pending: store.pending.count,
+                          first: store.items.first?.id, last: store.items.last?.id, live: isRunning || isWaiting)
+        if let f = foldCache, f.key == key { return f }
+        let items = store.displayItems
+        let f = Perf.interval("session.fold") {
+            Folded(key: key, blocks: ConversationFold.blocks(items, live: key.live), lastTurn: TurnChanges.lastTurn(items))
+        }
+        foldCache = f
+        return f
+    }
+
+    /// Past this many items a conversation keeps only its newest `keptItems` in memory (scrolling up reads the rest
+    /// from the box again): a session left open all day on the Mac would otherwise grow without end.
+    private static let trimAbove = 6000
+    private static let keptItems = 4000
 
     private func refreshUncommitted() async {
         let s = session
@@ -337,7 +381,7 @@ final class SessionViewModel {
                     if grew || d.status?.word != draft?.status?.word || d.agent != draft?.agent { draft = d }
                     unchanged = grew ? 0 : unchanged + 1
                 case .failure(let e):
-                    if LinkWatch.isLinkFailure(e) { await noteLinkFailure() }
+                    if LinkWatch.isLinkFailure(e) { await noteFailure([e]) }
                     unchanged += 1
                 }
             } else if draft != nil {
@@ -365,8 +409,29 @@ final class SessionViewModel {
 
     private func linkAnswered() {
         link.succeeded()
+        slowPolls = 0
         if linkTrouble { linkTrouble = false }
     }
+
+    /// Requests that failed on the way to the box. Ones that only ran past their deadline may mean a box that is slow
+    /// (the first read of a long record, git over every worktree) rather than a dead connection: a quick question to the
+    /// box tells them apart first, because dropping the connection restarts every terminal stream on it (each replays
+    /// its scrollback) and the event stream.
+    private func noteFailure(_ errors: [Error]) async {
+        if errors.allSatisfy({ ($0 as? PierError).map { if case .timeout = $0 { true } else { false } } ?? false }) {
+            slowPolls += 1
+            let client = client
+            // Answering a quick question while the polls keep running out of time, three in a row: the connection is
+            // dialed again anyway (the conversation would otherwise stay as it was with nothing said).
+            if slowPolls < 3, case .success = await Self.attempt(.seconds(3), { try await client.info() }) {
+                linkAnswered()
+                return
+            }
+        }
+        slowPolls = 0
+        await noteLinkFailure()
+    }
+    @ObservationIgnored private var slowPolls = 0
 
     /// A request failed on the connection: say so, and after a second one drop the connection so the next request dials
     /// again (address and relay, whichever answers) instead of waiting for the PING watchdog.
@@ -423,14 +488,14 @@ final class SessionViewModel {
         if outcomes.contains(where: { $0 == nil }) {
             linkAnswered()
         } else if !outcomes.isEmpty, outcomes.allSatisfy({ $0.map(LinkWatch.isLinkFailure) ?? false }) {
-            await noteLinkFailure()
+            await noteFailure(outcomes.compactMap { $0 })
         }
 
         // Observable state is written only when it changed: every write re-renders the screen, and this runs every 1.5 s.
         if case .success(let p)? = p {
             var next = store
-            next.apply(p)
-            if next != store {
+            if Perf.interval("session.apply", { next.apply(p) }) {
+                if next.items.count > Self.trimAbove { next.trim(keeping: Self.keptItems) }
                 store = next
                 TranscriptCache.shared.put(next, box: box, session: name, persist: !isMockBox)
             }
@@ -500,13 +565,21 @@ final class SessionViewModel {
         for id in pendingSentAt.keys where !store.pending.contains(where: { $0.id == id }) { pendingSentAt[id] = nil }
     }
 
+    /// Reads the pages of a hole left by a reset (the box read the record afresh: a pierd restart, ten idle minutes), then
+    /// merges them in one write: one redraw for the whole hole instead of one per page.
     private func fillGap() async {
-        var guardN = 0
-        while let before = store.gapBefore, guardN < TranscriptStore.maxGapPages {
-            guardN += 1
+        var pages: [TranscriptPage] = []
+        var ahead = store
+        while let before = ahead.gapBefore, pages.count < TranscriptStore.maxGapPages {
             guard let page = try? await client.transcriptBefore(session: name, before: before, limit: 300) else { break }
-            store.absorbHistory(page)
+            pages.append(page)
+            ahead.absorbHistory(page)
         }
+        guard !pages.isEmpty else { return }
+        // The store as it is now (a message may have gone out meanwhile), with the pages in the order they were read.
+        var next = store
+        Perf.interval("session.gap") { for page in pages { next.absorbHistory(page) } }
+        store = next
         TranscriptCache.shared.put(store, box: box, session: name, persist: !isMockBox)
     }
 
@@ -517,7 +590,7 @@ final class SessionViewModel {
         loadingOlder = true
         defer { loadingOlder = false }
         if let page = try? await client.transcriptBefore(session: name, before: off, limit: 120) {
-            store.absorbHistory(page)
+            Perf.interval("session.older") { store.absorbHistory(page) }
             TranscriptCache.shared.put(store, box: box, session: name, persist: !isMockBox)
         }
     }
@@ -688,8 +761,10 @@ final class SessionViewModel {
     /// A title written by Haiku on the box from the session's first message (`AITitler`), saved on the box.
     func generateTitle() async {
         guard !titling else { return }
-        let first = store.items.first { $0.kind == "user" && !($0.text ?? "").isEmpty }?.text
-        guard let prompt = first ?? session.title, !prompt.isEmpty, let place = session.execPlace else {
+        // The record's first prompt, when the conversation still holds its start; else the session's own title.
+        let first = store.hasMoreBefore ? nil : store.items.first { $0.kind == "user" && !($0.text ?? "").isEmpty }?.text
+        guard let prompt = first ?? session.title ?? store.items.first(where: { $0.kind == "user" })?.text, !prompt.isEmpty,
+              let place = session.execPlace else {
             actionError = S("Não há uma mensagem para resumir em um título.")
             return
         }
