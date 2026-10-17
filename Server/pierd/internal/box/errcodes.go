@@ -66,15 +66,19 @@ const (
 var ErrSessionExited = errors.New("the session's program has ended, so it can't take input; start it again")
 
 // NotSubmittedError is a prompt the agent never took (submit.go): typed,
-// it stayed in the agent's input box through two Enters. Kept says it is
-// still there because the box could not be cleared, so whoever sent it must
-// not send it again from scratch (it would go twice once someone presses
-// Enter there).
-type NotSubmittedError struct{ Kept bool }
+// it never showed in the agent's input box, or stayed there through two
+// Enters. Kept says it is still there because the box could not be cleared,
+// so whoever sent it must not send it again from scratch (it would go twice
+// once someone presses Enter there). Leftover says this one was not typed at
+// all: the box still holds an earlier prompt pierd could not send nor clear.
+type NotSubmittedError struct{ Kept, Leftover bool }
 
 func (e *NotSubmittedError) Error() string {
-	if e.Kept {
+	switch {
+	case e.Kept:
 		return "the agent didn't take the prompt, which is still in its input box: press Enter in its terminal to send it, or clear it there"
+	case e.Leftover:
+		return "the agent's input box still holds an earlier prompt that pierd could not send, so this one was not typed: send or clear that one in the agent's terminal, then send this again"
 	}
 	return "the agent didn't take the prompt, so nothing was sent; try again"
 }

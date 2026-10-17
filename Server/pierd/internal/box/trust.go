@@ -153,13 +153,6 @@ func (b *Box) trustIn(home, agent, configDir string, paths []string) {
 		} else if changed {
 			logf("pierd: Claude Code trusts %s (%s)", strings.Join(paths, ", "), config)
 		}
-		settings := configDir
-		if settings == "" {
-			settings = filepath.Join(home, ".claude")
-		}
-		if _, err := integrations.PrepareClaudeSettings(filepath.Join(settings, "settings.json"), ""); err != nil {
-			logf("pierd: %s: %v", filepath.Join(settings, "settings.json"), err)
-		}
 	case "codex":
 		dir := configDir
 		if dir == "" {

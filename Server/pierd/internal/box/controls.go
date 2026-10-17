@@ -76,6 +76,10 @@ var (
 	working = regexp.MustCompile(`(?i)esc to interrupt|esc to cancel`)
 )
 
+// bypassWarning heads the question Claude Code asks before it first runs in
+// bypass permissions, "Yes, I accept" or "No, exit".
+const bypassWarning = "Claude Code running in Bypass Permissions mode"
+
 // interruptSession answers POST /v1/sessions/{name}/interrupt: it presses
 // Esc, as stopping an agent at its terminal does, waits for the agent to
 // stop, and ends its turn in the ledger. Claude Code's hooks say nothing
@@ -230,6 +234,12 @@ func (b *Box) setMode(w http.ResponseWriter, r *http.Request) error {
 		}
 		if adapters.ScreenState(screen) == "waiting" {
 			return "", httpError{http.StatusConflict, "the agent is showing a question; answer it first"}
+		}
+		if strings.Contains(screen, bypassWarning) {
+			// Asked once per account where its settings do not accept it
+			// already (skipDangerousModePermissionPrompt): never answered
+			// with keys from here.
+			return "", httpError{http.StatusConflict, "Claude Code asks in its screen to confirm bypass permissions (once for this account): answer it there"}
 		}
 		return claudeControls(screen).Mode, nil
 	}

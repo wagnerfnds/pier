@@ -7,17 +7,24 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"pier/pierd/internal/agentpath"
 )
 
 // fakeAgentCLIs puts stand-ins for claude and codex first on PATH, as the
 // box finds agents, and gives the test a scratch home for their configs.
-func fakeAgentCLIs(t *testing.T, claudeVersion string) string {
+// The claude one says its version, and lists the bypass flag in its --help
+// when bypass says it knows it.
+func fakeAgentCLIs(t *testing.T, claudeVersion string, bypass bool) string {
 	t.Helper()
 	bin := t.TempDir()
+	help := "Usage: claude [options] [command] [prompt]"
+	if bypass {
+		help += "\n  " + claudeBypassFlag + "  Enable bypassing all permission checks as an option"
+	}
 	for name, version := range map[string]string{"claude": claudeVersion + " (Claude Code)", "codex": "codex-cli 0.160.1"} {
-		script := "#!/bin/sh\n[ \"$1\" = --version ] && echo '" + version + "' && exit 0\nexec sleep 60\n"
+		script := "#!/bin/sh\n[ \"$1\" = --version ] && echo '" + version + "' && exit 0\n[ \"$1\" = --help ] && printf '%s\\n' '" + help + "' && exit 0\nexec sleep 60\n"
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -82,7 +89,7 @@ func TestTrustPaths(t *testing.T) {
 // A project the person registers, and every worktree pierd makes in it, is
 // trusted in the agents' own configs before any agent starts there.
 func TestProjectsAndWorktreesAreTrustedUpFront(t *testing.T) {
-	home := fakeAgentCLIs(t, "2.1.302")
+	home := fakeAgentCLIs(t, "2.1.302", true)
 	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir() })
 	repo := gitRepo(t)
 	if st := call(t, c, "POST", "/v1/locations", "", map[string]string{"name": "cal", "path": repo}, nil); st != 200 {
@@ -103,17 +110,17 @@ func TestProjectsAndWorktreesAreTrustedUpFront(t *testing.T) {
 	if n := strings.Count(string(raw), "[projects."+tomlQuote(repo)+"]"); n != 1 {
 		t.Fatalf("the project is in Codex's config %d times:\n%s", n, raw)
 	}
-	// Claude Code's own settings: switching to bypass never stops at its warning.
-	settings, _ := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
-	if !strings.Contains(string(settings), `"skipDangerousModePermissionPrompt": true`) {
-		t.Fatalf("settings = %s", settings)
+	// The person's own Claude Code settings are not touched: accepting the
+	// bypass warning is theirs (only accounts pierd made get it).
+	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatalf("the built-in account's settings were written: %v", err)
 	}
 }
 
 // An agent started in a chat's folder is trusted there, in the account it
 // runs on.
 func TestAnAgentIsTrustedWhereItStarts(t *testing.T) {
-	home := fakeAgentCLIs(t, "2.1.302")
+	home := fakeAgentCLIs(t, "2.1.302", true)
 	bx := &Box{}
 	dir := t.TempDir()
 	real, _ := filepath.EvalSymlinks(dir)
@@ -131,7 +138,7 @@ func TestAnAgentIsTrustedWhereItStarts(t *testing.T) {
 // projects already on the box; signing it in is a terminal (no agent) in a
 // folder Claude Code trusts, opening on /login.
 func TestANewAccountIsReadyAndSignsInInATerminal(t *testing.T) {
-	fakeAgentCLIs(t, "2.1.302")
+	fakeAgentCLIs(t, "2.1.302", true)
 	var bx *Box
 	c, _ := servedBox(t, func(b *Box) { b.StateDir = t.TempDir(); b.Exe = "/opt/pier/pierd"; bx = b })
 	repo := gitRepo(t)
@@ -196,8 +203,10 @@ func TestClaudeStartsWithBypassAmongItsModes(t *testing.T) {
 	saved := agentFinder
 	t.Cleanup(func() { agentFinder = saved })
 	claude := AgentPreset{ID: "claude", Command: "claude", ModelFlag: "--model"}
-	for version, want := range map[string]bool{"2.1.302": true, "3.0.1": true, "2.0.77": false} {
-		fakeAgentCLIs(t, version)
+	// Listed in its --help or not: a Claude Code without the flag would not
+	// start with it.
+	for version, want := range map[string]bool{"2.1.302": true, "3.0.1": true, "2.1.40": false, "2.0.77": false} {
+		fakeAgentCLIs(t, version, want)
 		finder := &agentpath.Finder{NoCache: true, NoNPM: true, SystemDirs: []string{}}
 		agentFinder = func() *agentpath.Finder { return finder }
 		got, err := AgentCommandWith(claude, "fix it", "opus", "")
@@ -212,5 +221,35 @@ func TestClaudeStartsWithBypassAmongItsModes(t *testing.T) {
 	got, _ := AgentCommandWith(AgentPreset{ID: "claude", Command: "claude --dangerously-skip-permissions"}, "", "", "")
 	if strings.Count(got, "skip-permissions") != 1 {
 		t.Errorf("%q", got)
+	}
+}
+
+// Where an account has not accepted bypass yet, Claude Code asks before it
+// first goes into it: the app's mode switch stops there, pressing nothing.
+func TestTheModeSwitchStopsAtClaudesBypassWarning(t *testing.T) {
+	var bx *Box
+	c, _ := servedBox(t, func(b *Box) { bx = b })
+	dir := t.TempDir()
+	keys := filepath.Join(dir, "keys")
+	agent := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\nprintf ' WARNING: Claude Code running in Bypass Permissions mode\\n\\n ❯ 1. No, exit\\n   2. Yes, I accept\\n'\n" +
+		"stty raw -echo\nwhile :; do c=$(dd bs=1 count=1 2>/dev/null); printf '%s' \"$c\" >> '" + keys + "'; done\n"
+	if err := os.WriteFile(agent, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bx.Sessions.Create(t.Context(), "bypass", "", dir, agent, nil); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the warning", 5*time.Second, func() bool {
+		s, _ := bx.Sessions.Screen(t.Context(), "bypass", 0)
+		return strings.Contains(s, bypassWarning)
+	})
+	var refused map[string]string
+	if st := call(t, c, "POST", "/v1/sessions/bypass/mode", "", map[string]string{"mode": "bypassPermissions"}, &refused); st != 409 || !strings.Contains(refused["error"], "confirm bypass") {
+		t.Fatalf("mode = %d %v", st, refused)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got, _ := os.ReadFile(keys); len(got) != 0 {
+		t.Fatalf("keys pressed into the warning: %q", got)
 	}
 }

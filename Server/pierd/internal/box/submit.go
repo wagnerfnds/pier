@@ -2,6 +2,7 @@ package box
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"time"
@@ -20,19 +21,29 @@ import (
 //  1. a held prompt (and one typed while the agent shows it is working)
 //     waits for a quiet screen: two reads quietGap apart the same, at most
 //     quietLimit;
-//  2. it is pasted, and pierd waits for the input box to show it (its first
-//     words, or the agent's own "[Pasted text #1]" for a long one);
+//  2. the box is read, the prompt pasted, and pierd waits for the box to
+//     show all of it: its last words (the line the cursor is on), the
+//     agent's own "[Pasted text #1]" for a long one, or, laid out in a way
+//     pierd does not read word for word, more text than the box held, the
+//     same over a few reads. No Enter before that: a paste that never shows
+//     is taken out again and fails with not_submitted;
 //  3. Enter, and pierd watches for it to go in: the agent's hooks say a
-//     prompt started, or the box let go of it;
-//  4. not gone and still in the box: one more Enter, after a quiet screen.
-//     Never a third, and never an Enter into a box that is already empty
-//     (that could send it twice);
+//     prompt started, or the box let go of it (two reads in a row, so a
+//     frame drawn halfway does not count);
+//  4. still in the box: one more Enter (after a quiet screen, unless the
+//     screen already held still). Never a third, and never an Enter into a
+//     box that is already empty (that could send it twice);
 //  5. still there: the box is cleared (Ctrl-U, line by line) and the send
 //     fails with not_submitted, saying whether the text stayed in the box
 //     (kept), so the app gives it back to the person only when it did not.
+//     Text pierd had to leave there is taken out before its next prompt to
+//     the session, or that one would be sent with it.
 //
-// An input box pierd cannot read (another agent, a layout it does not
-// know) is typed into as before, the paste then Enter.
+// A submit, once it types, runs to its end even when the caller goes away
+// (the app gives up on a send after 15 s, and asks again with the same
+// key): a paste is never left without its Enter, and the answer waits for
+// that same key (sendPrompt). An input box pierd cannot read (another agent,
+// a layout it does not know) is typed into as before, the paste then Enter.
 
 // submitTerm is the terminal a prompt is submitted into: the agent's tmux
 // pane, or a model of it in tests.
@@ -47,14 +58,23 @@ type submitTerm interface {
 var (
 	quietGap     = 120 * time.Millisecond
 	quietLimit   = 1500 * time.Millisecond
-	pasteShows   = 1500 * time.Millisecond
+	pasteShows   = 1500 * time.Millisecond // a paste of up to 64 KB; a second more for every 64 KB after
+	pasteMost    = 10 * time.Second
 	boxShows     = 300 * time.Millisecond
 	pastePoll    = 40 * time.Millisecond
 	pasteSettle  = 50 * time.Millisecond
-	submitWithin = 2500 * time.Millisecond
+	submitWithin = 2 * time.Second
 	submitPoll   = 60 * time.Millisecond
 	clearPoll    = 60 * time.Millisecond
+	clearLimit   = 1500 * time.Millisecond
+	// submitBudget bounds a whole submit once it types, whoever waits on it.
+	submitBudget = 30 * time.Second
 )
+
+// pasteWait is how long a paste of n bytes may take to show in the box.
+func pasteWait(n int) time.Duration {
+	return min(pasteShows+time.Duration(n/(64<<10))*time.Second, pasteMost)
+}
 
 // ledgerState is what the turn ledger says of the session: its state's Seq,
 // the state, and whether the agent's own hooks report there.
@@ -75,157 +95,200 @@ type submitParams struct {
 }
 
 // submitPrompt types text into an agent's input box and makes sure it is
-// sent, and answers when the Enter that sent it was pressed; a
-// *NotSubmittedError says it was not sent.
+// sent, and answers when its first Enter was pressed; a *NotSubmittedError
+// says it was not sent.
 func submitPrompt(ctx context.Context, t submitTerm, p submitParams, text string) (entered time.Time, err error) {
-	key := promptKey(text)
+	sign := signOf(text)
 	if p.quiet {
 		waitQuiet(ctx, t, quietLimit)
+	}
+	before, err := readView(t, p.agent)
+	if err != nil {
+		return time.Time{}, err
 	}
 	if err := t.paste(text); err != nil {
 		return time.Time{}, err
 	}
-	// 2. The box shows it.
-	var view screenView
-	shown, readable := false, false
-	start := time.Now()
-	for {
-		v, err := readView(t, p.agent)
-		if err != nil {
-			return time.Time{}, err
-		}
-		view = v
-		readable = readable || v.found
-		if v.found && v.box.holds(key) {
-			shown = true
-			break
-		}
-		// No box at all a moment after the paste: not one pierd can read.
-		if since := time.Since(start); since > pasteShows || !readable && since > boxShows || ctx.Err() != nil {
-			break
-		}
-		time.Sleep(pastePoll)
+	// 2. The box shows all of it.
+	view, shown, readable, err := awaitPaste(ctx, t, p.agent, sign, before.box, pasteWait(len(text)))
+	if err != nil {
+		return time.Time{}, err
 	}
 	if !readable {
-		// A box pierd cannot read: as before, the paste (a moment ago), then
-		// Enter.
+		// A box pierd cannot read: as before, the paste (a moment ago),
+		// then Enter.
 		return time.Now(), t.keys("Enter")
+	}
+	if !shown {
+		// No Enter on what is not in the box; what of it may be there goes.
+		return time.Time{}, notTaken(ctx, t, p.agent, before.box)
 	}
 	time.Sleep(pasteSettle)
 	// 3 and 4: Enter, and once more if the box still holds it.
+	still := false
 	for attempt := 0; attempt < 2; attempt++ {
 		if attempt > 0 {
-			waitQuiet(ctx, t, quietLimit)
+			if !still {
+				waitQuiet(ctx, t, quietLimit)
+			}
 			v, err := readView(t, p.agent)
 			if err != nil {
 				return time.Time{}, err
 			}
-			if !v.found || !v.box.holds(key) {
+			if !v.found || !v.box.holds(sign, before.box) {
 				// The box that held it let go of it since: the agent took
 				// the Enter late. Another one could send it twice.
 				return entered, nil
 			}
-			view, shown = v, true
+			view = v
 		}
-		var before ledgerState
+		var lb ledgerState
 		if p.ledger != nil {
-			before = p.ledger()
+			lb = p.ledger()
 		}
-		entered = time.Now()
+		if entered.IsZero() {
+			// The first Enter's: the agent's hooks can say it started after
+			// either (turns.go, earlyStart).
+			entered = time.Now()
+		}
 		if err := t.keys("Enter"); err != nil {
 			return time.Time{}, err
 		}
-		res, last, err := afterEnter(ctx, t, p, key, shown, before, view)
+		var res enterResult
+		res, view, still, err = afterEnter(ctx, t, p, sign, before.box, view, lb)
 		if err != nil {
 			return time.Time{}, err
 		}
-		view = last
-		switch res {
-		case wentIn:
+		if res == wentIn {
 			return entered, nil
-		case notShown:
-			// Never in the box, and not in it now: nothing to press Enter on again.
-			return time.Time{}, &NotSubmittedError{}
 		}
 	}
 	// 5. Still in the box: take it out, so it is not sent later by surprise.
 	return time.Time{}, &NotSubmittedError{Kept: !clearInput(ctx, t, p.agent)}
 }
 
+// awaitPaste waits, at most limit, for the box to show all of a paste with
+// this sign. readable is false when no input box ever showed (none pierd
+// can read, a moment after the paste).
+func awaitPaste(ctx context.Context, t submitTerm, agent string, sign pasteSign, before inputBox, limit time.Duration) (view screenView, shown, readable bool, err error) {
+	start := time.Now()
+	grown, same := "", 0
+	for {
+		v, err := readView(t, agent)
+		if err != nil {
+			return view, false, readable, err
+		}
+		view = v
+		readable = readable || v.found
+		if v.found {
+			if v.box.landed(sign, before) {
+				return v, true, true, nil
+			}
+			// Laid out in a way pierd does not read word for word (not even
+			// its first words show): more text than before, the same over
+			// three reads. A paste whose first words show waits for its
+			// last ones: it is still landing.
+			switch {
+			case !v.box.grewFrom(before) || more(letters(v.box.text), letters(before.text), sign.head):
+				grown, same = "", 0
+			case v.box.text == grown:
+				if same++; same >= 2 {
+					return v, true, true, nil
+				}
+			default:
+				grown, same = v.box.text, 0
+			}
+		}
+		since := time.Since(start)
+		if since > limit || !readable && since > boxShows || ctx.Err() != nil {
+			return view, false, readable, nil
+		}
+		time.Sleep(pastePoll)
+	}
+}
+
+// notTaken answers for a paste that never showed in the box: nothing is
+// pressed on it, and what of it may have landed is taken out. Kept says the
+// box could not be seen without it afterwards.
+func notTaken(ctx context.Context, t submitTerm, agent string, before inputBox) error {
+	v, err := readView(t, agent)
+	switch {
+	case err != nil:
+		return err
+	case !v.found:
+		return &NotSubmittedError{Kept: true} // what the box holds cannot be told
+	case v.box.text == before.text:
+		return &NotSubmittedError{} // as it was: nothing of the paste there
+	}
+	return &NotSubmittedError{Kept: !clearInput(ctx, t, agent)}
+}
+
 type enterResult int
 
 const (
-	wentIn   enterResult = iota // the agent took it
-	stillIn                     // the box still holds it
-	notShown                    // it never showed in the box, and nothing says it went
+	wentIn  enterResult = iota // the agent took it
+	stillIn                    // the box still holds it
 )
 
 // afterEnter watches, at most submitWithin, for the prompt to go in after an
-// Enter: the agent's hooks say a prompt started, or the box that showed it
-// let go of it (an empty box, or the box gave way to what the prompt opened,
-// a command's menu), or, for a prompt the box never showed, the prompt
-// appears in the conversation above it.
-func afterEnter(ctx context.Context, t submitTerm, p submitParams, key string, shown bool, before ledgerState, prev screenView) (enterResult, screenView, error) {
+// Enter: the agent's hooks say a prompt started, or the box let go of it
+// (empty again, or given way to what the prompt opened, a command's menu)
+// two reads in a row. still says the screen held still over the last reads,
+// so the next Enter need not wait for it to.
+func afterEnter(ctx context.Context, t submitTerm, p submitParams, sign pasteSign, before inputBox, prev screenView, lb ledgerState) (res enterResult, view screenView, still bool, err error) {
 	end := time.Now().Add(submitWithin)
-	res := stillIn
-	if !shown {
-		res = notShown
-	}
-	view := prev
-	gone := 0
+	view, res = prev, stillIn
+	letGo, same := 0, 0
 	for {
 		time.Sleep(submitPoll)
 		if p.ledger != nil {
-			if now := p.ledger(); now.hooked && now.seq > before.seq && now.state == "running" && before.state != "running" {
-				return wentIn, view, nil
+			if now := p.ledger(); now.hooked && now.seq > lb.seq && now.state == "running" && lb.state != "running" {
+				return wentIn, view, false, nil
 			}
 		}
 		v, err := readView(t, p.agent)
 		if err != nil {
-			return 0, view, err
+			return stillIn, view, false, err
+		}
+		if v.plain == view.plain {
+			same++
+		} else {
+			same = 0
 		}
 		view = v
-		switch {
-		case v.found && v.box.holds(key):
-			res, gone = stillIn, 0
-			if prev.found && v.box.lines > prev.box.lines {
-				// A line more under the prompt: the Enter was read as a new
-				// line, and nothing more will come of it.
-				return stillIn, v, nil
+		if v.found && v.box.holds(sign, before) {
+			letGo = 0
+			if prev.found && v.box.lines > prev.box.lines && same >= 1 {
+				// A line more under the prompt, drawn and held: the Enter was
+				// read as a new line, and nothing more will come of it.
+				return stillIn, v, true, nil
 			}
-		case !shown:
-			if strings.Count(v.outside, key) > strings.Count(prev.outside, key) {
-				return wentIn, v, nil
-			}
-			res = notShown
-		case v.found:
-			return wentIn, v, nil
-		case v.plain != prev.plain:
-			// No box: something the prompt opened is drawn over it. Twice
-			// in a row, so a frame drawn halfway does not count.
-			if gone++; gone >= 2 {
-				return wentIn, v, nil
-			}
+		} else if letGo++; letGo >= 2 {
+			return wentIn, v, false, nil
 		}
 		if time.Now().After(end) || ctx.Err() != nil {
-			return res, view, nil
+			return res, view, same >= 1, nil
 		}
 	}
 }
 
 // clearInput empties the agent's input box: Ctrl-U clears the line the
 // cursor is on (the end of the text, after a paste), Backspace joins it to
-// the line above, a dozen lines at most (a longer paste shows as one line,
-// the agent's "[Pasted text #1 +40 lines]"). It says whether the box ended
-// up empty.
+// the line above, for at most clearLimit (a dozen lines; a long paste shows
+// as one, the agent's "[Pasted text #1 +40 lines]"). It says whether the box
+// ended up empty.
 func clearInput(ctx context.Context, t submitTerm, agent string) bool {
-	for round := 0; round < 24 && ctx.Err() == nil; round++ {
+	end := time.Now().Add(clearLimit)
+	for round := 0; ctx.Err() == nil; round++ {
 		v, err := readView(t, agent)
 		if err != nil || !v.found {
 			return false
 		}
 		if v.box.empty() {
 			return true
+		}
+		if round >= 24 || time.Now().After(end) {
+			return false
 		}
 		key := "C-u"
 		if round%2 == 1 {
@@ -237,6 +300,22 @@ func clearInput(ctx context.Context, t submitTerm, agent string) bool {
 		time.Sleep(clearPoll)
 	}
 	return false
+}
+
+// clearLeftover takes out of the box a prompt pierd typed before and could
+// not send (NotSubmittedError.Kept), ahead of a new one: typed after it, the
+// new one would be sent with it. It says whether the box is free of it:
+// empty, no longer showing it (sent or cleared at the terminal since), or
+// cleared now.
+func clearLeftover(ctx context.Context, t submitTerm, agent string, s pasteSign) bool {
+	v, err := readView(t, agent)
+	if err != nil || !v.found {
+		return true // nothing to read: the submit itself goes as it can
+	}
+	if v.box.empty() || !v.box.shows(s) {
+		return true
+	}
+	return clearInput(ctx, t, agent)
 }
 
 // waitQuiet waits, at most limit, for the screen to hold still: two reads
@@ -297,41 +376,73 @@ type inputBox struct {
 }
 
 func (b inputBox) empty() bool {
-	return strings.TrimSpace(strings.ReplaceAll(b.text, "\u00a0", " ")) == ""
+	return strings.TrimSpace(strings.ReplaceAll(b.text, " ", " ")) == ""
 }
 
 // pastedMark is the agents' stand-in for a long paste: Claude Code's
 // "[Pasted text #1 +19 lines]", Codex's "[Pasted Content 1214 chars]".
 var pastedMark = regexp.MustCompile(`\[Pasted (text #\d+|Content \d+)`)
 
-// holds says the box holds a prompt with this key (promptKey): its first
-// words in the box, or the agent's stand-in for a long paste. A prompt with
-// no letters at all counts as held while the box holds anything.
-func (b inputBox) holds(key string) bool {
-	if pastedMark.MatchString(b.text) {
-		return true
-	}
-	if key == "" {
-		return !b.empty()
-	}
-	return strings.Contains(letters(b.text), key)
+// pasteSign is what finds a prompt in the box: the first and the last
+// letters and digits of its words, lowercased (promptKeyLen of each; the
+// box may show either end of a long one, its first line or the line its
+// cursor is on).
+type pasteSign struct {
+	head, tail string
 }
 
-// promptKeyLen is how many letters and digits of a prompt find it in the
-// box: enough to tell it from anything else there, few enough to fit on the
-// box's first line in a narrow pane.
+// promptKeyLen is how many letters and digits make each end of a sign:
+// enough to tell it from anything else in the box, few enough to fit on one
+// line of it in a narrow pane.
 const promptKeyLen = 24
 
-// promptKey is the first letters and digits of a prompt, lowercased:
-// whitespace and marks left out, so a line the box wraps (mid-word, or at a
-// space) still matches.
-func promptKey(text string) string {
-	k := letters(text)
-	r := []rune(k)
+// signOf is a prompt's sign: letters and digits only, so a line the box
+// wraps (mid-word, or at a space) still matches.
+func signOf(text string) pasteSign {
+	r := []rune(letters(text))
+	head, tail := r, r
 	if len(r) > promptKeyLen {
-		r = r[:promptKeyLen]
+		head, tail = r[:promptKeyLen], r[len(r)-promptKeyLen:]
 	}
-	return string(r)
+	return pasteSign{string(head), string(tail)}
+}
+
+// more says now holds more of key than was did.
+func more(now, was, key string) bool {
+	return key != "" && strings.Count(now, key) > strings.Count(was, key)
+}
+
+// landed says the box shows all of a paste with this sign, beyond what it
+// held before it: its last words, where the cursor is, or the agent's
+// stand-in for it.
+func (b inputBox) landed(s pasteSign, before inputBox) bool {
+	if len(pastedMark.FindAllString(b.text, -1)) > len(pastedMark.FindAllString(before.text, -1)) {
+		return true
+	}
+	return more(letters(b.text), letters(before.text), s.tail)
+}
+
+// grewFrom says the box holds more text than it did.
+func (b inputBox) grewFrom(before inputBox) bool {
+	return len([]rune(letters(b.text))) > len([]rune(letters(before.text))) ||
+		len(strings.TrimSpace(b.text)) > len(strings.TrimSpace(before.text))
+}
+
+// holds says the box still holds (part of) a paste with this sign, beyond
+// what it held before it: either end of its words, the agent's stand-in for
+// it, or more text than before.
+func (b inputBox) holds(s pasteSign, before inputBox) bool {
+	now, was := letters(b.text), letters(before.text)
+	return len(pastedMark.FindAllString(b.text, -1)) > len(pastedMark.FindAllString(before.text, -1)) ||
+		more(now, was, s.head) || more(now, was, s.tail) || b.grewFrom(before)
+}
+
+// shows says the box shows a prompt with this sign: either end of its
+// words, or the agents' stand-in for a long paste. Unlike holds, never
+// just any text: the person's own is not taken for it.
+func (b inputBox) shows(s pasteSign) bool {
+	now := letters(b.text)
+	return pastedMark.MatchString(b.text) || more(now, "", s.head) || more(now, "", s.tail)
 }
 
 var (
@@ -406,7 +517,7 @@ func boxOf(lines []styledLine) inputBox {
 		if i == 0 {
 			s = promptPrefix.ReplaceAllString(s, "")
 		}
-		parts = append(parts, strings.TrimRight(s, " \u00a0"))
+		parts = append(parts, strings.TrimRight(s, "  "))
 	}
 	return inputBox{text: strings.Join(parts, "\n"), lines: len(lines)}
 }
@@ -436,8 +547,20 @@ func submits(agent, text string, enter bool) bool {
 // went in (submitPrompt). quiet waits for a quiet screen first, as a
 // prompt typed while the agent shows it is working always does. It answers
 // when the Enter that sent it was pressed.
+//
+// It runs to its end once called, within submitBudget, whether or not the
+// caller still waits (ctx's cancellation is not followed): a paste is never
+// left without its Enter, nor an Enter without its check.
 func (b *Box) submitToAgent(ctx context.Context, name, agent, text string, quiet bool) (time.Time, error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), submitBudget)
+	defer cancel()
 	t := paneTerm{ctx: ctx, s: b.Sessions, name: name}
+	if left, ok := b.leftovers.Load(name); ok {
+		if !clearLeftover(ctx, t, agent, left.(pasteSign)) {
+			return time.Time{}, &NotSubmittedError{Leftover: true}
+		}
+		b.leftovers.Delete(name)
+	}
 	if !quiet {
 		if raw, err := t.screen(); err == nil && working.MatchString(lastLines(screenText(raw), 14)) {
 			quiet = true
@@ -450,7 +573,13 @@ func (b *Box) submitToAgent(ctx context.Context, name, agent, text string, quiet
 			return ledgerState{seq: st.Seq, state: st.State, hooked: b.hooked(name)}
 		}
 	}
-	return submitPrompt(ctx, t, p, trimBlankLines(text))
+	text = trimBlankLines(text)
+	entered, err := submitPrompt(ctx, t, p, text)
+	if ns := (*NotSubmittedError)(nil); errors.As(err, &ns) && ns.Kept {
+		// Still in the box: taken out before the next prompt (clearLeftover).
+		b.leftovers.Store(name, signOf(text))
+	}
+	return entered, err
 }
 
 // paneTerm is a session's tmux pane, as submitPrompt reads and types into it.

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"pier/pierd/internal/events"
 	"pier/pierd/internal/wire"
@@ -160,31 +162,40 @@ func AgentCommandWith(p AgentPreset, prompt, model, effort string) (string, erro
 // permissions (no questions) without starting in it.
 const claudeBypassFlag = "--allow-dangerously-skip-permissions"
 
-// claudeVersion reads the version `claude --version` printed: "2.1.302
-// (Claude Code)".
-var claudeVersion = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
-
 // claudeBypassOffered says Claude Code sessions start with claudeBypassFlag:
-// the Claude Code on this box knows it (2.1 or newer, as its --version
-// says; an older one, or one whose version pierd could not read, would not
-// start with a flag it does not know), and pierd does not run as root,
-// where Claude Code refuses to start with it at all.
+// the Claude Code this box runs lists it in its --help (asked once per
+// binary and version: one without it would refuse to start on an option it
+// does not know), and pierd does not run as root, where Claude Code refuses
+// to start with it at all. A Claude Code whose version pierd could not read
+// is not asked, and gets no flag.
 func claudeBypassOffered() bool {
 	if os.Geteuid() == 0 {
 		return false
 	}
 	f, ok := agentFound("claude")
-	if !ok {
+	if !ok || f.Path == "" || strings.TrimSpace(f.Version) == "" {
 		return false
 	}
-	m := claudeVersion.FindStringSubmatch(strings.TrimSpace(f.Version))
-	if m == nil {
-		return false
+	key := f.Path + "\x00" + f.Version
+	if v, ok := bypassProbes.Load(key); ok {
+		return v.(bool)
 	}
-	major, _ := strconv.Atoi(m[1])
-	minor, _ := strconv.Atoi(m[2])
-	return major > 2 || major == 2 && minor >= 1
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, f.Path, "--help")
+	if f.PATH != "" {
+		// An npm install's `#!/usr/bin/env node` finds its node there.
+		cmd.Env = append(os.Environ(), "PATH="+f.PATH)
+	}
+	out, err := cmd.Output()
+	has := err == nil && strings.Contains(string(out), claudeBypassFlag)
+	bypassProbes.Store(key, has)
+	return has
 }
+
+// bypassProbes is what each Claude Code binary's --help said, by path and
+// version.
+var bypassProbes sync.Map
 
 // maxPromptArg is the longest first prompt an agent can be started with:
 // the program gets it as one argument, which Linux caps at 128 KB

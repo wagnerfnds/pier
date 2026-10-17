@@ -39,7 +39,7 @@ func TestReadInputOnRealScreens(t *testing.T) {
 		name, agent string
 		found       bool
 		empty       bool
-		holds       string // a prompt the box holds
+		shows       string // a prompt the box shows
 		lines       int
 	}{
 		{"claude-idle", "claude", true, true, "", 1},
@@ -75,13 +75,19 @@ func TestReadInputOnRealScreens(t *testing.T) {
 			if box.lines != c.lines {
 				t.Errorf("%d lines, want %d: %q", box.lines, c.lines, box.text)
 			}
-			if c.holds != "" && !box.holds(promptKey(c.holds)) {
-				t.Errorf("does not hold %q: %q", c.holds, box.text)
+			if c.shows != "" && !box.shows(signOf(c.shows)) {
+				t.Errorf("does not show %q: %q", c.shows, box.text)
+			}
+			if c.shows == pasteLine || c.shows == pasteMulti {
+				// All of it: its last words, where the cursor is.
+				if !box.landed(signOf(c.shows), inputBox{}) {
+					t.Errorf("all of %q has not landed: %q", c.shows, box.text)
+				}
 			}
 			// Nothing else is taken for the prompt: the conversation above
 			// shows earlier prompts with the same marks.
-			if c.empty && box.holds(promptKey(pasteLine)) {
-				t.Errorf("an empty box holds the prompt: %q", box.text)
+			if c.empty && box.shows(signOf(pasteLine)) {
+				t.Errorf("an empty box shows the prompt: %q", box.text)
 			}
 		})
 	}
@@ -95,22 +101,32 @@ func TestReadViewSeesAQueuedPromptOutsideTheBox(t *testing.T) {
 	if err != nil || !v.found || !v.box.empty() {
 		t.Fatalf("view %+v, %v", v, err)
 	}
-	if !strings.Contains(v.outside, promptKey(pasteMulti)) {
+	if !strings.Contains(v.outside, signOf(pasteMulti).head) {
 		t.Fatalf("the queued prompt is not outside the box: %q", v.outside)
 	}
 }
 
-func TestPromptKey(t *testing.T) {
-	if got := promptKey("  Fix the *webhook* retries,\n  then run the tests"); got != "fixthewebhookretriesthen" {
-		t.Fatalf("key %q", got)
+func TestSignOf(t *testing.T) {
+	s := signOf("  Fix the *webhook* retries,\n  then run the tests in the payments package")
+	if s.head != "fixthewebhookretriesthen" || s.tail != "estsinthepaymentspackage" {
+		t.Fatalf("sign %+v", s)
 	}
-	if got := promptKey("??"); got != "" {
-		t.Fatalf("key %q", got)
+	if got := signOf("??"); got.head != "" || got.tail != "" {
+		t.Fatalf("sign %+v", got)
 	}
 	// Wrapped by the box mid-word or at a space, it still matches.
-	b := inputBox{text: "Fix the webho\n  ok retries, then run"}
-	if !b.holds(promptKey("Fix the webhook retries, then run the tests")) {
+	b := inputBox{text: "Fix the webho\n  ok retries, then run the tests"}
+	if !b.shows(signOf("Fix the webhook retries, then run the tests")) || !b.landed(signOf("Fix the webhook retries, then run the tests"), inputBox{}) {
 		t.Fatal("a wrapped prompt is not found")
+	}
+	// Only its start in the box: not all of it yet.
+	if (inputBox{text: "Fix the webhook retries, th"}).landed(signOf("Fix the webhook retries, then run the tests in the payments package"), inputBox{}) {
+		t.Fatal("the start of a paste counts as all of it")
+	}
+	// What the box held before does not count.
+	was := inputBox{text: "earlier words"}
+	if (inputBox{text: "earlier words"}).holds(signOf("earlier words"), was) {
+		t.Fatal("the box's own text was taken for the paste")
 	}
 	if got := trimBlankLines("\n  \n  indented\nmore\n\n  "); got != "  indented\nmore" {
 		t.Fatalf("trimmed %q", got)
@@ -130,12 +146,15 @@ type agentTerm struct {
 	agent     string
 	convo     []string
 	box       []string
-	enters    int
+	enters    []time.Time
 	sent      []string // every key and paste, in order
 	reads     int
 	onEnter   func(n int) string // "submit", "newline", "nothing", "late"
 	lateAt    time.Time          // when a late Enter goes in
 	dropPaste bool               // the paste never shows
+	partial   bool               // only the first half of the paste shows
+	garble    bool               // the box draws its text in marks pierd cannot read as words
+	flicker   int                // reads after an Enter drawn without the box, a frame halfway
 	stuck     bool               // Ctrl-U and Backspace do nothing
 	spinner   int                // reads that still show the agent working
 }
@@ -146,6 +165,9 @@ func (f *agentTerm) paste(text string) error {
 	f.sent = append(f.sent, "paste")
 	if f.dropPaste {
 		return nil
+	}
+	if f.partial {
+		text = text[:len(text)/2]
 	}
 	lines := strings.Split(text, "\n")
 	if len(f.box) == 0 {
@@ -171,8 +193,8 @@ func (f *agentTerm) keys(k ...string) error {
 		f.sent = append(f.sent, key)
 		switch key {
 		case "Enter":
-			f.enters++
-			switch f.onEnter(f.enters) {
+			f.enters = append(f.enters, time.Now())
+			switch f.onEnter(len(f.enters)) {
 			case "submit":
 				f.submit()
 			case "newline":
@@ -209,24 +231,38 @@ func (f *agentTerm) screen() (string, error) {
 	for _, l := range f.convo {
 		b.WriteString("\x1b[39m" + l + "\n")
 	}
-	if f.spinner > 0 {
-		f.spinner--
+	if f.spinner > 0 || !f.lateAt.IsZero() {
+		// Working: a late Enter's agent is busy redrawing until it takes it.
+		if f.spinner > 0 {
+			f.spinner--
+		}
 		b.WriteString("\x1b[39m✻ Brewing… (" + strings.Repeat("·", f.reads%5) + ")\n")
 	}
-	text := strings.Join(f.box, "\n")
+	if f.flicker > 0 && len(f.enters) > 0 {
+		f.flicker--
+		return b.String(), nil // drawn halfway: no box yet
+	}
+	box := f.box
+	if f.garble {
+		box = nil
+		for _, l := range f.box {
+			box = append(box, strings.Repeat("•", len([]rune(l))))
+		}
+	}
+	text := strings.Join(box, "\n")
 	switch f.agent {
 	case "claude":
 		rule := "\x1b[38;5;244m" + strings.Repeat("─", 60) + "\n"
 		b.WriteString(rule)
 		switch {
-		case len(f.box) == 0:
-			b.WriteString("\x1b[39m❯\u00a0\x1b[2mTry \"how does <filepath> work?\"\x1b[0m\n")
+		case len(box) == 0:
+			b.WriteString("\x1b[39m❯ \x1b[2mTry \"how does <filepath> work?\"\x1b[0m\n")
 		case len(text) > 800:
-			b.WriteString("\x1b[39m❯\u00a0[Pasted text #1]\n")
+			b.WriteString("\x1b[39m❯ [Pasted text #1]\n")
 		default:
-			for i, l := range f.box {
+			for i, l := range box {
 				if i == 0 {
-					b.WriteString("\x1b[39m❯\u00a0" + l + "\n")
+					b.WriteString("\x1b[39m❯ " + l + "\n")
 				} else {
 					b.WriteString("  " + l + "\n")
 				}
@@ -237,12 +273,12 @@ func (f *agentTerm) screen() (string, error) {
 	case "codex":
 		b.WriteString("\n")
 		switch {
-		case len(f.box) == 0:
+		case len(box) == 0:
 			b.WriteString("\x1b[1m›\x1b[0m \x1b[2mAsk Codex to do anything\x1b[0m\n")
 		case len(text) > 1000:
 			b.WriteString("\x1b[1m›\x1b[0m \x1b[38;5;6m[Pasted Content 1214 chars]\x1b[39m\n")
 		default:
-			for i, l := range f.box {
+			for i, l := range box {
 				if i == 0 {
 					b.WriteString("\x1b[1m›\x1b[0m " + l + "\n")
 				} else {
@@ -271,13 +307,13 @@ func (f *agentTerm) count(key string) int {
 
 // fastSubmit runs a test's submits on short clocks.
 func fastSubmit(t *testing.T) {
-	saved := []time.Duration{quietGap, quietLimit, pasteShows, pastePoll, pasteSettle, submitWithin, submitPoll, clearPoll, boxShows}
+	saved := []time.Duration{quietGap, quietLimit, pasteShows, pastePoll, pasteSettle, submitWithin, submitPoll, clearPoll, boxShows, clearLimit}
 	quietGap, quietLimit, pasteShows, pastePoll = 3*time.Millisecond, 60*time.Millisecond, 120*time.Millisecond, 2*time.Millisecond
 	pasteSettle, submitWithin, submitPoll, clearPoll = 0, 150*time.Millisecond, 3*time.Millisecond, time.Millisecond
-	boxShows = 30 * time.Millisecond
+	boxShows, clearLimit = 30*time.Millisecond, 200*time.Millisecond
 	t.Cleanup(func() {
 		quietGap, quietLimit, pasteShows, pastePoll = saved[0], saved[1], saved[2], saved[3]
-		pasteSettle, submitWithin, submitPoll, clearPoll, boxShows = saved[4], saved[5], saved[6], saved[7], saved[8]
+		pasteSettle, submitWithin, submitPoll, clearPoll, boxShows, clearLimit = saved[4], saved[5], saved[6], saved[7], saved[8], saved[9]
 	})
 }
 
@@ -302,11 +338,49 @@ func TestSubmitWhenTheBoxTakesTheEnter(t *testing.T) {
 	}
 }
 
+// A box that draws its text in a way pierd cannot read word for word: more
+// text than before, holding still, is the paste.
+func TestSubmitSeesAPasteItCannotReadAsWords(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "claude", onEnter: always("submit"), garble: true}
+	if _, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("Enter"); n != 1 || len(f.convo) != 1 {
+		t.Fatalf("%d Enters, sent %d times", n, len(f.convo))
+	}
+}
+
 // The Enter that lands as a new line (the agent still reading the paste):
-// one more, and it goes.
+// one more, and it goes; the Enter that sent it is the first's time.
 func TestSubmitRetriesAnEnterThatBecameANewLine(t *testing.T) {
 	fastSubmit(t)
 	f := &agentTerm{agent: "claude", onEnter: func(n int) string {
+		if n == 1 {
+			return "newline"
+		}
+		return "submit"
+	}}
+	entered, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("Enter"); n != 2 {
+		t.Fatalf("%d Enters, want 2", n)
+	}
+	if len(f.convo) != 1 || len(f.box) != 0 {
+		t.Fatalf("convo %q, box %q", f.convo, f.box)
+	}
+	if entered.After(f.enters[0]) || f.enters[0].Sub(entered) > 50*time.Millisecond {
+		t.Fatalf("entered %v, the first Enter went at %v", entered, f.enters[0])
+	}
+}
+
+// A frame drawn halfway after the Enter (the box not drawn yet) is not the
+// box letting go of the prompt.
+func TestSubmitDoesNotTakeAHalfDrawnFrameForASend(t *testing.T) {
+	fastSubmit(t)
+	f := &agentTerm{agent: "claude", flicker: 1, onEnter: func(n int) string {
 		if n == 1 {
 			return "newline"
 		}
@@ -316,10 +390,7 @@ func TestSubmitRetriesAnEnterThatBecameANewLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := f.count("Enter"); n != 2 {
-		t.Fatalf("%d Enters, want 2", n)
-	}
-	if len(f.convo) != 1 || len(f.box) != 0 {
-		t.Fatalf("convo %q, box %q", f.convo, f.box)
+		t.Fatalf("%d Enters: a half-drawn frame was taken for the prompt going in", n)
 	}
 }
 
@@ -359,17 +430,43 @@ func TestSubmitSaysWhenTheTextStaysInTheBox(t *testing.T) {
 	}
 }
 
-// A paste that never shows: one Enter, and none into the empty box after it.
-func TestSubmitNeverPressesEnterIntoAnEmptyBox(t *testing.T) {
+// A paste that never shows: no Enter at all, and, the box as it was, not
+// kept (nothing of it is there).
+func TestSubmitNeverPressesEnterOnAPasteThatDidNotShow(t *testing.T) {
 	fastSubmit(t)
-	f := &agentTerm{agent: "claude", onEnter: always("nothing"), dropPaste: true}
+	f := &agentTerm{agent: "claude", onEnter: always("submit"), dropPaste: true}
 	_, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine)
 	var ns *NotSubmittedError
 	if !errors.As(err, &ns) || ns.Kept {
 		t.Fatalf("err %v, want not submitted, not kept", err)
 	}
-	if n := f.count("Enter"); n != 1 {
-		t.Fatalf("%d Enters, want 1", n)
+	if n := f.count("Enter"); n != 0 {
+		t.Fatalf("%d Enters, want none", n)
+	}
+}
+
+// Only part of a paste shows: no Enter on it; what landed is taken out
+// again, and kept only when it could not be.
+func TestSubmitTakesOutAPasteThatShowedInPart(t *testing.T) {
+	fastSubmit(t)
+	text := "Fix the webhook retries, then run the tests in the payments package and report what failed"
+	f := &agentTerm{agent: "claude", onEnter: always("submit"), partial: true}
+	_, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, text)
+	var ns *NotSubmittedError
+	if !errors.As(err, &ns) || ns.Kept || f.count("Enter") != 0 || len(f.box) != 0 {
+		t.Fatalf("err %v, %d Enters, box %q", err, f.count("Enter"), f.box)
+	}
+	f = &agentTerm{agent: "claude", onEnter: always("submit"), partial: true, stuck: true}
+	_, err = submitPrompt(context.Background(), f, submitParams{agent: "claude"}, text)
+	if !errors.As(err, &ns) || !ns.Kept || f.count("Enter") != 0 {
+		t.Fatalf("err %v, %d Enters: a half paste that stayed must be kept", err, f.count("Enter"))
+	}
+}
+
+// A long paste is given longer to show.
+func TestPasteWaitGrowsWithThePaste(t *testing.T) {
+	if pasteWait(10) != pasteShows || pasteWait(256<<10) != pasteShows+4*time.Second || pasteWait(64<<20) != pasteMost {
+		t.Fatalf("waits %v %v %v", pasteWait(10), pasteWait(256<<10), pasteWait(64<<20))
 	}
 }
 
@@ -377,7 +474,6 @@ func TestSubmitNeverPressesEnterIntoAnEmptyBox(t *testing.T) {
 // empty by the second try, so no second Enter.
 func TestSubmitTakesALateEnter(t *testing.T) {
 	fastSubmit(t)
-	quietGap = 40 * time.Millisecond // the second look comes after the late Enter went in
 	f := &agentTerm{agent: "claude", onEnter: always("late")}
 	if _, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine); err != nil {
 		t.Fatal(err)
@@ -439,6 +535,43 @@ func TestSubmitTypesBlindIntoABoxItCannotRead(t *testing.T) {
 	}
 }
 
+// A prompt pierd had to leave in the box comes out before the next one, and
+// only that: the person's own words stay.
+func TestClearLeftover(t *testing.T) {
+	fastSubmit(t)
+	left := signOf(pasteLine)
+	f := &agentTerm{agent: "claude", box: []string{pasteLine}}
+	if !clearLeftover(context.Background(), f, "claude", left) || len(f.box) != 0 {
+		t.Fatalf("the leftover is still there: %q", f.box)
+	}
+	f = &agentTerm{agent: "claude", box: []string{"my own words"}}
+	if !clearLeftover(context.Background(), f, "claude", left) || len(f.box) != 1 || f.count("C-u") != 0 {
+		t.Fatalf("the person's words were cleared: %q %v", f.box, f.sent)
+	}
+	f = &agentTerm{agent: "claude", box: []string{pasteLine}, stuck: true}
+	if clearLeftover(context.Background(), f, "claude", left) {
+		t.Fatal("a leftover that stays was taken for cleared")
+	}
+}
+
+// A send that typed and was not taken answers a retry with the same key the
+// same way, instead of typing it again.
+func TestARetryGetsTheAnswerOfTheSendItRepeats(t *testing.T) {
+	b := &Box{}
+	b.rememberTyped("shop-claude", "k1", &NotSubmittedError{Kept: true})
+	b.rememberTyped("shop-claude", "k2", errors.New("tmux: no server")) // not kept: typed again
+	var ns *NotSubmittedError
+	if err := b.typedFailure("shop-claude", "k1"); !errors.As(err, &ns) || !ns.Kept {
+		t.Fatalf("k1: %v", err)
+	}
+	if err := b.typedFailure("shop-claude", "k2"); err != nil {
+		t.Fatalf("k2: %v", err)
+	}
+	if err := b.typedFailure("shop-claude", ""); err != nil {
+		t.Fatalf("no key: %v", err)
+	}
+}
+
 func TestSubmits(t *testing.T) {
 	for _, c := range []struct {
 		agent, text string
@@ -455,6 +588,29 @@ func TestSubmits(t *testing.T) {
 		if got := submits(c.agent, c.text, c.enter); got != c.want {
 			t.Errorf("submits(%q, %q, %v) = %v", c.agent, c.text, c.enter, got)
 		}
+	}
+}
+
+// A held prompt being typed keeps the session's next one waiting for it:
+// two typed at once would be read as one.
+func TestOneHeldPromptAtATimePerSession(t *testing.T) {
+	s, dir := "shop-claude", "/srv/shop"
+	tr, bus := ledger(t, Session{Name: s, Dir: dir, Agent: "claude"})
+	hook(bus, "agent.ready", s, dir, "claude")
+	for _, text := range []string{"one", "two"} {
+		if _, err := tr.Queue(s, text, true, "client:phone", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if items := tr.nextDeliveries(); len(items) != 1 || items[0].Text != "one" {
+		t.Fatalf("first deliveries %+v", items)
+	}
+	if items := tr.nextDeliveries(); len(items) != 0 {
+		t.Fatalf("the second went while the first was being typed: %+v", items)
+	}
+	tr.delivered(s)
+	if items := tr.nextDeliveries(); len(items) != 1 || items[0].Text != "two" {
+		t.Fatalf("after the first: %+v", items)
 	}
 }
 
@@ -518,4 +674,31 @@ func TestASendDoesNotTakeAnEarlierTerminalTurn(t *testing.T) {
 	if !ok || got.ID != s+"#2" || got.State != "pending" {
 		t.Fatalf("the send's turn = %+v %v", got, ok)
 	}
+}
+
+// A caller that gives up waiting (the app bounds a send at 15 s) does not cut
+// a submit between its paste and its Enter: the prompt still goes.
+func TestASubmitOutlivesItsCaller(t *testing.T) {
+	fastSubmit(t)
+	// The caller leaves (at 50 ms) while pierd still looks for the box.
+	boxShows, pasteShows = 300*time.Millisecond, 300*time.Millisecond
+	s := testSessions(t)
+	out := filepath.Join(t.TempDir(), "got")
+	script := filepath.Join(t.TempDir(), "agent")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nwhile IFS= read -r line; do printf '%s\\n' \"$line\" >> '"+out+"'; done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(context.Background(), "outlives", "", t.TempDir(), script, nil); err != nil {
+		t.Fatal(err)
+	}
+	b := &Box{Sessions: s}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	if _, err := b.submitToAgent(ctx, "outlives", "claude", "run the tests", false); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the prompt and its Enter", 5*time.Second, func() bool {
+		got, _ := os.ReadFile(out)
+		return strings.Contains(string(got), "run the tests")
+	})
 }

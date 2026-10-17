@@ -184,11 +184,17 @@ func (b *Box) sendPrompt(ctx context.Context, name string, req SendRequest, orig
 	default:
 		return SendResult{}, badRequest("when must be now or idle")
 	}
+	// One send at a time per session, from the moment its key is looked up:
+	// a retry with the same key (its caller gave up waiting) waits for the
+	// first to end, then finds what it came to instead of typing again.
 	defer b.lockSend(name)()
 	if b.Turns != nil {
 		if tr, ok := b.Turns.ByIdem(name, req.IdemKey); ok {
 			return SendResult{Sent: tr.State != "queued", Queued: tr.State == "queued", Duplicate: true, Turn: tr.ID, Seq: tr.SentSeq, At: time.Now().UTC()}, nil
 		}
+	}
+	if err := b.typedFailure(name, req.IdemKey); err != nil {
+		return SendResult{}, err
 	}
 	sess, err := b.Sessions.Get(ctx, name)
 	if err != nil {
@@ -239,6 +245,7 @@ func (b *Box) sendPrompt(ctx context.Context, name string, req SendRequest, orig
 		// to a question is typed as it is: the question's own screen is no
 		// input box.
 		if entered, err = b.submitToAgent(ctx, name, agent, req.Text, false); err != nil {
+			b.rememberTyped(name, req.IdemKey, err)
 			return SendResult{}, err
 		}
 	} else if err := b.Sessions.Send(ctx, name, req.Text, enter); err != nil {
@@ -285,6 +292,45 @@ func (b *Box) sendPrompt(ctx context.Context, name string, req SendRequest, orig
 		}
 	}
 	return res, nil
+}
+
+// typedSend is what a send that typed came to when the agent did not take
+// it (NotSubmittedError), kept by session and idem key for typedKeep.
+type typedSend struct {
+	err error
+	at  time.Time
+}
+
+const typedKeep = 2 * time.Minute
+
+// rememberTyped keeps the answer of a send the agent did not take, for a
+// retry with the same key; other failures are not kept.
+func (b *Box) rememberTyped(name, key string, err error) {
+	var ns *NotSubmittedError
+	if key == "" || !errors.As(err, &ns) {
+		return
+	}
+	now := time.Now()
+	b.typed.Range(func(k, v any) bool {
+		if now.Sub(v.(typedSend).at) > typedKeep {
+			b.typed.Delete(k)
+		}
+		return true
+	})
+	b.typed.Store(name+"\x00"+key, typedSend{err, now})
+}
+
+// typedFailure is the answer a send with this key already came to without
+// the agent taking it, if one did lately; nil otherwise.
+func (b *Box) typedFailure(name, key string) error {
+	if key == "" {
+		return nil
+	}
+	v, ok := b.typed.Load(name + "\x00" + key)
+	if !ok || time.Since(v.(typedSend).at) > typedKeep {
+		return nil
+	}
+	return v.(typedSend).err
 }
 
 // WaitResult is what an agent was doing when a wait ended.

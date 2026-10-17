@@ -443,7 +443,8 @@ for Codex. The agent's own folder (`~/.claude`, `~/.codex`) is its built-in acco
   Claude, its status line and the installed skills), ready to work at once: every project already on the box trusted
   there (3.4), Codex's review of pierd's hooks answered, and, for Claude Code, its first-run screens marked seen
   (`hasCompletedOnboarding` in the folder's `.claude.json`, the theme `dark`) and the bypass mode's warning accepted
-  (`skipDangerousModePermissionPrompt` in its `settings.json`, 4.4). `POST /v1/accounts/{id}/login` starts a terminal
+  (`skipDangerousModePermissionPrompt` in its `settings.json`, 4.4; the built-in account's own settings are left as
+  they are). `POST /v1/accounts/{id}/login` starts a terminal
   on that account where the person signs in: `claude /login` (Claude Code opens on its login method), `codex login
   --device-auth`, in a folder of pierd's own (`~/.pier/box/sign-in`, beside the accounts, which Claude Code is told it
   trusts: in the home folder it would ask first, every time). It is a terminal, not an agent: listed with no `agent`, and the app
@@ -573,9 +574,12 @@ session cannot start, the worktree is removed again. Errors: 503 `tmux_missing` 
 * When the question comes anyway (an agent whose config is elsewhere), in a project's folder or a chat's own (3.5),
   pierd answers it from the screen itself; a menu it cannot read waits for the person. With `agent` + `prompt`, prompts
   are held until it is answered.
-* Claude Code 2.1 or newer starts with `--allow-dangerously-skip-permissions` (not when pierd runs as root, where
-  Claude Code refuses it): bypass is among the modes Shift+Tab reaches (4.4), while the session still starts in its
-  default mode.
+* Claude Code starts with `--allow-dangerously-skip-permissions` where its `--help` lists the flag (asked once per
+  binary and version; an older one would refuse to start on an option it does not know), and not when pierd runs as
+  root, where Claude Code refuses it: bypass is among the modes Shift+Tab reaches (4.4), while the session still starts
+  in its default mode.
+* Known limit: the hash pierd writes for its Codex hooks follows Codex 0.160's way of computing it; a Codex that hashes
+  hooks another way shows its "Hooks need review" screen again, until they are trusted there (`/hooks`).
 
 ### 3.5 Start a chat, tied to no project: `POST /v1/sessions` with `chat: true`
 
@@ -669,14 +673,22 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
 * **Submitted, not just typed** (Claude Code and Codex, a prompt with `enter`, not an answer to a waiting agent):
   an Enter that reaches an agent's input box while it is still taking the paste (at the end of a turn, when it redraws)
   lands in it as a new line, and the prompt stays unsent. So pierd waits for a quiet screen (always for a held prompt,
-  and when the agent shows it is working), pastes, waits for the input box to show the prompt (its first words, or the
-  agent's "[Pasted text #1]" / "[Pasted Content …]"), presses Enter and watches for it to go in: the agent's hooks say
-  a prompt started, or the box let go of it. Still in the box: one more Enter, after a quiet screen, and never a third,
-  nor one into a box already empty. Still not taken: pierd clears the box (Ctrl-U, line by line) and answers **409
-  `not_submitted`** with `"kept": false`, and nothing was sent (the app gives the text back to the person), or
-  `"kept": true` when the box could not be cleared: the text is still typed there, so sending it again from scratch
-  would send it twice once someone presses Enter in the terminal. An input box pierd cannot read (another agent, a
-  layout it does not know) is typed into as before.
+  and when the agent shows it is working), reads the input box, pastes, and waits for the box to show all of the prompt:
+  its last words (the line the cursor is on), the agent's "[Pasted text #1]" / "[Pasted Content …]", or, drawn in a way
+  pierd does not read word for word, more text than the box held, holding still (1.5 s, a second more per 64 KB, at most
+  10 s). No Enter before that: a paste that never shows is taken out of the box again and answers `not_submitted`.
+  Then Enter, and pierd watches for it to go in: the agent's hooks say a prompt started, or the box let go of it on two
+  reads in a row. Still in the box: one more Enter (after a quiet screen, unless the screen already held still), and
+  never a third, nor one into a box already empty. Still not taken: pierd clears the box (Ctrl-U, line by line) and
+  answers **409 `not_submitted`** with `"kept": false`, and nothing was sent (the app gives the text back to the
+  person), or `"kept": true` when the box could not be cleared: the text is still typed there, so sending it again from
+  scratch would send it twice once someone presses Enter in the terminal. pierd takes such a leftover out of the box
+  before its next prompt to the session (or answers `not_submitted`, `kept: false`, saying the box still holds it,
+  without typing the new one). An input box pierd cannot read (another agent, a layout it does not know) is typed into
+  as before.
+* Once it types, a send runs to its end (about 10 s at worst for a prompt up to 64 KB, a little more for a longer
+  one), whether or not its caller still waits: a caller that gives up and sends again with the same `idem_key` waits for the first and gets its answer
+  (`duplicate`, or the same `not_submitted`), never the prompt typed a second time.
 * 409 `session_exited` when the program has ended.
 * At the agent's start-up question, text is held (`idle`, `now`) or refused (`force`).
 * A forced send into a waiting agent is an **answer** (`session.sent {answer: true, turn}`), not a new turn.
@@ -699,7 +711,9 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
   acceptEdits, plan, auto, bypassPermissions`). `POST .../mode {"mode":"plan"}` → `{"mode":"plan"}` cycles
   Shift-Tab until the mode matches (409 when the agent waits or the mode cannot be reached; event `session.mode`).
   `bypassPermissions` is reachable in sessions pierd started with `--allow-dangerously-skip-permissions` (3.4), and its
-  warning never stops the switch (the accounts have `skipDangerousModePermissionPrompt`).
+  warning does not stop the switch in an account pierd made (`skipDangerousModePermissionPrompt`, 2.10). In one that
+  has not accepted it yet (the built-in account), Claude Code asks "Yes, I accept" in its screen the first time: the
+  switch answers 409 there, pressing nothing, and the person answers it in the terminal once.
 
 ### 4.5 Held prompts (capability `queue`)
 

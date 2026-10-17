@@ -80,6 +80,12 @@ type Box struct {
 	envLocks sync.Map
 	// prep is how each worktree's preparation went (prepare.go).
 	prep prepStates
+	// leftovers are the sessions whose agent's input box holds a prompt pierd
+	// typed and could neither send nor clear (submit.go): session → its sign.
+	leftovers sync.Map
+	// typed are recent sends that typed and did not go, by session and idem
+	// key (sendPrompt): a retry with the same key gets the same answer.
+	typed sync.Map
 	// Publisher, when set, is the relay the box's public links go through.
 	Publisher Publisher
 	// Exe is pierd's own binary, for the hooks and status line it puts in
