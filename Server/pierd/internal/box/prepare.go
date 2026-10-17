@@ -65,6 +65,9 @@ type prepRecord struct {
 	// Done says the setup agent reported it was done (pierd prepare done):
 	// a later turn of its conversation that reports nothing keeps it ready.
 	Done bool `json:"done,omitempty"`
+	// Last is the last setup agent's session, kept through runs of any
+	// kind: the next one takes the other name (startAgent).
+	Last string `json:"last_session,omitempty"`
 }
 
 type prepStates struct {
@@ -146,7 +149,11 @@ func (s *prepStates) start(key, kind, session string) bool {
 		return false
 	}
 	now := time.Now()
-	s.all[key] = prepRecord{State: "running", Since: &now, Kind: kind, Session: session}
+	last := s.all[key].Last
+	if session != "" {
+		last = session
+	}
+	s.all[key] = prepRecord{State: "running", Since: &now, Kind: kind, Session: session, Last: last}
 	s.save()
 	return true
 }
@@ -176,15 +183,18 @@ func (s *prepStates) handToAgent(key, base string) (name, previous string) {
 }
 
 func (s *prepStates) agentRunLocked(key string, r prepRecord, had bool, base string) (name, previous string, ok bool) {
+	if had {
+		previous = r.Last
+		if previous == "" {
+			previous = r.Session
+		}
+	}
 	name = base
-	if had && r.Session == base {
+	if previous == base {
 		name = base + "-2"
 	}
-	if had {
-		previous = r.Session
-	}
 	now := time.Now()
-	s.all[key] = prepRecord{State: "running", Since: &now, Kind: "agent", Session: name}
+	s.all[key] = prepRecord{State: "running", Since: &now, Kind: "agent", Session: name, Last: name}
 	s.save()
 	return name, previous, true
 }
@@ -211,8 +221,10 @@ func (s *prepStates) forget(location, worktree string, gone func(session string)
 	for k, r := range s.all {
 		l, w, _ := strings.Cut(k, "/")
 		if l == location && (worktree == "" || w == worktree) {
-			if r.Session != "" {
-				gone(r.Session)
+			for _, name := range []string{r.Session, r.Last} {
+				if name != "" {
+					gone(name)
+				}
 			}
 			delete(s.all, k)
 			changed = true

@@ -386,6 +386,17 @@ func TestFailingRecipeHandsTheWorktreeToASetupAgent(t *testing.T) {
 	if st.State != "failed" || st.Kind != "script" {
 		t.Fatalf("a script asked for = %+v", st)
 	}
+
+	// After a script run in between, the next setup agent still takes the
+	// other name than the last one's.
+	call(t, c, "POST", "/v1/locations/cal/worktrees/fix/prepare/done", "", map[string]any{}, nil)
+	if code := call(t, c, "POST", "/v1/locations/cal/worktrees/fix/prepare", "", map[string]string{"prepare_with": "script"}, &st); code != http.StatusAccepted || st.Kind != "script" {
+		t.Fatalf("a script run = %d %+v", code, st)
+	}
+	waitFor(t, ch, "worktree.prepare.failed")
+	if code := call(t, c, "POST", "/v1/locations/cal/worktrees/fix/prepare", "", map[string]string{"prepare_with": "agent"}, &st); code != http.StatusAccepted || st.Session != "cal-fix-setup-2" {
+		t.Fatalf("the next setup agent = %d %+v", code, st)
+	}
 }
 
 // The setup agent's account skips Claude Code's bypass-mode warning, with
