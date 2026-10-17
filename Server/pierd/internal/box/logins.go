@@ -351,6 +351,7 @@ func (b *Box) startLogin(r *http.Request, tool, account string) (Login, Session,
 	dir := home
 	// No browser opens on the box: the app opens the link where the person is.
 	env := []string{"BROWSER=true"}
+	var acct *Account
 	switch tool {
 	case "claude", "codex":
 		var a Account
@@ -365,10 +366,7 @@ func (b *Box) startLogin(r *http.Request, tool, account string) (Login, Session,
 		if a.Agent != tool {
 			return Login{}, Session{}, badRequest("%q is not a %s account", a.ID, tool)
 		}
-		if err := b.prepareAccountDir(a); err != nil {
-			return Login{}, Session{}, err
-		}
-		account, dir = a.ID, a.Dir
+		acct, account, dir = &a, a.ID, a.Dir
 		if !a.Builtin {
 			env = append(env, agentDirVar[tool]+"="+a.Dir)
 		}
@@ -384,6 +382,12 @@ func (b *Box) startLogin(r *http.Request, tool, account string) (Login, Session,
 	}
 	if err := b.before(r, "login.start", map[string]any{"tool": tool, "account": account}); err != nil {
 		return Login{}, Session{}, err
+	}
+	// The account's folder, with pierd's hooks, before its CLI writes its login there.
+	if acct != nil {
+		if err := b.prepareAccountDir(*acct); err != nil {
+			return Login{}, Session{}, err
+		}
 	}
 	name := "login-" + slug(firstNonEmpty(account, tool), 40)
 	for _, id := range b.logins.running(name) {
