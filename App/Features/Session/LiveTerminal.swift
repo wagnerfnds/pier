@@ -230,10 +230,11 @@ final class LiveTerminal {
             if let text = read, text != lastScreen || pipe.isTyping != lastTyping {
                 lastTyping = pipe.isTyping
                 lastScreen = text
-                // Only while VoiceOver runs: the whole screen as the terminal's value, rewritten every two seconds, was
-                // read by everything that walks the app's accessibility tree (window managers, text expanders) and on the
-                // Mac each walk goes through the main thread.
-                let spoken = UIAccessibility.isVoiceOverRunning ? Self.spoken(text) : ""
+                // Only while VoiceOver runs (and for the UI tests, which read the terminal this way): the whole screen
+                // as the terminal's value, rewritten every two seconds, was read by everything that walks the app's
+                // accessibility tree (window managers, text expanders) and on the Mac each walk goes through the main
+                // thread.
+                let spoken = UIAccessibility.isVoiceOverRunning || UITestMock.enabled ? Self.spoken(text) : ""
                 if spoken != screenText { screenText = spoken }
                 let command = WorktreeTerminals.runningCommand(in: text, typing: pipe.isTyping)
                 if command != running { running = command }
@@ -242,11 +243,12 @@ final class LiveTerminal {
         }
     }
 
-    /// The screen's last lines, trimmed, as VoiceOver reads them.
-    private static func spoken(_ text: String) -> String {
-        text.split(separator: "\n", omittingEmptySubsequences: false).suffix(40)
-            .map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    /// The screen's last 40 lines with text, trimmed, as VoiceOver reads them (a shell's output starts at the top: the
+    /// blank rows under it are left out before counting).
+    static func spoken(_ text: String) -> String {
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        return lines.suffix(40).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Tries a refused or ended terminal again (the banner's Tentar de novo).
@@ -337,8 +339,6 @@ struct LiveTerminalView: View {
                 .accessibilityIdentifier("live-terminal")
             if showsKeys, visible, !keyboardUp { LiveKeysBar(terminal: terminal) }
         }
-        // A terminal kept mounted under another tab is no part of what is on screen.
-        .accessibilityHidden(!visible)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         // The stream lives while the terminal shows and the app is in front (on the Mac, a window behind another

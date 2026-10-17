@@ -129,6 +129,8 @@ import PierKit
 
     private func push(_ part: Part) {
         guard let model, let plugin else { return }
+        let span = Perf.begin("bridge.push")
+        defer { Perf.end(span) }
         switch part {
         case .inbox:
             let shown = surface.current
