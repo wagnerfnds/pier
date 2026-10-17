@@ -236,6 +236,7 @@ final class AppModel {
         if UserDefaults.standard.bool(forKey: "openFaxina") {
             Task { try? await Task.sleep(for: .seconds(3)); router.push(HousekeepingRoute()) }
         }
+        PreviewBrowserScreen.openIfRequested(self)
     }
 
     /// `-openProject <loc>[/<worktree>]` opens a project's workspace (iPad, Mac), `-workspaceTab

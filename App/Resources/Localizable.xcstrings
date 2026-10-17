@@ -16368,6 +16368,236 @@
           }
         }
       }
+    },
+    "Abra um terminal ou o navegador ao lado da conversa." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open a terminal or the browser beside the conversation."
+          }
+        }
+      }
+    },
+    "Abrir no navegador padrão" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in default browser"
+          }
+        }
+      }
+    },
+    "Avançar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forward"
+          }
+        }
+      }
+    },
+    "Crie um link público para ele nos Detalhes da worktree, ou use a mesma rede da box (ou uma VPN)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a public link for it in the worktree's Details, or use the box's network (or a VPN)."
+          }
+        }
+      }
+    },
+    "Endereço" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Address"
+          }
+        }
+      }
+    },
+    "Fechar navegador" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close browser"
+          }
+        }
+      }
+    },
+    "Lado a lado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Side by Side"
+          }
+        }
+      }
+    },
+    "Lado a lado (⌥⌘T)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Side by Side (⌥⌘T)"
+          }
+        }
+      }
+    },
+    "Lado a lado precisa de uma janela mais larga: as abas ficam lado a lado sozinhas quando houver espaço." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Side by side needs a wider window: the tabs go side by side by themselves once there is room."
+          }
+        }
+      }
+    },
+    "Link copiado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link copied"
+          }
+        }
+      }
+    },
+    "Mostrar em abas (⌥⌘T)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show as Tabs (⌥⌘T)"
+          }
+        }
+      }
+    },
+    "Navegador" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Browser"
+          }
+        }
+      }
+    },
+    "Navegador: a página da worktree" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Browser: the worktree's page"
+          }
+        }
+      }
+    },
+    "Nenhum servidor de desenvolvimento nesta worktree" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No dev server in this worktree"
+          }
+        }
+      }
+    },
+    "Numa box sua, aqui aparece o servidor de desenvolvimento desta worktree, com hot reload." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On a box of your own, this worktree's dev server shows here, with hot reload."
+          }
+        }
+      }
+    },
+    "Não foi possível abrir a página" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't open the page"
+          }
+        }
+      }
+    },
+    "O servidor na porta %@ não é alcançado deste aparelho" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server on port %@ can't be reached from this device"
+          }
+        }
+      }
+    },
+    "Parar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop"
+          }
+        }
+      }
+    },
+    "Procurando a página da worktree…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Looking for the worktree's page…"
+          }
+        }
+      }
+    },
+    "Página de exemplo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sample page"
+          }
+        }
+      }
+    },
+    "Suba o servidor de desenvolvimento dela, num terminal ao lado ou pelos serviços nos Detalhes: a página aparece aqui assim que ele responder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start its dev server, in a terminal beside it or from the services in Details: the page shows here as soon as it answers."
+          }
+        }
+      }
+    },
+    "Suba o servidor dela na porta %@ ($PIER_PORT), num terminal ao lado ou pelos serviços nos Detalhes: a página aparece aqui assim que ele responder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start its server on port %@ ($PIER_PORT), in a terminal beside it or from the services in Details: the page shows here as soon as it answers."
+          }
+        }
+      }
+    },
+    "A página parou de responder várias vezes seguidas." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The page stopped responding several times in a row."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

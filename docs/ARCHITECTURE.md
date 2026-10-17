@@ -16,7 +16,8 @@ code calls which route.
    beside it (the iPhone and the iPad keep a bar above the on-screen keyboard, the iPad's as wide as the column).
 4. Session = a chat first, from its first second (transcript folded into turns, Markdown replies, needs-you card above
    the composer, Send that becomes Stop while the agent works); the raw terminal is a secondary view remembered per session.
-   Beside the chat, the worktree's own terminals (shells the person opens there) in tabs, once there is one.
+   Beside the chat, the worktree's own terminals (shells the person opens there) and its page in the app's browser, in
+   tabs once there is one, or side by side with the chat on the iPad and the Mac.
 5. Needs you: permission Allow once / Always / Deny (screen menu parsing) and question answering.
 6. Review: files changed, per-file diff, git actions (commit, push, open PR) and pull requests, via `exec` on the box.
 7. Projects: user-defined **sections** (stored on the device), each ordered by hand, by name or by recent activity, renames,
@@ -182,16 +183,31 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   read from the screen, rendered as Markdown, plus a way into the terminal.
 
 - **Terminals beside the chat** (`SessionTerminals.swift`): an agent working in a worktree gets that worktree's plain
-  terminals in tabs above its conversation, [Conversa] [Terminal 1] [npm run dev] … [+]. The strip shows only once the
-  worktree has a terminal, so a session without one is just its chat; the toolbar's "Novo terminal", the ⋯ menu and ⌃⇧`
-  (the menu bar, a hardware keyboard) open one: `POST /v1/sessions` with the session's location and no agent, titled
-  "Terminal N" so pierd does not name it after the first line typed (a second one in the same second asks again under a
+  terminals in tabs above its conversation, [Conversa] [Terminal 1] [npm run dev] [Navegador] … [+]. The strip shows only
+  once the worktree has a terminal (or its browser open), so a session without one is just its chat; the toolbar's
+  "Novo terminal", the ⋯ menu and ⌃⇧` (the menu bar, a hardware keyboard) open one: `POST /v1/sessions` with the
+  session's location and no agent, titled "Terminal N" so pierd does not name it after the first line typed (a second
+  one in the same second asks again under a
   name of its own). Every session of the worktree that is no agent and no service has a tab, whoever opened it
   (`WorktreeTerminals`, PierKit, tested: by its ref, or by the closest worktree folder for one with no location). A tab
   says what runs at its prompt, read from its screen ("npm run dev", the glyph green), else its number, unless the person
   named it (Renomear, `PATCH`; empty gives the number back). The composer and the needs-you card belong to Conversa,
   which stays underneath as it was (an orange dot on its tab while the agent waits). × ends the session, asked first
   unless its program ended; the tab picked is kept per session for the app's run. Chats have none.
+- **Side by side** (iPad, Mac): "Lado a lado" (the strip's last button, the ⋯ menu, ⌥⌘T in the menu bar's View menu)
+  keeps the conversation, its needs-you card and composer on the left and puts the tabs, Conversa left out, on the right,
+  in `SplitPane` (the divider dragged, its place kept, `split.session.side`; half and half until then). With nothing open
+  there the right pane offers a terminal or the browser. The choice is kept per session (`SessionViewPrefs`,
+  `session.side.<box>/<name>`); the iPhone keeps its tabs. A screen narrower than both panes (360 + 340 pt) shows the
+  tabs, and says why when side by side is asked for; it goes back to side by side by itself once there is room. On the
+  Mac the inspector column needs a 1400 pt window beside the split (`WindowWidth.inspectorBesideSplit`, else a sheet as
+  below 1080 pt), and comes back as it was. In tabs `SplitPane` lays the tabs' pane over the conversation's: the two
+  are the same views either way, so turning side by side on or off moves them, no terminal starts its stream again and
+  the conversation keeps its place (a terminal shows in one place at a time: the newest view of it takes the stream
+  over, `LiveTerminal.run`). What the panes show is made in the tabs' body and `SplitPane`'s closures only place it: a
+  tab names what runs in its terminal from the terminal's live view, made before the strip. `LiveTerminalUITests`
+  turns side by side on and off on the iPad and checks the stream stays the same (`live-terminal-stream`: its state
+  and how many were opened, Debug with the mock only).
 - **A real terminal** (`LiveTerminal.swift`, on a box with the `tty` capability, docs/API.md 4.8): a terminal tab, and a
   shell's own screen, is libghostty (Ghostty's VT engine and Metal renderer, through the `GhosttyTerminal` package with
   its in-memory backend) fed by `BoxAPI.terminal`: the app is a tmux client of the session, so colors, the cursor, a
@@ -216,6 +232,19 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   after a line or a key; not the conversation's transcript, held prompts or review); each terminal's lines are kept for
   the app's run. A prompt's icon-font glyphs (Nerd Fonts, Powerline: Unicode's private use areas) are drawn as spaces
   (`ANSI.plainGlyphs`, PierKit), not as missing-glyph boxes.
+- **Preview browser** (`App/Features/Browser/PreviewBrowser.swift`): the strip's globe or the ⋯ menu's "Navegador" opens
+  a tab with the worktree's page in a `WKWebView` under a minimal bar (back, forward, reload or stop, the address, copy
+  the link, open in the default browser). `PreviewTarget` (PierKit, tested) picks the page: one of the worktree's dev
+  servers (`GET /v1/services`, its own `$PIER_PORT` first) at the box's address when this device reaches the port
+  (`PortProbe`, as Detalhes checks it), else that server's public link, else it says what is missing (start the dev
+  server; a public link, or the box's network) and looks again every 4 s, so a server started in a terminal beside it
+  shows up by itself. One browser per worktree: its sessions' tab and Detalhes' "Abrir no Pier" (a screen of its own,
+  `PreviewBrowserRoute`) show the same page and history, the newest view taking the web view over. The page shown last
+  is kept per worktree for the app's run, the web view itself for the three shown last (two on the iPhone and iPad).
+  Plain http to a host on the network, and hot reload's websockets, load through `NSAllowsArbitraryLoadsInWebContent`
+  and `NSAllowsLocalNetworking` (Info.plist); the box's API keeps its mutual TLS. In Debug builds Safari's Web Inspector
+  can look into the page (`isInspectable`). On the mock or the demo box the page is drawn in the app under the server's address
+  (`loadHTMLString`): nothing is fetched.
 
 - Startup dialogs no hook announces (Claude Code's "New MCP server found", trust) are read from the screen. The box reports
   the agent as `running` meanwhile. Current Claude Code draws them **without numbers** (a `❯` on the selected option, "Enter
@@ -456,7 +485,8 @@ editor's line, column, language and line ending):
 - **Visão geral** (`OverviewPane`): the project (path, remote, default branch), its worktrees with their git state, the
   sessions running in this one.
 - **Detalhes** (`WorktreeDetailsView`, also a screen of its own on the iPhone): the dev servers listening in the worktree
-  as links to the box's address and port (checked from the device), the project's services there with their command and
+  as links to the box's address and port (checked from the device; "Abrir no Pier" beside each, and beside a public
+  link, opens it in the app's preview browser), the project's services there with their command and
   start / stop / restart, and its environment (branch, base, port block, folder, setup).
 
 What each worktree holds (open files with their unsaved text, the folders open, the history read, the tab) lives in
@@ -472,7 +502,8 @@ files, a file's patch (`WorkspaceUITests` covers both).
 
 Keyboard (iPad hardware keyboard, Mac menu "Ir", `PierCommands`; the palette lists the same): ⌘1 Início, ⌘2 Inbox,
 ⌘3 the agents board, ⌘4 Projetos (the order of the tabs and the sidebar), ⌘, Ajustes, ⌘N new task, ⌘K / ⌘P the palette, ⇧⌘L Faxina, ⇧⌘Space Falar;
-in a workspace ⌘S, ⇧⌘O, ⌘R and ⌥⌘1–6; beside a session in a worktree ⌃⇧` a new terminal. Sheets answer Return (or ⌘Return
+in a workspace ⌘S, ⇧⌘O, ⌘R and ⌥⌘1–7; beside a session in a worktree ⌃⇧` a new terminal and ⌥⌘T its tabs side by side
+with the conversation (iPad, Mac). Sheets answer Return (or ⌘Return
 where Return writes a line) and Esc.
 
 ## Live Activity details
@@ -511,7 +542,10 @@ about the person) and deletes it. Nothing leaves the device unless the person sh
 
 ## DEBUG launch arguments (simulator automation)
 
-`-pairLink <pier://…>`, `-openSession [<box>/]<name>` (with `-sessionNewTerminal 1`: a terminal tab opens beside it),
+`-pairLink <pier://…>`, `-openSession [<box>/]<name>` (with `-sessionNewTerminal 1`: a terminal tab opens beside it;
+`-sessionBrowser 1`: its browser tab; `-sessionSplit 1`: side by side, not kept; both a moment after launch, as a click
+would come), `-openBrowser <loc>[/<worktree>] [-browserURL <url>]` (the worktree's preview browser on a screen of its
+own, as Abrir no Pier opens it),
 `-openFirstSession 1`, `-openCompose 1 -composeProject <loc>
 -composePrompt <text> -composeNoFocus 1 -composeOptions 1 -composeSheet project|worktree|base -composeSubmit 1`,
 `-startTab inbox|board|projects|settings`, `-seedSections 1`, `-snapshotTo <file.png> [-snapshotAfter <s>]`, `-homeCustomize 1`, `-homeScrollTo <widget>`, `-sessionExpandAll 1`,

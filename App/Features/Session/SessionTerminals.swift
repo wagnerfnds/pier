@@ -4,23 +4,37 @@ import PierKit
 
 // The session screen's terminal tabs: beside the conversation, the plain terminals of the session's worktree, each a
 // shell of its own on the box (`POST /v1/sessions` with the worktree's ref, no agent), the way an editor keeps its
-// terminals next to the code. Nothing shows until the worktree has one: a session without a terminal is just its chat.
+// terminals next to the code, and the worktree's page in the app's browser (PreviewBrowser.swift). Nothing shows until
+// the worktree has one of them: a session without a terminal is just its chat. On the iPad and the Mac they can show
+// beside the conversation instead of over it ("Lado a lado"), in a split whose divider is dragged.
 
 // MARK: - model
 
 /// A session's terminal tabs for the app's run: the plain terminals of its worktree (the box's list, whoever opened
-/// them), the tab picked (nil: Conversa) and a feed per terminal, so its lines stay while another tab shows (only the one
-/// on screen reads the box). Opening, closing and renaming go to the box.
+/// them), the worktree's browser once opened, the tab picked (nil: Conversa), whether they show beside the conversation,
+/// and a feed per terminal, so its lines stay while another tab shows (only the one on screen reads the box). Opening,
+/// closing and renaming go to the box.
 @MainActor @Observable
 final class SessionTerminals {
+    /// A tab beside Conversa: one of the worktree's terminals (by session name), or its browser.
+    enum SideTab: Hashable {
+        case terminal(String)
+        case browser
+    }
+
     let box: String
     let session: String
     /// The worktree's ref ("loc/wt", "loc" for the main checkout); nil for a chat or a session in no worktree: no terminals.
     let ref: String?
     /// The session's folder: its worktree's, when the box's locations are not loaded yet.
     private let dir: String
-    /// The terminal on screen, by session name; nil, or one that is gone: Conversa.
-    var selected: String?
+    /// The tab picked; nil, or one that is gone: Conversa (side by side, the right pane shows `side(in:)`).
+    private(set) var selected: SideTab?
+    /// The tab beside Conversa picked last: what the right pane shows when side by side is turned on from Conversa.
+    @ObservationIgnored private var lastSide: SideTab?
+    /// The tabs show beside the conversation instead of over it (iPad, Mac, where the screen has room for both): the
+    /// person's choice for this session, kept with its other view choices (`SessionViewPrefs`).
+    private(set) var sideBySide: Bool
     /// A terminal is being opened: the buttons that open one wait for it.
     private(set) var opening = false
     /// The terminal whose command line takes the keyboard when it shows (one just opened; on the Mac, one picked).
@@ -46,7 +60,15 @@ final class SessionTerminals {
         ref = s.isAgent && !s.chat ? s.location.flatMap { $0.isEmpty ? nil : $0 } : nil
         dir = s.dir
         model = vm.model
+        sideBySide = ref != nil && SessionViewPrefs.sideBySide(box: vm.box, name: vm.name)
     }
+
+    /// Side by side needs room for both panes: the conversation and a terminal at a width each still reads at.
+    nonisolated static let minConversation: CGFloat = 360
+    nonisolated static let minSide: CGFloat = 340
+
+    /// A screen `width` points wide holds both panes (and the divider). Asked during layout, off the main actor.
+    nonisolated static func fits(width: CGFloat) -> Bool { width >= minConversation + minSide + 1 }
 
     private static var registry: [String: SessionTerminals] = [:]
     private static var recent: [String] = []
@@ -80,6 +102,9 @@ final class SessionTerminals {
     #if DEBUG
     /// `-sessionNewTerminal 1` opened its terminal already (once per launch).
     static var debugOpened = false
+    /// `-sessionSplit 1` / `-sessionBrowser 1` did their part already (once per launch).
+    static var debugSplit = false
+    static var debugBrowser = false
     #endif
 
     private var conn: BoxConnection? { model?.connection(for: box) }
@@ -96,8 +121,74 @@ final class SessionTerminals {
         return WorktreeTerminals.sessions(conn.sessions, ref: ref, path: path, paths: paths)
     }
 
-    /// The terminal on screen; nil: Conversa.
-    func current(in list: [Session]) -> Session? { list.first { $0.name == selected } }
+    /// The tab on screen, among the worktree's terminals `list` and its browser; nil: Conversa.
+    func current(in list: [Session]) -> SideTab? { selected.flatMap { has($0, in: list) ? $0 : nil } }
+
+    /// What the right pane shows side by side: the tab picked, else the one picked last, else the first terminal, else
+    /// the browser; nil while the worktree has none of them open.
+    func side(in list: [Session]) -> SideTab? {
+        if let t = current(in: list) { return t }
+        if let t = lastSide, has(t, in: list) { return t }
+        if let s = list.first { return .terminal(s.name) }
+        return browserOpen ? .browser : nil
+    }
+
+    private func has(_ tab: SideTab, in list: [Session]) -> Bool {
+        switch tab {
+        case .terminal(let name): list.contains { $0.name == name }
+        case .browser: browserOpen
+        }
+    }
+
+    /// Picks a tab (nil: Conversa).
+    func pick(_ tab: SideTab?) {
+        selected = tab
+        if let tab { lastSide = tab }
+    }
+
+    /// Beside the conversation, or over it in tabs (the strip's button, the ⋯ menu, ⌥⌘T). Back in tabs the conversation
+    /// shows, the session's first view; the right pane's tab is kept for the next time. `persist: false` for a Debug
+    /// launch's, which is not the person's choice.
+    func setSideBySide(_ on: Bool, persist: Bool = true) {
+        guard available, on != sideBySide else { return }
+        sideBySide = on
+        if !on { selected = nil }
+        if persist { SessionViewPrefs.setSideBySide(on, box: box, name: session) }
+    }
+
+    // MARK: browser
+
+    /// The worktree by project and name, as Detalhes names it (the main checkout's name from the box's list).
+    private var place: (location: String, worktree: String)? {
+        guard let ref else { return nil }
+        let parts = ref.split(separator: "/", maxSplits: 1).map(String.init)
+        if parts.count == 2 { return (parts[0], parts[1]) }
+        let main = conn?.location(named: parts[0])?.worktrees?.first { $0.main == true }?.name
+        return (parts[0], main ?? parts[0])
+    }
+
+    /// The worktree's browser (PreviewBrowser.swift), once opened from one of its sessions or from Detalhes.
+    var browser: PreviewBrowserModel? {
+        place.flatMap { PreviewBrowsers.shared.existing(box: box, location: $0.location, worktree: $0.worktree) }
+    }
+
+    /// The browser's tab shows beside the worktree's sessions.
+    var browserOpen: Bool { browser?.tabOpen == true }
+
+    /// The worktree's page in a tab, picked (the strip's globe, the ⋯ menu, an empty side).
+    func openBrowser() {
+        guard let place else { return }
+        PreviewBrowsers.shared.model(box: box, location: place.location, worktree: place.worktree).tabOpen = true
+        pick(.browser)
+    }
+
+    /// Its tab closes and its web view goes; the page shown last stays, for when it opens again.
+    func closeBrowser() {
+        guard let b = browser else { return }
+        b.tabOpen = false
+        b.releaseWebView()
+        if selected == .browser { pick(nil) }
+    }
 
     /// The box streams its terminals (capability `tty`): each is a live terminal (LiveTerminal.swift); else its screen
     /// is read every second and lines are sent (TerminalFeed).
@@ -161,14 +252,15 @@ final class SessionTerminals {
         defer { opening = false }
         do {
             let s = try await TerminalOpener.open(on: conn, ref: ref, terminals: all)
-            selected = s.name
+            pick(.terminal(s.name))
             focusTarget = s.name
         } catch {
             banner = BannerMessage(text: String(localized: "Não foi possível abrir um terminal: \(WorkspaceError.message(error))"), kind: .error)
         }
     }
 
-    /// Ends a terminal on the box (whatever runs in it stops); the one beside it shows, or Conversa after the last.
+    /// Ends a terminal on the box (whatever runs in it stops); the one beside it shows, or the browser or Conversa after
+    /// the last.
     func close(_ s: Session) async {
         guard let conn else { return }
         let list = all
@@ -181,9 +273,9 @@ final class SessionTerminals {
             return
         }
         await conn.refreshSessions()
-        if selected == s.name, let i = list.firstIndex(where: { $0.name == s.name }) {
+        if selected == .terminal(s.name), let i = list.firstIndex(where: { $0.name == s.name }) {
             let rest = list.filter { $0.name != s.name }
-            selected = rest.isEmpty ? nil : rest[min(i, rest.count - 1)].name
+            pick(rest.isEmpty ? (browserOpen ? .browser : nil) : .terminal(rest[min(i, rest.count - 1)].name))
         }
         prune(keeping: all.map(\.name))
     }
@@ -310,9 +402,10 @@ extension WorktreeTerminals.Label {
 // MARK: - the tabs
 
 /// The session screen's tabs around `conversation` (the chat as it always was, its composer and needs-you card
-/// included): Conversa and the worktree's terminals, + for another. The strip shows only while the worktree has a
-/// terminal. A terminal tab fills the screen with its lines, a command line (Return types it with Enter) and the keys
-/// bar; the conversation stays underneath, as it was, for when Conversa is picked again.
+/// included): Conversa, the worktree's terminals and its browser, + for another terminal. The strip shows only while
+/// the worktree has a terminal or its browser open. A terminal tab fills the screen with its lines, a command line
+/// (Return types it with Enter) and the keys bar; the conversation stays underneath, as it was, for when Conversa is
+/// picked again. Side by side (iPad, Mac) the conversation keeps the left and the tabs, Conversa left out, take the right.
 struct SessionTerminalTabs<Conversation: View>: View {
     let vm: SessionViewModel
     let conversation: Conversation
@@ -320,6 +413,10 @@ struct SessionTerminalTabs<Conversation: View>: View {
     @State private var closing: Session?
     @State private var renaming: Session?
     @State private var renameText = ""
+    /// The screen has room for both panes (only that, not its width: a window being resized draws this again only when
+    /// it crosses the line).
+    @State private var roomy = false
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     init(vm: SessionViewModel, @ViewBuilder conversation: () -> Conversation) {
         self.vm = vm
@@ -327,70 +424,130 @@ struct SessionTerminalTabs<Conversation: View>: View {
         _terminals = State(initialValue: SessionTerminals.of(vm))
     }
 
+    /// Side by side can show: the iPad's or the Mac's width (the iPhone keeps its tabs), and room for both panes.
+    private var fits: Bool { sideBySideAllowed && roomy }
+    /// iPad and Mac: an iPhone keeps its tabs, landscape included.
+    private var sideBySideAllowed: Bool { sizeClass == .regular && !Platform.isPhone }
+
     var body: some View {
         let list = terminals.all
-        dialogs(content(list), list: list)
+        let split = terminals.sideBySide && fits
+        dialogs(content(list, split: split), list: list)
+            .onGeometryChange(for: Bool.self) { SessionTerminals.fits(width: $0.size.width) } action: { roomy = $0 }
             .banner(Binding(get: { terminals.banner }, set: { terminals.banner = $0 }))
             .onChange(of: list.map(\.name)) { _, names in terminals.prune(keeping: names) }
+            .onChange(of: terminals.sideBySide) { _, on in if on { explainNarrow() } }
             .focusedSceneValue(\.newTerminal, terminals.available ? NewTerminalAction(terminals: terminals) : nil)
+            .focusedSceneValue(\.sessionSide, terminals.available && sideBySideAllowed
+                               ? SessionSideAction(terminals: terminals, on: terminals.sideBySide) : nil)
             #if DEBUG
             .task {
-                // `-sessionNewTerminal 1`: a terminal opens beside the first session shown in a worktree (screenshots, tests).
-                guard UserDefaults.standard.bool(forKey: "sessionNewTerminal"), !SessionTerminals.debugOpened, terminals.available else { return }
-                SessionTerminals.debugOpened = true
+                // `-sessionSplit 1`: the first session shown in a worktree opens side by side, `-sessionBrowser 1` with
+                // its browser open; `-sessionNewTerminal 1`: a terminal opens beside it (screenshots, tests).
+                let d = UserDefaults.standard
+                guard terminals.available, ["sessionSplit", "sessionBrowser", "sessionNewTerminal"].contains(where: d.bool(forKey:)) else { return }
                 try? await Task.sleep(for: .seconds(1.5))
+                // Once the window has its size (`-macWindowSize`), as a click would come: too narrow, it says why.
+                if d.bool(forKey: "sessionBrowser"), !SessionTerminals.debugBrowser {
+                    SessionTerminals.debugBrowser = true
+                    terminals.openBrowser()
+                }
+                if d.bool(forKey: "sessionSplit"), !SessionTerminals.debugSplit {
+                    SessionTerminals.debugSplit = true
+                    terminals.setSideBySide(true, persist: false)
+                }
+                guard d.bool(forKey: "sessionNewTerminal"), !SessionTerminals.debugOpened else { return }
+                SessionTerminals.debugOpened = true
+                let browsing = terminals.selected == .browser
                 await terminals.open()
+                // With the browser asked for too, it stays the tab on screen beside the new terminal's.
+                if browsing { terminals.pick(.browser) }
             }
             #endif
     }
 
-    /// The strip (once there is a terminal), and Conversa or the terminal picked. Live terminals shown once stay
-    /// mounted under the one on screen, still streaming, so going back to one is instant.
-    private func content(_ list: [Session]) -> some View {
+    /// Turned on in a window too narrow for both panes: the tabs stay, and the person is told why. A moment later,
+    /// once the window has laid out again (the details column folds away for it on the Mac).
+    private func explainNarrow() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard terminals.sideBySide, !fits, sideBySideAllowed else { return }
+            terminals.banner = BannerMessage(text: S("Lado a lado precisa de uma janela mais larga: as abas ficam lado a lado sozinhas quando houver espaço."))
+        }
+    }
+
+    /// The strip (once there is a terminal or the browser), and Conversa or the tab picked, or side by side the two.
+    /// Live terminals shown once stay mounted under the one on screen, still streaming, so going back to one is instant.
+    /// The conversation and the tabs are the same two panes either way (`SplitPane` lays one over the other in tabs), so
+    /// turning side by side on or off moves them: no terminal starts its stream again, the conversation keeps its place.
+    /// What the panes show is made here, in this view's body, and `SplitPane`'s closures only place it: a value read in
+    /// there would draw only them again. A tab says what runs in its terminal once the terminal's live view (or feed) is
+    /// made, so those come before the strip, and the terminals kept mounted are read here (`shown` grows right after one
+    /// first shows), so the strip is drawn again with the new one and follows what runs in it from then on.
+    private func content(_ list: [Session], split: Bool) -> some View {
         let current = terminals.current(in: list)
+        let side = split ? terminals.side(in: list) : current
+        let sideTerminal: String? = if case .terminal(let name)? = side { name } else { nil }
         let live = terminals.live
+        let hidden = !split && side != nil
+        let focused = terminals.focusTarget
+        let mounted = live ? list.filter { terminals.shown.contains($0.name) || $0.name == sideTerminal }
+            .map { MountedTerminal(session: $0, terminal: terminals.liveTerminal(for: $0)) } : []
+        let fed = live ? nil : sideTerminal.flatMap { name in list.first { $0.name == name } }
+            .flatMap { s in terminals.feed(for: s).map { (session: s, feed: $0) } }
+        let browser = side == .browser ? terminals.browser : nil
+        let opening = terminals.opening
+        let tabs = strip(list, current: split ? side : current, conversation: !split)
+        let showsTabs = !list.isEmpty || terminals.browserOpen
         return VStack(spacing: 0) {
-            if !list.isEmpty { strip(list, current: current?.name) }
-            ZStack {
+            if !split && showsTabs { tabs }
+            SplitPane(key: "session.side", initialFraction: 0.5,
+                      minLeading: SessionTerminals.minConversation, minTrailing: SessionTerminals.minSide, split: split) {
                 VStack(spacing: 0) { conversation }
-                    .opacity(current == nil ? 1 : 0)
-                    .allowsHitTesting(current == nil)
-                    .disabled(current != nil)
-                    .accessibilityHidden(current != nil)
-                if live {
-                    ForEach(list.filter { terminals.shown.contains($0.name) || $0.name == current?.name }, id: \.name) { s in
-                        liveSurface(s, visible: s.name == current?.name)
+                    .opacity(hidden ? 0 : 1)
+                    .allowsHitTesting(!hidden)
+                    .disabled(hidden)
+                    .accessibilityHidden(hidden)
+            } trailing: {
+                VStack(spacing: 0) {
+                    if split { tabs }
+                    ZStack {
+                        ForEach(mounted) { m in
+                            let visible = m.session.name == sideTerminal
+                            liveSurface(m, visible: visible, focus: visible && focused == m.session.name)
+                        }
+                        if let fed { surface(fed.session, feed: fed.feed, focus: focused == fed.session.name) }
+                        if let browser { PreviewBrowser(browser: browser).zIndex(2) }
+                        if split && side == nil {
+                            SideEmpty(opening: opening, openTerminal: openTerminal, openBrowser: { terminals.openBrowser() })
+                        }
                     }
-                } else if let current {
-                    surface(current)
+                    .frame(maxHeight: .infinity)
                 }
             }
-            .frame(maxHeight: .infinity)
         }
-        .onChange(of: current?.name, initial: true) { _, name in
+        .onChange(of: sideTerminal, initial: true) { _, name in
             if let name, live { terminals.show(name) }
         }
     }
 
-    private func liveSurface(_ s: Session, visible: Bool) -> some View {
-        LiveTerminalSurface(terminal: terminals.liveTerminal(for: s), exited: s.exited, visible: visible,
-                            focus: visible && terminals.focusTarget == s.name,
-                            onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
-                            onClose: { ask(close: s) })
+    private func liveSurface(_ m: MountedTerminal, visible: Bool, focus: Bool) -> some View {
+        let s = m.session
+        return LiveTerminalSurface(terminal: m.terminal, exited: s.exited, visible: visible, focus: focus,
+                                   onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
+                                   onClose: { ask(close: s) })
             .opacity(visible ? 1 : 0)
             .allowsHitTesting(visible)
             .accessibilityHidden(!visible)
             .zIndex(visible ? 1 : 0)
     }
 
-    @ViewBuilder private func surface(_ s: Session) -> some View {
-        if let feed = terminals.feed(for: s) {
-            TerminalSurface(feed: feed, focus: terminals.focusTarget == s.name,
-                            onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
-                            onError: { terminals.banner = BannerMessage(text: $0, kind: .error) },
-                            onClose: { ask(close: s) })
-                .id(s.name)
-        }
+    private func surface(_ s: Session, feed: TerminalFeed, focus: Bool) -> some View {
+        TerminalSurface(feed: feed, focus: focus,
+                        onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
+                        onError: { terminals.banner = BannerMessage(text: $0, kind: .error) },
+                        onClose: { ask(close: s) })
+            .id(s.name)
     }
 
     /// Closing one that runs is asked first; renaming takes a name.
@@ -438,54 +595,138 @@ struct SessionTerminalTabs<Conversation: View>: View {
         if s.exited { Task { await terminals.close(s) } } else { closing = s }
     }
 
-    private func strip(_ list: [Session], current: String?) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 0) {
-                ConversationTab(active: current == nil, needsYou: current != nil && vm.session.needsYou) {
-                    terminals.selected = nil
-                }
-                ForEach(Array(list.enumerated()), id: \.element.name) { i, s in
-                    TerminalTab(title: terminals.label(s, position: i + 1).text,
-                                running: !s.exited && (terminals.running(s) != nil || !(s.command ?? "").isEmpty),
-                                exited: s.exited, active: s.name == current, session: s.name,
-                                select: {
-                                    terminals.selected = s.name
-                                    if Platform.isMac { terminals.focusTarget = s.name }
-                                },
-                                close: { ask(close: s) })
-                        .contextMenu {
-                            Button {
-                                renameText = WorktreeTerminals.number(inTitle: s.title) == nil ? (s.title ?? "") : ""
-                                renaming = s
-                            } label: { Label("Renomear…", systemImage: "pencil") }
-                            Button { UIPasteboard.general.string = s.name } label: { Label("Copiar nome da sessão", systemImage: "doc.on.doc") }
-                            Divider()
-                            Button(role: .destructive) { ask(close: s) } label: { Label("Fechar terminal", systemImage: "xmark") }
+    /// The tabs: Conversa (not side by side, where it shows anyway), the terminals, the browser once open; + for a
+    /// terminal, the globe for the browser while it is closed, and at the end, on the iPad and the Mac, side by side.
+    private func strip(_ list: [Session], current: SessionTerminals.SideTab?, conversation: Bool) -> some View {
+        // Read here, in the body, not in the rows' closures: a tab is named after what runs in its terminal.
+        let rows = list.enumerated().map { i, s in
+            (session: s, title: terminals.label(s, position: i + 1).text,
+             running: !s.exited && (terminals.running(s) != nil || !(s.command ?? "").isEmpty))
+        }
+        let needsYou = current != nil && vm.session.needsYou
+        let browserOpen = terminals.browserOpen
+        let page = terminals.browser?.url
+        let opening = terminals.opening
+        return HStack(spacing: 0) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    if conversation {
+                        ConversationTab(active: current == nil, needsYou: needsYou) {
+                            terminals.pick(nil)
                         }
-                }
-                Button(action: openTerminal) {
-                    ZStack {
-                        if terminals.opening { ProgressView().controlSize(.mini) }
+                    }
+                    ForEach(rows, id: \.session.name) { row in
+                        let s = row.session
+                        TerminalTab(title: row.title, running: row.running,
+                                    exited: s.exited, active: current == .terminal(s.name), session: s.name,
+                                    select: {
+                                        terminals.pick(.terminal(s.name))
+                                        if Platform.isMac { terminals.focusTarget = s.name }
+                                    },
+                                    close: { ask(close: s) })
+                            .contextMenu {
+                                Button {
+                                    renameText = WorktreeTerminals.number(inTitle: s.title) == nil ? (s.title ?? "") : ""
+                                    renaming = s
+                                } label: { Label("Renomear…", systemImage: "pencil") }
+                                Button { UIPasteboard.general.string = s.name } label: { Label("Copiar nome da sessão", systemImage: "doc.on.doc") }
+                                Divider()
+                                Button(role: .destructive) { ask(close: s) } label: { Label("Fechar terminal", systemImage: "xmark") }
+                            }
+                    }
+                    if browserOpen {
+                        BrowserTab(active: current == .browser, page: page,
+                                   select: { terminals.pick(.browser) }, close: { terminals.closeBrowser() })
+                    }
+                    stripButton(help: "Novo terminal (⌃⇧`)", label: "Novo terminal", id: "terminal-new", action: openTerminal) {
+                        if opening { ProgressView().controlSize(.mini) }
                         else { Image(systemName: "plus").font(.system(size: Density.small + 1, weight: .semibold)) }
                     }
-                    .foregroundStyle(Theme.textDim)
-                    .frame(width: Platform.isMac ? 30 : 40)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
+                    .disabled(opening)
+                    if !browserOpen {
+                        stripButton(help: "Navegador: a página da worktree", label: "Navegador", id: "browser-open",
+                                    action: { terminals.openBrowser() }) {
+                            Image(systemName: "globe").font(.system(size: Density.small + 1))
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(terminals.opening)
-                .help("Novo terminal (⌃⇧`)")
-                .accessibilityLabel("Novo terminal")
-                .accessibilityIdentifier("terminal-new")
             }
+            .scrollIndicators(.hidden)
+            if sideBySideAllowed { sideBySideButton }
         }
-        .scrollIndicators(.hidden)
         .frame(height: Platform.isMac ? 30 : 36)
         // A strip with its line under the tabs: the tab picked, in the color of what it shows, runs into it.
         .background { ZStack(alignment: .bottom) { Theme.card; Rectangle().fill(Theme.stroke).frame(height: 1) } }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-tabs")
+    }
+
+    private func stripButton<Glyph: View>(help: LocalizedStringKey, label: LocalizedStringKey, id: String, action: @escaping () -> Void,
+                                          @ViewBuilder content: () -> Glyph) -> some View {
+        Button(action: action) {
+            ZStack { content() }
+                .foregroundStyle(Theme.textDim)
+                .frame(width: Platform.isMac ? 30 : 40)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+    }
+
+    /// Side by side or in tabs (also the ⋯ menu and ⌥⌘T), pinned at the strip's end.
+    private var sideBySideButton: some View {
+        let on = terminals.sideBySide
+        return Button { terminals.setSideBySide(!on) } label: {
+            Image(systemName: on ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
+                .font(.system(size: Density.small + 1))
+                .foregroundStyle(on ? Theme.accent : Theme.textDim)
+                .frame(width: Platform.isMac ? 34 : 44)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .leading) { Rectangle().fill(Theme.stroke).frame(width: 1) }
+        .help(on ? "Mostrar em abas (⌥⌘T)" : "Lado a lado (⌥⌘T)")
+        .accessibilityLabel("Lado a lado")
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier("session-side-by-side")
+    }
+}
+
+/// A terminal kept mounted beside or under the conversation, with its live terminal, made in the tabs' body.
+private struct MountedTerminal: Identifiable {
+    let session: Session
+    let terminal: LiveTerminal
+    var id: String { session.name }
+}
+
+/// Side by side with nothing open beside the conversation: a terminal or the browser, a click away.
+private struct SideEmpty: View {
+    let opening: Bool
+    let openTerminal: () -> Void
+    let openBrowser: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "rectangle.split.2x1").font(.system(size: 28, weight: .light)).foregroundStyle(Theme.textFaint)
+            Text("Abra um terminal ou o navegador ao lado da conversa.")
+                .font(.callout).foregroundStyle(Theme.textDim).multilineTextAlignment(.center)
+            HStack(spacing: 8) {
+                Button(action: openTerminal) { Label("Novo terminal", systemImage: "apple.terminal.on.rectangle") }
+                    .disabled(opening)
+                Button(action: openBrowser) { Label("Navegador", systemImage: "globe") }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.bg)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("session-side-empty")
     }
 }
 
@@ -569,6 +810,53 @@ private struct TerminalTab: View {
         .overlay(alignment: .trailing) { Rectangle().fill(Theme.stroke).frame(width: 1) }
         .onHover { hovering = $0 }
         .help(exited ? "\(title) · \(String(localized: "o programa terminou"))" : "\(title) · \(session)")
+    }
+}
+
+/// The browser's tab: the worktree's page (its address on hover), × on the one picked and under the pointer, as a
+/// terminal's.
+private struct BrowserTab: View {
+    let active: Bool
+    let page: URL?
+    let select: () -> Void
+    let close: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: select) {
+                HStack(spacing: 6) {
+                    Image(systemName: "globe").font(.system(size: Density.small))
+                        .foregroundStyle(active ? Theme.accent : Theme.textDim)
+                    Text("Navegador").font(.system(size: Density.small + 0.5, weight: active ? .semibold : .regular))
+                        .foregroundStyle(active ? Theme.text : Theme.textDim).lineLimit(1)
+                }
+                .padding(.leading, 10).padding(.trailing, 6)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(active ? .isSelected : [])
+            .accessibilityAction(named: Text("Fechar navegador"), close)
+            .accessibilityIdentifier("browser-tab")
+            Button(action: close) {
+                Image(systemName: "xmark").font(.system(size: Density.small - 2, weight: .bold)).foregroundStyle(Theme.textDim)
+                    .frame(width: 16, height: 16)
+                    .background(hovering ? Theme.washStrong : .clear, in: RoundedRectangle(cornerRadius: 4))
+            }
+            .buttonStyle(.plain)
+            .opacity(active || hovering || !Platform.isMac ? 1 : 0)
+            .padding(.trailing, 10)
+            .accessibilityLabel("Fechar navegador")
+            .accessibilityIdentifier("browser-close")
+        }
+        .frame(maxHeight: .infinity)
+        // The picked tab runs into the browser's bar, in its color.
+        .background { if active { Theme.card } }
+        .overlay(alignment: .top) { if active { Rectangle().fill(Theme.accent).frame(height: 2) } }
+        .overlay(alignment: .trailing) { Rectangle().fill(Theme.stroke).frame(width: 1) }
+        .onHover { hovering = $0 }
+        .help(page.map { Text(verbatim: $0.absoluteString) } ?? Text("Navegador"))
     }
 }
 
@@ -832,15 +1120,22 @@ struct SessionTerminalButton: View {
     }
 }
 
-/// The ⋯ menu's "Novo terminal".
+/// The ⋯ menu's "Novo terminal", "Navegador" and, on the iPad and the Mac (`regular`), "Lado a lado".
 struct SessionTerminalMenuItem: View {
     let vm: SessionViewModel
+    var regular = false
 
     var body: some View {
         let terminals = SessionTerminals.of(vm)
         if terminals.available {
             Button { Task { await terminals.open() } } label: { Label("Novo terminal", systemImage: "apple.terminal.on.rectangle") }
                 .disabled(terminals.opening)
+            Button { terminals.openBrowser() } label: { Label("Navegador", systemImage: "globe") }
+            if regular {
+                Toggle(isOn: Binding(get: { terminals.sideBySide }, set: { terminals.setSideBySide($0) })) {
+                    Label("Lado a lado", systemImage: "rectangle.split.2x1")
+                }
+            }
         }
     }
 }
@@ -857,10 +1152,29 @@ struct NewTerminalAction: Equatable {
 
 private struct NewTerminalKey: FocusedValueKey { typealias Value = NewTerminalAction }
 
+/// The menu bar's "Lado a lado" (⌥⌘T): the session screen in front shows its tabs beside the conversation, or over it.
+/// Equal across redraws while it stays the same, so the conversation updating does not rebuild the menu bar.
+struct SessionSideAction: Equatable {
+    let terminals: SessionTerminals
+    let on: Bool
+
+    @MainActor func toggle() { terminals.setSideBySide(!on) }
+
+    static func == (a: Self, b: Self) -> Bool { a.terminals === b.terminals && a.on == b.on }
+}
+
+private struct SessionSideKey: FocusedValueKey { typealias Value = SessionSideAction }
+
 extension FocusedValues {
     /// The session screen in front can open a terminal (its session works in a worktree).
     var newTerminal: NewTerminalAction? {
         get { self[NewTerminalKey.self] }
         set { self[NewTerminalKey.self] = newValue }
+    }
+
+    /// The session screen in front can show its tabs beside the conversation (a session in a worktree, iPad or Mac).
+    var sessionSide: SessionSideAction? {
+        get { self[SessionSideKey.self] }
+        set { self[SessionSideKey.self] = newValue }
     }
 }

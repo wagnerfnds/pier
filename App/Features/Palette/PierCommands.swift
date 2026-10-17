@@ -3,13 +3,16 @@ import SwiftUI
 /// Menu bar (Mac) and hardware-keyboard (iPad) shortcuts: ⌘K / ⌘P the palette, ⌘N a new task, ⇧⌘N a new chat, ⌘1–4 the
 /// sections in the order the sidebar and the tab bar show them (Início, Inbox, Quadro, Projetos), ⌘, the settings,
 /// ⇧⌘Space Falar, ⇧⌘A "Apontar na tela" (Mac); in a project's workspace ⌘S saves the file, ⇧⌘O opens one by name, ⌘R
-/// reads the box again and ⌥⌘1–4 pick its tabs; beside a session in a worktree ⌃⇧` opens a terminal (as in VS Code).
+/// reads the box again and ⌥⌘1–7 pick its tabs; beside a session in a worktree ⌃⇧` opens a terminal (as in VS Code)
+/// and ⌥⌘T shows its tabs beside the conversation or over it (iPad, Mac).
 struct PierCommands: Commands {
     let model: AppModel
     /// The project workspace in front, if any (⌘S, ⌘R, ⇧⌘O and its tabs).
     @FocusedValue(\.workspace) private var workspace
     /// The session screen in front, when its session works in a worktree (⌃⇧`).
     @FocusedValue(\.newTerminal) private var newTerminal
+    /// The same, on the iPad and the Mac: its tabs side by side with the conversation (⌥⌘T).
+    @FocusedValue(\.sessionSide) private var sessionSide
 
     var body: some Commands {
         CommandGroup(replacing: .saveItem) {
@@ -19,6 +22,8 @@ struct PierCommands: Commands {
         CommandGroup(after: .toolbar) {
             Button("Atualizar") { if let workspace { workspace.refresh() } else { Task { await model.refreshAll() } } }
                 .keyboardShortcut("r")
+            Toggle("Lado a lado", isOn: Binding(get: { sessionSide?.on == true }, set: { _ in sessionSide?.toggle() }))
+                .keyboardShortcut("t", modifiers: [.command, .option]).disabled(sessionSide == nil)
             Divider()
             Button("Agentes") { workspace?.tab(.start) }.keyboardShortcut("1", modifiers: [.command, .option]).disabled(workspace == nil)
             Button("Arquivos") { workspace?.tab(.files) }.keyboardShortcut("2", modifiers: [.command, .option]).disabled(workspace == nil)

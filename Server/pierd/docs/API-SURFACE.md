@@ -46,7 +46,7 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `GET`/`PUT /v1/env` | `skills.go` `getEnv`/`putEnv` (rewrites the skills) | App `boxVariables()`/`setBoxVariables()`: BoxVariablesScreen |
 | `GET /v1/skills`, `PUT`/`DELETE /v1/skills/{id}` | `skills.go` | App `skills()`/`setSkill()`: BoxVariablesScreen |
 | `GET /v1/mcp[?status=1\|deep]`, `PUT`/`DELETE /v1/mcp/{name}` (capability `mcp`; gate `before:mcp.change`) | `mcp.go` (the list in `mcp.json`, written into every account through `claude mcp` / `codex mcp`, each write recorded in `mcp-written.json`; also at startup and when an account is added; `status=1` reads the accounts' configuration and shakes hands itself, `deep` runs `claude mcp list`) | App `mcpServers()`/`setMCPServer()`/`removeMCPServer()`: MCPServersScreen (Testar: `status=1`) |
-| `GET`/`POST /v1/shares`, `DELETE /v1/shares/{name}` | `shares.go` (through `relay.Listener.Publish`) | App `publicLinks()`… : WorktreeDetails |
+| `GET`/`POST /v1/shares`, `DELETE /v1/shares/{name}` | `shares.go` (through `relay.Listener.Publish`) | App `publicLinks()`… : WorktreeDetails; `publicLinks()`: PreviewBrowser (the page it opens) |
 | `GET /v1/github/repos[?owner=]` | `github.go` `listGitHubRepos` (the box's gh) | App `gitHubRepos()`: GitHubReposScreen |
 | `GET /v1/locations/{name}/branches` | `helpers.go` `listBranches` | App `branches()`: ComposeModel, WorktreeParts |
 | `GET`/`PUT /v1/locations/{name}/config` | `repoconfig.go` `getConfig`/`putConfig` | `pierd location config [--set FILE]` |
@@ -63,7 +63,7 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `GET /v1/locations/{name}/worktrees/{worktree}/prepare` | `prepare.go` `getPrepare` | App `prepareStatus()`: WorktreeDetails (Preparação) |
 | `POST /v1/locations/{name}/worktrees/{worktree}/prepare` (202; 409 while running; gate `before:worktree.prepare`) | `prepare.go` `postPrepare` | App `prepare()`: WorktreeDetails (Preparar ambiente) |
 | `GET /v1/worktrees[?location=]` | `worktreeops.go` `listWorktreeStatuses` | App `worktreeStatuses()`: EndSessionSheet, Housekeeper, Project/Worktree screens |
-| `GET /v1/services` | `services.go` `handleServices` | App `services()`: HomeStore, Housekeeper, WorktreeDetails; `pierd services` |
+| `GET /v1/services` | `services.go` `handleServices` | App `services()`: HomeStore, Housekeeper, WorktreeDetails, PreviewBrowser; `pierd services` |
 | `GET /v1/review[?all=1]` | `review.go` `review` | App `review()`: ReviewStore, PullRequestStore/Screen/Sheets, SessionSignals; push engine |
 | `POST /v1/exec` | `orchestrate.go` `handleExec` | App `exec()`: GitActions, PRCommands, AIDraft, HomeCommands (PRs, CI, git activity), ReviewStore, DiffScreen, EndSessionSheet, Housekeeper, WorktreeParts |
 
