@@ -130,7 +130,7 @@ removes one (its open connections close within seconds).
 
 | Where | What |
 |---|---|
-| `$PIER_HOME` (default `~/.config/pier`) | `box/` (identity, `clients.json`, `locations.json`, `ports.json`, `journal/`, `turns.json`, logs, `pierd.sock`), `push.json`, `AuthKey.p8`, `push-state.json` |
+| `$PIER_HOME` (default `~/.config/pier`) | `box/` (identity, `clients.json`, `locations.json`, `ports.json`, `journal/`, `turns.json`, `accounts.json` and `accounts/`, `mcp.json`, logs, `pierd.sock`), `push.json`, `AuthKey.p8`, `push-state.json` |
 | `$PIER_USER_DIR` (default `~/.pier`) | `hooks.json` (box hooks: `{"hooks":[{"on":"before:worktree.create","run":"…"}]}`), `env.json` (`{"env":{…}}` for every worktree) |
 | repository `.pier/config.json` | what every worktree of the repository gets (below). It runs only once trusted on the box: `pierd location config NAME --trust HASH` |
 | box-local location config | the same keys, for one box, laid over the repository's: `pierd location config NAME --set file.json` |
@@ -153,7 +153,8 @@ A location config:
 Everything run in a worktree (sessions, setup and archive scripts, services, `exec`, repository hooks) gets
 `PIER_BOX`, `PIER_LOCATION`, `PIER_ROOT_PATH`, `PIER_WORKTREE_PATH`, `PIER_WORKTREE_NAME`,
 `PIER_WORKTREE_SLUG`, `PIER_BRANCH`, `PIER_PORT`, `PIER_PORT_1`…, and `PORT`. Sessions also get
-`PIER_SESSION` and `PIER_AGENT`; hooks get `PIER_EVENT` and `PIER_<KEY>` for the event's data.
+`PIER_SESSION`, `PIER_AGENT` and, in chats and home terminals too, the tokens Codex reads for the box's MCP servers
+(`PIER_MCP_<NAME>_TOKEN`, below); hooks get `PIER_EVENT` and `PIER_<KEY>` for the event's data.
 
 Each worktree gets its own block of 10 ports from 41000 (kept in `ports.json`); a new block is never one where
 something already listens.
@@ -174,6 +175,15 @@ front for the folders of the box's projects, the worktrees it makes and its chat
 its own lock; Codex's `config.toml`), and from the screen when the question comes anyway. A prompt sent to either is
 submitted, not just typed: pierd waits for its input box to show the prompt, presses Enter, and checks it went in
 (docs/API.md 4.3).
+
+## MCP servers
+
+The MCP servers added in the app (Ajustes › Servidores MCP; `PUT /v1/mcp/{name}`) are kept in `$PIER_HOME/box/mcp.json`
+(mode 0600, tokens included) and written into every Claude Code and Codex account on the box through the agents' own
+CLIs (`claude mcp add --scope user`, `codex mcp add`): when one is saved, when an account is added and when pierd
+starts. pierd records what it wrote (`mcp-written.json`) and only ever removes that, never a server added by hand.
+Codex reads a server's token from `PIER_MCP_<NAME>_TOKEN`, which pierd gives every session it starts, so the token is
+not written into Codex's `config.toml`.
 
 ## Push notifications
 

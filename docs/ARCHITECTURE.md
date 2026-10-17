@@ -376,11 +376,16 @@ every project lives under and the spaces in it (`BoxProjectsSettingsScreen`; the
 Detalhes) picks its language version and its databases. pierd runs them in Docker with launchers first on the
 worktrees' PATH, never in the project (docs/API.md 2.9); rows and cards show the space and an "isolated" mark.
 
-**Accounts, limits, variables, public links**: Ajustes › Projetos also has the box's Claude Code and Codex accounts
+**Accounts, limits, variables, MCP servers, public links**: Ajustes › Projetos also has the box's Claude Code and Codex accounts
 (`AccountsScreen`: add one, sign in from the app with `SignInSheet` (on a box without `logins`, the box's terminal
 opened in the app, the real one, where the link and the code are copied and pasted: `Session.isSignIn`, docs/API.md
 2.10), make it the default) and its variables with a
-note each, plus the skills that tell the agents about them (`BoxVariablesScreen`). A project picks its agents' account
+note each, plus the skills that tell the agents about them (`BoxVariablesScreen`). **Servidores MCP** (`MCPServersScreen`,
+boxes with `mcp`) lists the MCP servers pierd writes into every Claude Code and Codex account through the agents' own
+CLIs (only its own entries ever come out again); a token goes to the box and never comes back (Codex reads it from
+`PIER_MCP_<NAME>_TOKEN`, which every session gets), and Testar shows how each agent's default account sees the server
+(docs/API.md 2.14). The app's own `claude -p` helpers run with `--strict-mcp-config`, so they start none of those
+servers. A project picks its agents' account
 (`ProjectAccountsSection`, on the project's screen and in a worktree's Detalhes; `AccountsCache` loads them). The Home's
 **Limites de uso** (`LimitsWidget`) shows each account's 5-hour and weekly use and switches the box's default with a tap.
 A worktree's Detalhes makes a dev server's **public link** through the box's relay (docs/API.md 2.10–2.12,
