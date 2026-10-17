@@ -34,6 +34,9 @@ final class BoxConnection: Identifiable {
     /// box reconnected with it, so it is reachable away from its network.
     @ObservationIgnored var onRelay: ((BoxConnection, String?) -> Void)?
     @ObservationIgnored private var refreshTasks: [String: Task<Void, Never>] = [:]
+    /// Refreshes whose request is on its way, and those an event asked for meanwhile (the answer may predate it).
+    @ObservationIgnored private var refreshRunning: Set<String> = []
+    @ObservationIgnored private var refreshAgain: Set<String> = []
 
     init(record: BoxRecord, client: any PierBoxClient, raw: any PierTransport) {
         self.record = record
@@ -82,11 +85,14 @@ final class BoxConnection: Identifiable {
     }
 
     func refreshSessions() async {
+        let was = state
+        var changed = false
         do {
-            applySessions(try await client.sessions())
+            changed = applySessions(try await client.sessions())
             set(\.state, .online)
         } catch { apply(error: error) }
-        onChange?(self)
+        // Widgets and Live Activities follow changes only: most refreshes find the list as it was.
+        if changed || state != was { onChange?(self) }
     }
 
     func refreshLocations() async {
@@ -104,28 +110,41 @@ final class BoxConnection: Identifiable {
     }
 
     private func schedule(_ key: String, _ work: @escaping @MainActor () async -> Void) {
-        if refreshTasks[key] != nil { return }
+        if refreshTasks[key] != nil {
+            // Still waiting to start: it will see this change. Already asking: its answer may be from before the event,
+            // so it runs once more after (an agent's new state used to wait for the next event).
+            if refreshRunning.contains(key) { refreshAgain.insert(key) }
+            return
+        }
         refreshTasks[key] = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
+            self?.refreshRunning.insert(key)
             await work()
-            self?.refreshTasks[key] = nil
+            guard let self else { return }
+            refreshRunning.remove(key)
+            refreshTasks[key] = nil
+            if refreshAgain.remove(key) != nil { schedule(key, work) }
         }
     }
 
-    private func applySessions(_ new: [Session]) {
+    /// True when the list changed.
+    @discardableResult
+    private func applySessions(_ new: [Session]) -> Bool {
         let old = Dictionary(uniqueKeysWithValues: sessions.map { ($0.name, $0.agentState) })
         let first = !hasLoadedSessions
         // Unchanged lists (most polls) touch nothing: every sidebar, Home, Inbox and Board reader would redraw, and the
-        // snapshot's UserDefaults write wakes everything listening to UserDefaults.
-        guard first || new != sessions else { return }
+        // snapshot's UserDefaults write wakes everything listening to UserDefaults. A terminal connecting changes only
+        // `attached`, which counts as unchanged.
+        guard first || !Session.sameListing(new, sessions) else { return false }
         sessions = new
         if first { hasLoadedSessions = true }
         StateSnapshot.save(box: name, sessions: new)
-        guard !first else { return }
+        guard !first else { return true }
         for s in new where s.isAgent && !s.exited {
             let before = old[s.name] ?? nil
             if before != s.agentState { onTransition?(self, s, before, s.agentState) }
         }
+        return true
     }
 
     /// Assigns only a different value: an @Observable property invalidates its readers on every write, equal or not.

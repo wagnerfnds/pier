@@ -129,6 +129,20 @@ public struct Session: Codable, Sendable, Identifiable, Hashable {
     public var id: String { name }
     public var isAgent: Bool { agent != nil && service == nil }
     public var needsYou: Bool { agentState == .waiting && !exited }
+
+    /// The same session as far as anything the app shows goes: everything but `attached`, the count of tmux clients,
+    /// which changes each time a terminal on screen connects to the session or reconnects. A list differing only there
+    /// is no news, and writing it redrew every screen that lists sessions.
+    public func sameListing(as o: Session) -> Bool {
+        name == o.name && location == o.location && dir == o.dir && command == o.command && created == o.created
+            && exited == o.exited && agent == o.agent && agentState == o.agentState && stateSince == o.stateSince
+            && preset == o.preset && turn == o.turn && stateSeq == o.stateSeq && fidelity == o.fidelity && title == o.title
+            && queued == o.queued && ask == o.ask && service == o.service && chat == o.chat
+    }
+
+    public static func sameListing(_ a: [Session], _ b: [Session]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { $0.sameListing(as: $1) }
+    }
 }
 
 /// `POST /v1/tasks`. Never set `open` from iOS (not modelled).

@@ -355,7 +355,7 @@ final class AppModel {
         guard boxes.allSatisfy({ $0.hasLoadedSessions || $0.state != .connecting }) else { return }
         let fetches = boxes.map { BoxFetch(record: $0.record, sessions: $0.hasLoadedSessions && $0.state.isOnline ? $0.sessions : nil) }
         let display = SharedDisplayPrefs(renames: prefs.data.renames, hidden: prefs.data.hidden)
-        WidgetPublisher.publish(WidgetSnapshot.make(from: fetches, prefs: display))
+        WidgetPublisher.publishInBackground(WidgetSnapshot.make(from: fetches, prefs: display))
     }
 
     private func transition(_ c: BoxConnection, _ s: Session, _ to: AgentState?) {
@@ -542,7 +542,7 @@ final class AppModel {
         UITestMock.headless = nil
         router.resetStacks()
         sessionsChanged()
-        if boxes.isEmpty { WidgetPublisher.publish(.empty, minInterval: 0) }
+        if boxes.isEmpty { WidgetPublisher.publishInBackground(.empty, minInterval: 0) }
     }
 
     private func addDemoBox() {
@@ -573,7 +573,7 @@ final class AppModel {
         try? boxStore.remove(fingerprint: conn.record.fingerprint)
         StateSnapshot.forget(box: conn.name)
         try? reloadBoxes()
-        if boxes.isEmpty { WidgetPublisher.publish(.empty, minInterval: 0) }
+        if boxes.isEmpty { WidgetPublisher.publishInBackground(.empty, minInterval: 0) }
     }
 }
 
