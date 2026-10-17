@@ -33,7 +33,7 @@ type Tool struct {
 // Tools are the agent CLIs `integrations install` knows.
 var Tools = []Tool{
 	{ID: "claude", Name: "Claude Code", Command: "claude", dirVar: "CLAUDE_CONFIG_DIR", dir: ".claude", hookFile: "settings.json",
-		credentials: ".credentials.json", keyVar: "ANTHROPIC_API_KEY", LoginFix: "claude   # then type /login"},
+		credentials: ".credentials.json", keyVar: "ANTHROPIC_API_KEY", LoginFix: "claude auth login"},
 	{ID: "codex", Name: "Codex", Command: "codex", dirVar: "CODEX_HOME", dir: ".codex", hookFile: "hooks.json",
 		credentials: "auth.json", keyVar: "OPENAI_API_KEY", LoginFix: "codex login --device-auth"},
 }

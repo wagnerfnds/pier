@@ -1,0 +1,9 @@
+{
+  "attached": 0,
+  "command": "'/home/ubuntu/.local/bin/claude' auth login",
+  "created": "2026-10-17T00:46:17Z",
+  "dir": "/home/ubuntu/.config/pier/box/accounts/claude-1a2b3c4d",
+  "exited": false,
+  "login": "9abcd382df30",
+  "name": "login-claude-1a2b3c4d"
+}

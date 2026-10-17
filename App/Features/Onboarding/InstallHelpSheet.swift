@@ -14,10 +14,13 @@ struct InstallHelpSheet: View {
     Set up Pier's server, pierd, on this machine so my phone and my Mac can follow the coding agents running here. \
     Do everything as my user.
     1. Run: \(PierLinks.installCommand)
-    It installs pierd from github.com/wagnerfnds/pier, runs it as a user service, installs the agents' hooks, adds the \
-    git repositories it finds as projects and prints a pier:// pairing link with its QR code. If it cannot run here, \
-    use \(PierLinks.npmCommand) instead.
-    2. On Linux, run: sudo loginctl enable-linger $USER, so pierd keeps running after I log out (ask me first).
+    It installs pierd from github.com/wagnerfnds/pier, installs Claude Code, Codex and the GitHub CLI where they are \
+    missing (in ~/.local/bin, no sudo), runs pierd as a user service, installs the agents' hooks, adds the git \
+    repositories it finds as projects and prints a pier:// pairing link with its QR code. If it cannot run here, use \
+    \(PierLinks.npmCommand) instead. I will sign in to the agents and GitHub from the Pier app.
+    2. On Linux, pierd keeps running after I log out only with lingering on: setup turns it on when the system lets my \
+    user do it. If pierd doctor still says it stops at logout, run loginctl enable-linger $USER (no sudo); only if that \
+    is refused, ask me before running sudo loginctl enable-linger $USER.
     3. If a repository I work in is missing, add it with: pierd location add <name> <path>.
     4. Show me the pier:// link (I will scan or paste it), then run pierd doctor and tell me what it reports.
     """
@@ -32,7 +35,8 @@ struct InstallHelpSheet: View {
         Command(id: "install", title: "Instale e pareie (um QR code aparece)", command: PierLinks.installCommand),
         Command(id: "npm", title: "Ou pelo npm", command: PierLinks.npmCommand),
         Command(id: "brew", title: "Ou pelo Homebrew", command: PierLinks.brewCommand),
-        Command(id: "linger", title: "No Linux, deixe o pierd rodando depois do logout", command: "sudo loginctl enable-linger $USER"),
+        Command(id: "linger", title: "No Linux, deixe o pierd rodando depois do logout (o setup já tenta, sem sudo)", command: "loginctl enable-linger $USER"),
+        Command(id: "linger-admin", title: "Se o sistema recusar, quem administra a máquina roda", command: "sudo loginctl enable-linger $USER"),
         Command(id: "pair", title: "Um link de pareamento novo, quando precisar", command: "pierd pair"),
         Command(id: "relay", title: "Opcional: um relay seu no lugar do túnel do Pier (pierd relay install num servidor)",
                 command: "pierd relay use HOST --token TOKEN"),

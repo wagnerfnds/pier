@@ -46,10 +46,14 @@ const (
 
 const usage = `pierd — the Pier box server
 
-  pierd setup [--repos DIR]… [--address HOST[:PORT]] [--no-projects] [--no-integrations] [--no-open]
-                                          Start here: pierd as a service, the agents' hooks, the git
+  pierd setup [--repos DIR]… [--address HOST[:PORT]] [--no-projects] [--no-integrations] [--no-tools] [--no-open]
+                                          Start here: Claude Code, Codex and the GitHub CLI where
+                                          missing, pierd as a service, the agents' hooks, the git
                                           repositories in ~/code, ~/Projects… as projects, and a
                                           pairing link (on a Mac, the Pier app pairs by itself)
+  pierd tools [install [claude] [codex] [gh] [--force]]
+                                          Where Claude Code, Codex and the GitHub CLI are; install
+                                          the missing ones in ~/.local/bin (no sudo)
   pierd serve [--listen ADDR]             Serve paired apps (default: every interface, port 7444)
   pierd relay [use HOST | off | install | serve]
                                           Reach this box from anywhere through a relay you run on
@@ -169,6 +173,8 @@ func run(args []string) error {
 		return nil
 	case "doctor":
 		return runDoctor(b, args[1:])
+	case "tools":
+		return toolsCmd(args[1:])
 	case "client":
 		return clientCmd(args[1:], os.Stdout)
 	case "statusline":
@@ -361,6 +367,7 @@ func serve(b boxHome, args []string) error {
 	go bx.Samples.Run(ctx)
 	go bx.SyncSkills()
 	go bx.StartShares(ctx)
+	go bx.EndStaleSignIns(ctx)
 	bx.Mount(s)
 	if err := startPush(ctx, b, s, bx, bus, logger); err != nil {
 		// Push is an extra: pierd serves without it, and says why.

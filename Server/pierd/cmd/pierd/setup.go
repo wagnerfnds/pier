@@ -8,10 +8,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"pier/pierd/internal/box"
@@ -20,9 +22,10 @@ import (
 )
 
 // setup is the one command a person runs on a new box (the install script and
-// the npm and Homebrew packages end with it): pierd as a user service on every
-// interface, the agents' hooks, the git repositories in the usual folders as
-// projects, and a pairing link with its QR code. On a Mac at its own screen
+// the npm and Homebrew packages end with it): Claude Code, Codex and the GitHub
+// CLI where they are missing, pierd as a user service on every interface, the
+// agents' hooks, the git repositories in the usual folders as projects, and a
+// pairing link with its QR code. On a Mac at its own screen
 // the link goes straight to the Pier app, which pairs with this Mac; from
 // there "Take it to iPhone" brings the phone in. Running it again keeps
 // what was chosen before and issues a new link.
@@ -33,6 +36,7 @@ func setup(b boxHome, args []string) error {
 	name := fs.String("name", "", "the name the apps show for this box (default: the hostname)")
 	ports := fs.String("ports", "", "FIRST-LAST: the ports worktrees get (default 41000-48999)")
 	noIntegrations := fs.Bool("no-integrations", false, "don't install hooks for the agent CLIs on this box")
+	noTools := fs.Bool("no-tools", false, "don't install Claude Code, Codex and the GitHub CLI where they are missing (also PIERD_NO_TOOLS=1)")
 	noProjects := fs.Bool("no-projects", false, "don't add the git repositories found in the usual folders")
 	noOpen := fs.Bool("no-open", false, "on a Mac, don't hand the pairing link to the Pier app")
 	noService := fs.Bool("no-service", false, "pierd already runs (a container, a supervisor of your own): only add projects and pair")
@@ -45,7 +49,7 @@ func setup(b boxHome, args []string) error {
 		return err
 	}
 	if fs.NArg() > 0 {
-		return errors.New("usage: pierd setup [--repos DIR]… [--address HOST[:PORT]] [--listen ADDR] [--relay HOST[:PORT] [--relay-token T] | --no-tunnel] [--name NAME] [--ports FIRST-LAST] [--no-projects] [--no-integrations] [--no-open] [--no-service]")
+		return errors.New("usage: pierd setup [--repos DIR]… [--address HOST[:PORT]] [--listen ADDR] [--relay HOST[:PORT] [--relay-token T] | --no-tunnel] [--name NAME] [--ports FIRST-LAST] [--no-projects] [--no-integrations] [--no-tools] [--no-open] [--no-service]")
 	}
 	fmt.Println("Pier · setting up this box")
 	fmt.Println()
@@ -59,6 +63,14 @@ func setup(b boxHome, args []string) error {
 		if err := saveRelay(b, *relayAddr, *relayToken); err != nil {
 			return err
 		}
+	}
+	// Before the service and its hooks: hooks go into the agents found then.
+	if !skipTools(*noTools) {
+		fmt.Println("Tools (--no-tools leaves them alone):")
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		installTools(ctx, allTools(), false, &lineIndent{w: os.Stdout, prefix: "  "})
+		stop()
+		fmt.Println()
 	}
 	if *noService {
 		if err := waitServing(b, time.Time{}, 5*time.Second); err != nil {

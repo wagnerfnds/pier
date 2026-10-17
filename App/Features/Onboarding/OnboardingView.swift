@@ -5,9 +5,10 @@ import PierKit
 /// who needs you · answer from anywhere), 3 pair, by where the agents run (`PairPlace`): on this Mac, the install
 /// command for Terminal, after which pierd opens its link here and the app pairs by itself; on a server, its command and
 /// then its link (scanned, or pasted on the Mac); on the phone, the code "Levar para o iPhone" shows on the Mac. The
-/// pairing sheet (RootView, `router.pendingPair`) closes by itself when it works and the flow ends on "Tudo pronto!":
-/// what is connected, notifications, the phone (Mac), the first task. From Ajustes ("Adicionar box", `embedded`) only
-/// the pairing step shows.
+/// pairing sheet (RootView, `router.pendingPair`) closes by itself when it works. A box that installs and signs in from the
+/// app (`tools`, `logins`) then shows "Contas" (`OnboardingAccounts`: Claude Code, Codex and GitHub, each installed and
+/// signed in with a tap, or skipped), and the flow ends on "Tudo pronto!": what is connected, notifications, the phone
+/// (Mac), the first task. From Ajustes ("Adicionar box", `embedded`) only the pairing step shows.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
     @Environment(Router.self) private var router
@@ -25,21 +26,22 @@ struct OnboardingView: View {
     @AppStorage("onboarding.openAtLogin") private var openAtLogin = true
     #endif
 
-    enum Step: Int, CaseIterable { case hello, how, pair, done }
+    enum Step: Int, CaseIterable { case hello, how, pair, accounts, done }
 
     var body: some View {
         VStack(spacing: 0) {
-            if !embedded && step != .done { progress.padding(.top, 18) }
+            if !embedded && step.rawValue <= Step.pair.rawValue { progress.padding(.top, 18) }
             ZStack {
                 switch embedded ? .pair : step {
                 case .hello: OnboardingHello().transition(slide)
                 case .how: OnboardingHow().transition(slide)
                 case .pair: OnboardingPair(embedded: embedded, place: $place).transition(slide)
+                case .accounts: OnboardingAccounts(next: { go(.done) }, openTerminal: openTerminal).transition(slide)
                 case .done: OnboardingDone(finish: finish, newTask: firstTask).transition(slide)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if step != .done || embedded { buttons.padding(.horizontal, 24).padding(.bottom, 28) }
+            if step.rawValue <= Step.pair.rawValue || embedded { buttons.padding(.horizontal, 24).padding(.bottom, 28) }
         }
         .frame(maxWidth: 560)   // a readable column on iPad and Mac windows
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -73,7 +75,8 @@ struct OnboardingView: View {
             #if targetEnvironment(macCatalyst)
             if has, place == .thisMac, openAtLogin { LoginItem.set(true) }
             #endif
-            if has, !embedded, router.onboardingFinishing { go(.done) }
+            // The box's accounts next ("Contas"), which goes on by itself to "Tudo pronto!" on a box that cannot sign in from here.
+            if has, !embedded, router.onboardingFinishing { go(.accounts) }
         }
     }
 
@@ -104,7 +107,7 @@ struct OnboardingView: View {
             case .pair:
                 pairButtons
                 if !embedded { demoButton }
-            case .done:
+            case .accounts, .done:
                 EmptyView()
             }
             if !embedded, step == .how || step == .pair {
@@ -192,6 +195,12 @@ struct OnboardingView: View {
         if let b = model.boxes.first(where: { $0.state.isOnline }) ?? model.boxes.first {
             Task { try? await Task.sleep(for: .milliseconds(350)); PaletteActions.newTask(router, box: b.name) }
         }
+    }
+
+    /// A sign-in's terminal, from "Contas": the onboarding ends there and the session opens on the Home.
+    private func openTerminal(box: String, session: Session) {
+        finish()
+        Task { try? await Task.sleep(for: .milliseconds(350)); router.openSession(box: box, session: session) }
     }
 }
 
@@ -468,6 +477,161 @@ struct CopyCommandButton: View {
         func body(content: Content) -> some View {
             if on { content.buttonStyle(PrimaryButtonStyle()) } else { content.buttonStyle(.plain) }
         }
+    }
+}
+
+// MARK: - accounts
+
+/// "Contas", after the box pairs: Claude Code, Codex and GitHub on it, each with where it stands (`SignIn.rows` over
+/// `/v1/tools`, `/v1/accounts` and `/v1/doctor`) and the one thing to do: Instalar (`POST /v1/tools/install`), Entrar
+/// (`SignInSheet`) or nothing (✓). Skippable; a box that cannot install or sign in from the app goes on to "Tudo pronto!"
+/// at once.
+private struct OnboardingAccounts: View {
+    let next: () -> Void
+    let openTerminal: (String, Session) -> Void
+    @Environment(AppModel.self) private var model
+    @State private var box: String?
+    @State private var accounts: [AgentAccount] = []
+    @State private var doctor: [DoctorCheck] = []
+    @State private var loaded = false
+    @State private var signIn: SignInRequest?
+    /// Tools signed in from here (a box may not tell: Claude Code on a Mac keeps its login in the Keychain).
+    @State private var signedHere: Set<String> = []
+    @State private var error: String?
+    private let tools = BoxToolsStore.shared
+
+    private var rows: [SignIn.Row] {
+        guard let box else { return [] }
+        return SignIn.rows(tools: tools.tools[box] ?? [], accounts: accounts, doctor: doctor).map { r in
+            if tools.installing(r.tool, box: box) { return SignIn.Row(tool: r.tool, status: .installing, account: r.account) }
+            return signedHere.contains(r.tool) ? SignIn.Row(tool: r.tool, status: .signedIn, account: r.account) : r
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer(minLength: 8)
+            Image(systemName: "person.badge.key.fill").font(.system(size: 46, weight: .light)).foregroundStyle(Theme.accent)
+                .frame(width: 96, height: 96)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Theme.stroke))
+                .accessibilityHidden(true)
+            Text("Contas").font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(Theme.text)
+                .accessibilityAddTraits(.isHeader)
+            Text("Entre no Claude Code, no Codex e no GitHub da box \(box ?? "") para os agentes trabalharem. Tudo pelo navegador; dá para fazer depois em Ajustes.")
+                .font(.subheadline).foregroundStyle(Theme.textDim).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 28)
+            VStack(spacing: 0) {
+                if !loaded {
+                    ProgressView().padding(24)
+                } else {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
+                        if i > 0 { Divider().overlay(Theme.stroke) }
+                        row(r)
+                    }
+                }
+            }
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.stroke))
+            .padding(.horizontal, 24)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("onboarding-accounts-list")
+            if let error { Text(error).font(.footnote).foregroundStyle(Theme.red).padding(.horizontal, 28) }
+            Spacer(minLength: 8)
+            Button(action: next) { Text(SignIn.allSet(rows) ? "Continuar" : "Pular por enquanto") }
+                .buttonStyle(PrimaryButtonStyle())
+                .keyboardShortcut(.defaultAction)
+                .padding(.horizontal, 24).padding(.bottom, 28)
+                .accessibilityIdentifier("onboarding-accounts-next")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onboarding-accounts")
+        .task { await start() }
+        .onChange(of: box.flatMap { tools.tools[$0] }) { Task { await reload() } }
+        .sheet(item: $signIn) { r in
+            SignInSheet(request: r, openTerminal: { s in openTerminal(r.box, s) }, onDone: {
+                signedHere.insert(r.tool)
+                Task { await reload() }
+            })
+            .environment(model)
+        }
+    }
+
+    private func row(_ r: SignIn.Row) -> some View {
+        HStack(spacing: 12) {
+            ToolGlyph(tool: r.tool, size: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(SignIn.name(of: r.tool)).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text(statusText(r.status)).font(.caption).foregroundStyle(r.status == .signedIn ? Theme.green : Theme.textDim).lineLimit(2)
+            }
+            Spacer(minLength: 6)
+            switch r.status {
+            case .signedIn:
+                Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Theme.green)
+                    .accessibilityLabel(Text("Conectado"))
+            case .installing:
+                ProgressView().controlSize(.small)
+            case .missing, .installFailed:
+                pill("Instalar") { Task { await install(r.tool) } }
+                    .accessibilityIdentifier("onboarding-install-\(r.tool)")
+            case .signedOut, .unknown:
+                pill("Entrar") { if let box { signIn = SignInRequest(box: box, tool: r.tool, account: r.account) } }
+                    .accessibilityIdentifier("onboarding-sign-in-\(r.tool)")
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onboarding-account-\(r.tool)")
+    }
+
+    private func pill(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 7).background(Theme.accent, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func statusText(_ s: SignIn.Status) -> String {
+        switch s {
+        case .signedIn: S("Conectado")
+        case .signedOut: S("Sem login")
+        case .unknown: S("Instalado")
+        case .missing: S("Não instalado")
+        case .installing: S("Instalando na box…")
+        case .installFailed(let why): S("Não deu para instalar: \(why)")
+        }
+    }
+
+    /// The box just paired that signs in from the app, once its info is in: one reached through a relay can take a
+    /// while, and the step shows its loading meanwhile. None that can (or none that answers): on to "Tudo pronto!".
+    private func start() async {
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline, !Task.isCancelled, !model.boxes.contains(where: { $0.info != nil }),
+              model.boxes.contains(where: { $0.state == .connecting || $0.state.isOnline }) {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        guard let conn = model.boxes.last(where: { $0.info?.has("logins") == true }) else { next(); return }
+        box = conn.name
+        await tools.load(box: conn.name, model: model)
+        await reload()
+        loaded = true
+    }
+
+    private func reload() async {
+        guard let box, let conn = model.connection(for: box) else { return }
+        let api = BoxAPI(transport: conn.raw)
+        let hasAccounts = conn.info?.has("accounts") == true
+        async let a: [AgentAccount]? = hasAccounts ? try? await api.accounts() : nil
+        async let d: [DoctorCheck]? = try? await api.doctor()
+        accounts = await a ?? accounts
+        doctor = await d ?? doctor
+    }
+
+    private func install(_ tool: String) async {
+        guard let box else { return }
+        error = await tools.install([tool], box: box, model: model)
     }
 }
 

@@ -1,0 +1,23 @@
+[
+  {
+    "account": "codex",
+    "id": "a2f8458ae476",
+    "needs_code": false,
+    "session": "login-codex",
+    "started": "2026-10-17T00:46:16.063741Z",
+    "state": "waiting",
+    "tool": "codex"
+  },
+  {
+    "error": "canceled",
+    "finished": "2026-10-17T00:46:16.003Z",
+    "id": "da71a5bd807f",
+    "needs_code": false,
+    "session": "login-gh",
+    "started": "2026-10-17T00:46:14.808188Z",
+    "state": "failed",
+    "tool": "gh",
+    "url": "https://github.com/login/device",
+    "user_code": "1B8C-23C0"
+  }
+]

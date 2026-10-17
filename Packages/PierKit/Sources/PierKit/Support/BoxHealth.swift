@@ -47,14 +47,20 @@ public enum BoxHealth {
         public let detail: String?
         /// The command (or sentence) that fixes it, from pierd.
         public let fix: String?
+        /// The tool the box can install or sign in to for it, and the account a sign-in is for (`DoctorCheck`).
+        public let tool: String?
+        public let account: String?
 
-        public init(id: String, kind: Kind, severity: Severity, name: String, detail: String? = nil, fix: String? = nil) {
+        public init(id: String, kind: Kind, severity: Severity, name: String, detail: String? = nil, fix: String? = nil,
+                    tool: String? = nil, account: String? = nil) {
             self.id = id
             self.kind = kind
             self.severity = severity
             self.name = name
             self.detail = detail
             self.fix = fix
+            self.tool = tool
+            self.account = account
         }
     }
 
@@ -74,7 +80,8 @@ public enum BoxHealth {
             }
             if c.area == "pierd", c.name.hasPrefix("paired") { continue }
             out.append(Issue(id: "\(c.area)/\(c.name)", kind: kind, severity: severity, name: c.name,
-                             detail: c.detail.flatMap { $0.isEmpty ? nil : $0 }, fix: c.fix.flatMap { $0.isEmpty ? nil : $0 }))
+                             detail: c.detail.flatMap { $0.isEmpty ? nil : $0 }, fix: c.fix.flatMap { $0.isEmpty ? nil : $0 },
+                             tool: c.tool.flatMap { $0.isEmpty ? nil : $0 }, account: c.account.flatMap { $0.isEmpty ? nil : $0 }))
         }
         return out.enumerated().sorted { a, b in
             if a.element.severity != b.element.severity { return a.element.severity > b.element.severity }

@@ -58,6 +58,10 @@ import Testing
             "accounts.json": d([AgentAccount].self), "box_env.json": d(BoxVariables.self), "skills.json": d([BoxSkill].self), "shares.json": d([PublicLink].self),
             "settings.json": d(BoxSettings.self), "settings_unset.json": d(BoxSettings.self),
             "environment.json": d(EnvironmentView.self), "environment_none.json": d(EnvironmentView.self), "space_not_empty.json": d(BoxError.self),
+            "doctor_signin.json": d([DoctorCheck].self), "tools.json": d([BoxTool].self), "tools_installing.json": d([BoxTool].self), "tools_signed_out.json": d([BoxTool].self),
+            "login_open_link.json": d(Login.self), "login_enter_code.json": d(Login.self), "login_done.json": d(Login.self),
+            "login_failed.json": d(Login.self), "logins.json": d([Login].self), "account_login.json": d(Session.self),
+            "tool_missing.json": d(BoxError.self),
         ]
     }()
 

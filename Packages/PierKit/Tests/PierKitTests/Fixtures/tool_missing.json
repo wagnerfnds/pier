@@ -1,0 +1,4 @@
+{
+  "code": "tool_missing",
+  "error": "GitHub CLI is not installed on this box; install it first (POST /v1/tools/install)"
+}

@@ -187,6 +187,33 @@ final class InboxUITests: XCTestCase {
         shot("health-snoozed")
     }
 
+    /// The box's cards act right there (`-uiTestSignIn 1`: the GitHub CLI missing, Codex signed out): Instalar has the box
+    /// install gh, after which GitHub's sign-in takes its card; Entrar opens the sign-in sheet with the device code to type
+    /// on the page, and the card goes once the box says the sign-in is done.
+    func testSignInAndInstallFromTheBoxCards() {
+        app.terminate()
+        app.launchArguments += ["-uiTestSignIn", "1"]
+        app.launch()
+        let codex = element("inbox-health-Agents.Codex-sign-in")
+        XCTAssertTrue(codex.waitForExistence(timeout: 20), "the signed-out Codex is not in the Inbox")
+        let gh = element("inbox-health-Worktrees-and-sessions.gh")
+        XCTAssertTrue(gh.exists, "the missing GitHub CLI is not in the Inbox")
+        gh.descendants(matching: .any).matching(identifier: "inbox-health-install").firstMatch.tap()
+        // The mock installs it in 3 s: its card goes, and GitHub's sign-in comes.
+        XCTAssertTrue(gh.waitForNonExistence(timeout: 20), "the GitHub CLI's card stayed")
+        XCTAssertTrue(element("inbox-health-Agents.GitHub-sign-in").waitForExistence(timeout: 20), "no GitHub sign-in card")
+        shot("health-sign-in-cards")
+        codex.descendants(matching: .any).matching(identifier: "inbox-health-sign-in").firstMatch.tap()
+        let code = element("sign-in-user-code")
+        XCTAssertTrue(code.waitForExistence(timeout: 10), "the sign-in sheet shows no code")
+        XCTAssertEqual(code.label, "K7QF-2M9XD")
+        shot("sign-in-sheet")
+        // The mock's person types the code on the page a few seconds later.
+        XCTAssertTrue(element("sign-in-done").waitForExistence(timeout: 20), "the sign-in did not finish")
+        app.buttons["sign-in-finish"].tap()
+        XCTAssertTrue(codex.waitForNonExistence(timeout: 20), "the Codex card stayed after signing in")
+    }
+
     func testSuggestedNextStepIsSent() {
         let step = element("next-step-1")
         XCTAssertTrue(step.waitForExistence(timeout: 20), "no suggested next steps")

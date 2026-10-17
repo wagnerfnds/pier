@@ -20,8 +20,9 @@ struct BoxSettingsDestination: View {
 }
 
 /// A box's Claude Code and Codex accounts (`/v1/accounts`): each subscription in a folder of its own (CLAUDE_CONFIG_DIR /
-/// CODEX_HOME, the documented way to keep logins apart), signed in from a terminal in the app, one of them the box's
-/// default, any of them chosen per project (the project's screen). Limits per account are on the Home.
+/// CODEX_HOME, the documented way to keep logins apart), signed in from the app (`SignInSheet`, through the browser; a
+/// terminal in the app on a box without `logins`), one of them the box's default, any of them chosen per project (the
+/// project's screen). Limits per account are on the Home.
 struct AccountsScreen: View {
     let box: String
 
@@ -33,9 +34,12 @@ struct AccountsScreen: View {
     @State private var adding: String?
     @State private var newName = ""
     @State private var removing: AgentAccount?
+    @State private var signIn: SignInRequest?
 
     private var conn: BoxConnection? { model.connection(for: box) }
     private var api: BoxAPI? { conn.map { BoxAPI(transport: $0.raw) } }
+    /// The box signs in from the app (`/v1/logins`); older ones open the sign-in's terminal.
+    private var signsIn: Bool { conn?.info?.has("logins") == true }
 
     var body: some View {
         Form {
@@ -66,7 +70,13 @@ struct AccountsScreen: View {
             TextField("Nome (ex.: Trabalho)", text: $newName)
             Button("Criar e entrar") { if let a = adding { Task { await add(agent: a) } } }.keyboardShortcut(.defaultAction)
             Button("Cancelar", role: .cancel) {}
-        } message: { Text("Depois de criar, um terminal abre na box para você entrar na conta.") }
+        } message: {
+            if signsIn { Text("Depois de criar, você entra na conta pelo navegador.") } else { Text("Depois de criar, um terminal abre na box para você entrar na conta.") }
+        }
+        .sheet(item: $signIn) { r in
+            SignInSheet(request: r, openTerminal: { s in router.push(SessionRoute(box: box, session: s)) }, onDone: { Task { await load() } })
+                .environment(model)
+        }
         .confirmationDialog("Remover “\(removing?.name ?? "")”?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remover conta", role: .destructive) { if let a = removing { Task { await remove(a) } } }
         } message: { Text("A pasta da conta é apagada da box, com o login. Os projetos que a usavam voltam para a conta padrão.") }
@@ -130,8 +140,12 @@ struct AccountsScreen: View {
         } catch { self.error = ComposeErrorText.message(error) }
     }
 
-    /// Opens the terminal where the person signs in.
+    /// The sign-in: the sheet where the box signs in from the app, else the terminal where the person signs in.
     private func login(_ a: AgentAccount) async {
+        if signsIn {
+            signIn = SignInRequest(box: box, tool: a.agent, account: a.id, accountName: a.builtin ? nil : a.name)
+            return
+        }
         guard let api, let conn else { return }
         do {
             let s = try await api.loginAccount(id: a.id)

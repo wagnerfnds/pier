@@ -395,13 +395,19 @@ public struct DoctorCheck: Codable, Sendable, Hashable, Identifiable {
     public let status: String
     public let detail: String?
     public let fix: String?
+    /// The tool the check is about when the box can install it or sign in to it (`claude`, `codex`, `gh`), and the agent
+    /// account a sign-in check is for (an id of `GET /v1/accounts`): the card's Instalar / Entrar. Absent on older boxes.
+    public let tool: String?
+    public let account: String?
 
-    public init(area: String, name: String, status: String, detail: String? = nil, fix: String? = nil) {
+    public init(area: String, name: String, status: String, detail: String? = nil, fix: String? = nil, tool: String? = nil, account: String? = nil) {
         self.area = area
         self.name = name
         self.status = status
         self.detail = detail
         self.fix = fix
+        self.tool = tool
+        self.account = account
     }
 
     enum CodingKeys: String, CodingKey {
@@ -410,6 +416,8 @@ public struct DoctorCheck: Codable, Sendable, Hashable, Identifiable {
         case status
         case detail
         case fix
+        case tool
+        case account
     }
 
     public init(from decoder: Decoder) throws {
@@ -419,6 +427,8 @@ public struct DoctorCheck: Codable, Sendable, Hashable, Identifiable {
         self.status = try c.decode(String.self, forKey: .status)
         self.detail = try c.decodeIfPresent(String.self, forKey: .detail)
         self.fix = try c.decodeIfPresent(String.self, forKey: .fix)
+        self.tool = try c.decodeIfPresent(String.self, forKey: .tool)
+        self.account = try c.decodeIfPresent(String.self, forKey: .account)
     }
 
     public var id: String { area + "/" + name }

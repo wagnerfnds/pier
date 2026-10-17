@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -135,8 +136,12 @@ func installService(b boxHome, o installOptions) error {
 		}
 	}
 	if runtime.GOOS == "linux" && !lingering() {
-		fmt.Println("Warning: user lingering is off, so pierd stops when you log out.")
-		fmt.Println("Enable it once with: sudo loginctl enable-linger " + currentUser())
+		if enableLinger() {
+			fmt.Println("Turned on user lingering: pierd keeps running after you log out.")
+		} else {
+			fmt.Println("Warning: user lingering is off, so pierd stops when you log out, and this system does not let")
+			fmt.Println("your user turn it on. Ask an admin of this machine to run once: sudo loginctl enable-linger " + currentUser())
+		}
 	}
 	if o.next != "" {
 		fmt.Println(o.next)
@@ -306,6 +311,16 @@ func logTail(path string, n int) string {
 func lingering() bool {
 	out, err := exec.Command("loginctl", "show-user", currentUser(), "-p", "Linger").Output()
 	return err == nil && strings.TrimSpace(string(out)) == "Linger=yes"
+}
+
+// enableLinger turns lingering on for this user without sudo, and says whether it is on now. systemd's own polkit
+// rule lets users do it for themselves (org.freedesktop.login1.set-self-linger), but not everywhere: a system without
+// polkit, which many containers are, leaves it to root.
+func enableLinger() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	exec.CommandContext(ctx, "loginctl", "enable-linger", "--no-ask-password", currentUser()).Run()
+	return lingering()
 }
 
 func currentUser() string {

@@ -26,6 +26,9 @@ struct MockProjects {
     private var accounts: [JSON] = []
     private var defaults: [String: String] = [:]
     private var projectAccounts: [String: [String: String]] = [:]
+    /// Accounts signed out (MockSignIns: `-uiTestSignIn 1` starts with Codex's own) and signed in from the app, by id.
+    var signedOut: Set<String> = []
+    var signedIn: Set<String> = []
     private var limitsEnabled = false
     private var variables: (env: [String: String], notes: [String: String]) = (["STAGING_URL": "https://staging.example.com", "SENTRY_TOKEN": "sntrys_example"], ["STAGING_URL": "the staging API"])
     private var skills: Set<String> = ["pier-box"]
@@ -192,6 +195,8 @@ struct MockProjects {
         for i in all.indices {
             let agent = (all[i]["agent"] as? String) ?? ""
             let id = (all[i]["id"] as? String) ?? ""
+            if signedOut.contains(id) { all[i]["signed_in"] = false }
+            if signedIn.contains(id) { all[i]["signed_in"] = true }
             let def = defaults[agent]
             all[i]["default"] = def == id || def == nil && (all[i]["builtin"] as? Bool) == true
             all[i]["projects"] = projectAccounts.filter { ($0.value[agent] ?? def ?? agent) == id }.map(\.key).sorted()

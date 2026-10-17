@@ -34,6 +34,7 @@ import (
 //	docker_missing   docker is not available on the box
 //	gh_missing       gh (GitHub CLI) is not installed on the box
 //	gh_auth          gh is not signed in on the box
+//	tool_missing     the tool a sign-in is for is not installed (POST /v1/tools/install)
 //	bad_request      the request itself was wrong
 //	internal         anything else
 const (
@@ -56,6 +57,7 @@ const (
 	CodeSpaceHasFiles = "space_has_files"
 	CodeDockerMissing = "docker_missing"
 	CodeGHAuth        = "gh_auth"
+	CodeToolMissing   = "tool_missing"
 	CodeBadRequest    = "bad_request"
 	CodeInternal      = "internal"
 )
@@ -148,6 +150,8 @@ func codeForStatus(status int) string {
 		return CodeUnsupported
 	case http.StatusTooManyRequests:
 		return CodeTooMany
+	case http.StatusFailedDependency:
+		return CodeToolMissing
 	case http.StatusBadRequest, http.StatusConflict, http.StatusMethodNotAllowed, http.StatusRequestEntityTooLarge, http.StatusPreconditionRequired, http.StatusUnsupportedMediaType:
 		return CodeBadRequest
 	}

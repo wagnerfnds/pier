@@ -530,57 +530,24 @@ func (b *Box) removeAccount(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// loginAccount starts a terminal on the account's folder where the person
-// signs in: Claude Code's /login, Codex's device sign-in.
+// loginAccount signs in to an account through a sign-in (logins.go) and answers
+// its session, as before sign-ins existed: an app that opens it as a terminal
+// sees the CLI's sign-in there, and login names the sign-in for one that
+// follows it (GET /v1/logins/{id}).
 func (b *Box) loginAccount(w http.ResponseWriter, r *http.Request) error {
 	a, ok := b.account(r.PathValue("id"))
 	if !ok {
 		return errUnknownAccount
 	}
-	if err := b.prepareAccountDir(a); err != nil {
-		return err
-	}
-	// Claude Code opens on its sign-in (its first-run screens are marked
-	// seen in the folders pierd makes, so /login is how it signs in).
-	command := "claude /login"
-	if a.Agent == "codex" {
-		command = "codex login --device-auth"
-	}
-	// An added account's folder; the agent's own one is its default, which
-	// naming it would change for Claude Code (its config and its macOS
-	// keychain entry follow CLAUDE_CONFIG_DIR being set at all).
-	var env []string
-	if !a.Builtin {
-		env = []string{agentDirVar[a.Agent] + "=" + a.Dir}
-	}
-	dir := b.signInDir(a, env)
-	name := "login-" + slug(a.ID, 40)
-	b.Sessions.Kill(r.Context(), name)
-	sess, err := b.Sessions.create(r.Context(), name, "", dir, command, "", env, nil)
+	l, sess, err := b.startLogin(r, a.Agent, a.ID)
 	if err != nil {
 		return err
 	}
-	b.publish(r, "session.started", map[string]any{"name": sess.Name, "path": dir, "command": command})
-	writeJSON(w, sess)
+	writeJSON(w, struct {
+		Session
+		Login string `json:"login"`
+	}{sess, l.ID})
 	return nil
-}
-
-// signInDir is where a sign-in terminal runs: an empty folder of pierd's
-// own, which Claude Code is told it trusts. In the home folder it would ask
-// first, every time (it never keeps an answer about the home folder).
-func (b *Box) signInDir(a Account, env []string) string {
-	home, _ := os.UserHomeDir()
-	if b.StateDir == "" {
-		return home
-	}
-	dir := filepath.Join(b.StateDir, "sign-in")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return home
-	}
-	if a.Agent == "claude" {
-		b.pretrust(dir, env, "claude")
-	}
-	return dir
 }
 
 // enableLimits puts pierd's status line in the Claude accounts that lack it,

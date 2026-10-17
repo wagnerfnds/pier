@@ -139,7 +139,11 @@ struct GitHubReposScreen: View {
     @State private var failure: String?
     /// Repositories whose download was asked for and not answered yet (a second tap does nothing).
     @State private var starting: Set<String> = []
+    /// gh signed out: the sign-in sheet (boxes with `logins`).
+    @State private var signIn: SignInRequest?
+    @State private var installError: String?
     private let clones = ClonesStore.shared
+    private let tools = BoxToolsStore.shared
 
     private var boxes: [BoxConnection] { projectBoxes(model) }
     private var conn: BoxConnection? { model.connection(for: box) }
@@ -202,6 +206,16 @@ struct GitHubReposScreen: View {
                 await load()
             }
             .sheet(isPresented: $cloneLink) { CloneLinkSheet(initialBox: box) { dismiss() }.environment(model).environment(router) }
+            .sheet(item: $signIn) { r in
+                // The terminal opens on the Home, this list closed first.
+                SignInSheet(request: r, openTerminal: { s in
+                    dismiss()
+                    Task { try? await Task.sleep(for: .milliseconds(350)); router.openSession(box: r.box, session: s) }
+                }, onDone: { Task { await load() } })
+                .environment(model)
+            }
+            // The GitHub CLI installed from here: the list, once the box has it.
+            .onChange(of: tools.installing("gh", box: box)) { _, now in if !now { Task { await load() } } }
             .alert("Não foi possível baixar", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(failure ?? "") }
@@ -225,10 +239,34 @@ struct GitHubReposScreen: View {
         let code = (error as? BoxError)?.code
         VStack(alignment: .leading, spacing: 8) {
             switch code {
+            case "gh_missing" where conn?.info?.has("tools") == true:
+                Label("O GitHub CLI (gh) não está instalado na box", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.orange)
+                Text("A box instala o gh sozinha, sem sudo. Depois, entre na sua conta do GitHub. Enquanto isso, dá para clonar pelo link.")
+                    .font(.subheadline).foregroundStyle(Theme.textDim)
+                if tools.installing("gh", box: box) {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Instalando o gh na box…") }
+                        .font(.subheadline).foregroundStyle(Theme.textDim)
+                } else {
+                    Button { Task { installError = await tools.install(["gh"], box: box, model: model) } } label: {
+                        Label("Instalar o GitHub CLI", systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("github-install-gh")
+                }
+                if let installError { Text(installError).font(.footnote).foregroundStyle(Theme.red) }
             case "gh_missing":
                 Label("O GitHub CLI (gh) não está instalado na box", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.orange)
                 Text("Instale o gh na box e entre na sua conta com `gh auth login`. Enquanto isso, dá para clonar pelo link.")
                     .font(.subheadline).foregroundStyle(Theme.textDim)
+            case "gh_auth" where conn?.info?.has("logins") == true:
+                Label("O gh não está conectado a uma conta", systemImage: "person.crop.circle.badge.exclamationmark").foregroundStyle(Theme.orange)
+                Text("Entre na sua conta do GitHub pelo navegador: a box guarda o login no gh dela.")
+                    .font(.subheadline).foregroundStyle(Theme.textDim)
+                Button { signIn = SignInRequest(box: box, tool: "gh") } label: {
+                    Label("Entrar no GitHub", systemImage: "person.badge.key")
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("github-sign-in")
             case "gh_auth":
                 Label("O gh não está conectado a uma conta", systemImage: "person.crop.circle.badge.exclamationmark").foregroundStyle(Theme.orange)
                 Text("Rode `gh auth login` na box (em um terminal do app, por exemplo) e puxe para atualizar.")

@@ -31,7 +31,7 @@
 
   <nav class="toc">
     <a href="#how">How Pier works</a><a href="#need">What you need</a><a href="#server">Prepare the server</a>
-    <a href="#agents">Install the agents</a><a href="#pierd">Install pierd</a><a href="#iphone">Connect the iPhone and iPad</a>
+    <a href="#agents">The agents and the GitHub CLI</a><a href="#pierd">Install pierd</a><a href="#iphone">Connect the iPhone and iPad</a>
     <a href="#mac">Connect the Mac</a><a href="#accounts">Claude and Codex accounts</a><a href="#root">Projects folder and spaces</a>
     <a href="#env">The box's variables and skills</a><a href="#projects">Bring in projects</a><a href="#isolated">Isolated environments</a>
     <a href="#notifications">Notifications</a><a href="#daily">Day to day</a><a href="#links">Public links</a>
@@ -48,7 +48,7 @@
   <h2 id="need">What you need</h2>
   <table>
     <tr><th>Box</th><td>A Linux server (Ubuntu 20.04+ or Debian 10+, x86-64 or arm64, with systemd) or a Mac (macOS 13+), 4 GB of RAM or more.</td></tr>
-    <tr><th>On the box</th><td><code>git</code>, <code>tmux</code>, <code>curl</code>. Optional: <code>gh</code> (pull requests, your GitHub repositories) and Docker (isolated environments).</td></tr>
+    <tr><th>On the box</th><td><code>git</code>, <code>tmux</code>, <code>curl</code>. pierd installs Claude Code, Codex and the GitHub CLI (<code>gh</code>) in <code>~/.local/bin</code> when they are missing, with no sudo. Optional: Docker (isolated environments).</td></tr>
     <tr><th>Agents</th><td>Claude Code with a Pro, Max, Team or Enterprise plan, and/or Codex with a ChatGPT account or an API key.</td></tr>
     <tr><th>Devices</th><td>An iPhone or iPad on iOS 17 or later, and/or a Mac.</td></tr>
   </table>
@@ -56,29 +56,34 @@
 
   <h2 id="server">1. Prepare the server</h2>
   <p>Skip this on a Mac. On a fresh Ubuntu or Debian server, over SSH, as the user your agents will run as (not root):</p>
-<pre>sudo apt update && sudo apt install -y git tmux curl gh
-gh auth login                       # GitHub.com › HTTPS › sign in with a browser
+<pre>sudo apt update && sudo apt install -y git tmux curl
 git config --global user.name  "Your Name"
 git config --global user.email "you@example.com"</pre>
+  <p>No sudo for your user? Ask whoever runs the server for these three; everything else installs in your own folder.</p>
   <p>For isolated environments, install Docker from docs.docker.com/engine/install, then
   <code>sudo usermod -aG docker $USER</code> and log in again. A server with a public address needs no VPN (pierd only answers
   paired devices; open port 7444 if a firewall is on). A server at home or behind NAT needs nothing either: the app reaches it
   through the tunnel.</p>
 
-  <h2 id="agents">2. Install the agents</h2>
+  <h2 id="agents">2. The agents and the GitHub CLI</h2>
+  <p>Nothing to do: <code>pierd setup</code> (next step) installs Claude Code, Codex and the GitHub CLI in <code>~/.local/bin</code>
+  when they are missing (<code>--no-tools</code>, or <code>PIERD_NO_TOOLS=1</code> for the install command, leaves them alone), and
+  the app installs any of them later with a tap. To install them yourself instead:</p>
 <pre>curl -fsSL https://claude.ai/install.sh | bash     # Claude Code
-npm install -g @openai/codex                        # Codex</pre>
-  <p>Signing in can wait: the app does it per account (step 6).</p>
+curl -fsSL https://chatgpt.com/codex/install.sh | sh  # Codex
+pierd tools install gh                              # the GitHub CLI, once pierd is there</pre>
+  <p>Signing in happens in the app, through the browser (step 6).</p>
 
   <h2 id="pierd">3. Install pierd</h2>
 <pre>curl -fsSL https://docktopier.com/install.sh | sh
 # or: npm install -g pierd && pierd setup
 # or: brew install wagnerfnds/tap/pierd && pierd setup</pre>
-  <p><code>pierd setup</code> runs pierd as a user service on port 7444, installs the agents' hooks, adds the git
-  repositories it finds (<code>~/code</code>, <code>~/Projects</code>, …), connects the box to the tunnel and prints a QR code
-  and a <code>pier://</code> link (single use, 10 minutes). On Linux, run <code>sudo loginctl enable-linger $USER</code> once so
-  pierd keeps running after you log out. Then <code>pierd doctor</code> should say “All good.”, and <code>pierd pair</code> makes a
-  new link any time.</p>
+  <p><code>pierd setup</code> installs the missing tools (step 2), runs pierd as a user service on port 7444, installs the
+  agents' hooks, adds the git repositories it finds (<code>~/code</code>, <code>~/Projects</code>, …), connects the box to the tunnel
+  and prints a QR code and a <code>pier://</code> link (single use, 10 minutes). On Linux it also turns on lingering
+  (<code>loginctl enable-linger</code>, no sudo) so pierd keeps running after you log out; where the system does not let your user
+  do that, it says so, and whoever runs the server runs <code>sudo loginctl enable-linger $USER</code> once. Then
+  <code>pierd doctor</code> should say “All good.”, and <code>pierd pair</code> makes a new link any time.</p>
 
   <h2 id="iphone">4. Connect the iPhone and iPad</h2>
   <ol>
@@ -102,7 +107,9 @@ npm install -g @openai/codex                        # Codex</pre>
   recommends for several accounts.</p>
   <ol>
     <li><strong>Settings › Projects › Claude and Codex accounts</strong>: the agents' own accounts are listed already.</li>
-    <li><strong>Sign in</strong>, or <strong>Add account</strong> and name it: a terminal of the box opens in the app for the agent's sign-in.</li>
+    <li><strong>Sign in</strong>, or <strong>Add account</strong> and name it: the app opens the agent's sign-in page in your browser
+      (Codex and GitHub show a code to type there; Claude's page shows one to paste back in the app). The first pairing
+      offers the same for Claude Code, Codex and GitHub right away (<strong>Accounts</strong>).</li>
     <li>Each project picks its account (the project's screen, <strong>Agents' account</strong>, or a worktree's Details);
       <strong>Make default</strong> sets it for everything else.</li>
     <li>The Home's <strong>Usage limits</strong> card shows each account's 5-hour and weekly use; tap
@@ -165,6 +172,7 @@ npm install -g @openai/codex                        # Codex</pre>
     <tr><th><code>pierd clients</code> / <code>pierd revoke NAME</code></th><td>Paired devices / remove one.</td></tr>
     <tr><th><code>pierd relay</code></th><td>The tunnel's state; <code>off</code> / <code>default</code>.</td></tr>
     <tr><th><code>pierd location add NAME DIR</code></th><td>A repository setup did not find.</td></tr>
+    <tr><th><code>pierd tools</code></th><td>Where Claude Code, Codex and the GitHub CLI are; <code>pierd tools install</code> installs the missing ones.</td></tr>
     <tr><th>Update</th><td>Run the install command again (or <code>npm install -g pierd@latest</code>, <code>brew upgrade pierd</code>); running agents keep running.</td></tr>
   </table>
 
@@ -187,7 +195,7 @@ npm install -g @openai/codex                        # Codex</pre>
 
   <nav class="toc">
     <a href="#como">Como o Pier funciona</a><a href="#precisa">O que você precisa</a><a href="#servidor">Preparar o servidor</a>
-    <a href="#agentes">Instalar os agentes</a><a href="#instalar">Instalar o pierd</a><a href="#conectar-iphone">Conectar o iPhone e o iPad</a>
+    <a href="#agentes">Os agentes e o GitHub CLI</a><a href="#instalar">Instalar o pierd</a><a href="#conectar-iphone">Conectar o iPhone e o iPad</a>
     <a href="#conectar-mac">Conectar o Mac</a><a href="#contas">Contas do Claude e do Codex</a><a href="#pasta">Pasta dos projetos e espaços</a>
     <a href="#variaveis">Variáveis da box e skills</a><a href="#projetos">Trazer os projetos</a><a href="#ambiente">Ambiente isolado</a>
     <a href="#notificacoes">Notificações</a><a href="#dia">O dia a dia</a><a href="#publicos">Links públicos</a>
@@ -204,7 +212,7 @@ npm install -g @openai/codex                        # Codex</pre>
   <h2 id="precisa">O que você precisa</h2>
   <table>
     <tr><th>Box</th><td>Um servidor Linux (Ubuntu 20.04+ ou Debian 10+, x86-64 ou arm64, com systemd) ou um Mac (macOS 13+), com 4 GB de RAM ou mais.</td></tr>
-    <tr><th>Na box</th><td><code>git</code>, <code>tmux</code>, <code>curl</code>. Opcionais: <code>gh</code> (pull requests, seus repositórios do GitHub) e Docker (ambientes isolados).</td></tr>
+    <tr><th>Na box</th><td><code>git</code>, <code>tmux</code>, <code>curl</code>. O pierd instala o Claude Code, o Codex e o GitHub CLI (<code>gh</code>) em <code>~/.local/bin</code> quando faltam, sem sudo. Opcional: Docker (ambientes isolados).</td></tr>
     <tr><th>Agentes</th><td>Claude Code com plano Pro, Max, Team ou Enterprise, e/ou Codex com conta ChatGPT ou chave de API.</td></tr>
     <tr><th>Aparelhos</th><td>iPhone ou iPad com iOS 17 ou mais novo, e/ou um Mac.</td></tr>
   </table>
@@ -212,29 +220,34 @@ npm install -g @openai/codex                        # Codex</pre>
 
   <h2 id="servidor">1. Preparar o servidor</h2>
   <p>Pule no Mac. Num servidor Ubuntu ou Debian novo, por SSH, com o usuário que vai rodar os agentes (não use root):</p>
-<pre>sudo apt update && sudo apt install -y git tmux curl gh
-gh auth login                       # GitHub.com › HTTPS › login pelo navegador
+<pre>sudo apt update && sudo apt install -y git tmux curl
 git config --global user.name  "Seu Nome"
 git config --global user.email "voce@exemplo.com"</pre>
+  <p>Seu usuário não tem sudo? Peça só esses três a quem administra o servidor; o resto se instala na sua própria pasta.</p>
   <p>Para ambientes isolados, instale o Docker pelo guia oficial (docs.docker.com/engine/install) e depois
   <code>sudo usermod -aG docker $USER</code>, entrando de novo na sessão. Um servidor com IP público não precisa de VPN (o pierd só
   atende aparelhos pareados; libere a porta 7444 se houver firewall). Um servidor em casa ou atrás de NAT também não precisa de
   nada: o app chega pelo túnel.</p>
 
-  <h2 id="agentes">2. Instalar os agentes</h2>
+  <h2 id="agentes">2. Os agentes e o GitHub CLI</h2>
+  <p>Nada a fazer: o <code>pierd setup</code> (próximo passo) instala o Claude Code, o Codex e o GitHub CLI em <code>~/.local/bin</code>
+  quando faltam (<code>--no-tools</code>, ou <code>PIERD_NO_TOOLS=1</code> no comando de instalação, deixa como está), e o app instala
+  qualquer um deles depois com um toque. Para instalar você mesmo:</p>
 <pre>curl -fsSL https://claude.ai/install.sh | bash     # Claude Code
-npm install -g @openai/codex                        # Codex</pre>
-  <p>O login pode esperar: o app faz isso conta por conta (passo 6).</p>
+curl -fsSL https://chatgpt.com/codex/install.sh | sh  # Codex
+pierd tools install gh                              # o GitHub CLI, com o pierd já instalado</pre>
+  <p>O login é no app, pelo navegador (passo 6).</p>
 
   <h2 id="instalar">3. Instalar o pierd</h2>
 <pre>curl -fsSL https://docktopier.com/install.sh | sh
 # ou: npm install -g pierd && pierd setup
 # ou: brew install wagnerfnds/tap/pierd && pierd setup</pre>
-  <p>O <code>pierd setup</code> roda o pierd como serviço do usuário na porta 7444, instala os hooks dos agentes, adiciona os
-  repositórios git que encontrar (<code>~/code</code>, <code>~/Projects</code>, …), conecta a box ao túnel e mostra um QR code e um link
-  <code>pier://</code> (uso único, 10 minutos). No Linux, rode uma vez <code>sudo loginctl enable-linger $USER</code> para o pierd
-  continuar rodando depois do logout. Depois, <code>pierd doctor</code> deve dizer “All good.”, e <code>pierd pair</code> gera um link
-  novo quando precisar.</p>
+  <p>O <code>pierd setup</code> instala as ferramentas que faltam (passo 2), roda o pierd como serviço do usuário na porta 7444,
+  instala os hooks dos agentes, adiciona os repositórios git que encontrar (<code>~/code</code>, <code>~/Projects</code>, …), conecta a box
+  ao túnel e mostra um QR code e um link <code>pier://</code> (uso único, 10 minutos). No Linux ele também liga o lingering
+  (<code>loginctl enable-linger</code>, sem sudo) para o pierd continuar rodando depois do logout; onde o sistema não deixa o seu
+  usuário fazer isso, ele avisa, e quem administra o servidor roda uma vez <code>sudo loginctl enable-linger $USER</code>. Depois,
+  <code>pierd doctor</code> deve dizer “All good.”, e <code>pierd pair</code> gera um link novo quando precisar.</p>
 
   <h2 id="conectar-iphone">4. Conectar o iPhone e o iPad</h2>
   <ol>
@@ -258,7 +271,9 @@ npm install -g @openai/codex                        # Codex</pre>
   Claude Code recomenda para várias contas.</p>
   <ol>
     <li><strong>Ajustes › Projetos › Contas do Claude e do Codex</strong>: as contas próprias dos agentes já aparecem.</li>
-    <li><strong>Entrar</strong>, ou <strong>Adicionar conta</strong> e dê um nome: abre um terminal da box no app para o login do agente.</li>
+    <li><strong>Entrar</strong>, ou <strong>Adicionar conta</strong> e dê um nome: o app abre a página de login do agente no seu navegador
+      (o Codex e o GitHub mostram um código para digitar lá; a página do Claude mostra um para colar de volta no app). O primeiro
+      pareamento já oferece o mesmo para o Claude Code, o Codex e o GitHub (<strong>Contas</strong>).</li>
     <li>Cada projeto escolhe a sua conta (tela do projeto, <strong>Conta dos agentes</strong>, ou Detalhes de uma worktree);
       <strong>Tornar padrão</strong> vale para o resto.</li>
     <li>O card <strong>Limites de uso</strong> no Início mostra o uso de 5 horas e semanal de cada conta; toque uma vez em
@@ -323,6 +338,7 @@ npm install -g @openai/codex                        # Codex</pre>
     <tr><th><code>pierd clients</code> / <code>pierd revoke NOME</code></th><td>Aparelhos pareados / tirar um.</td></tr>
     <tr><th><code>pierd relay</code></th><td>O estado do túnel; <code>off</code> / <code>default</code>.</td></tr>
     <tr><th><code>pierd location add NOME PASTA</code></th><td>Um repositório que o setup não achou.</td></tr>
+    <tr><th><code>pierd tools</code></th><td>Onde estão o Claude Code, o Codex e o GitHub CLI; <code>pierd tools install</code> instala os que faltam.</td></tr>
     <tr><th>Atualizar</th><td>Rode o comando de instalação de novo (ou <code>npm install -g pierd@latest</code>, <code>brew upgrade pierd</code>); os agentes continuam rodando.</td></tr>
   </table>
 

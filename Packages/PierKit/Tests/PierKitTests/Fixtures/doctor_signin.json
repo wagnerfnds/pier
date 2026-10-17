@@ -1,0 +1,61 @@
+[
+  {
+    "area": "pierd",
+    "detail": "pierd stops when you log out, and this system does not let your user turn lingering on (loginctl enable-linger was refused): an admin of the machine has to",
+    "fix": "sudo loginctl enable-linger ubuntu",
+    "name": "survives logout",
+    "status": "warn"
+  },
+  {
+    "area": "Worktrees and sessions",
+    "detail": "/usr/bin/git",
+    "name": "git",
+    "status": "ok"
+  },
+  {
+    "area": "Agents",
+    "detail": "/home/ubuntu/.local/bin/claude (Claude Code's installer, 2.1.302)",
+    "name": "Claude Code",
+    "status": "ok"
+  },
+  {
+    "area": "Agents",
+    "detail": "not installed; the Pier app can install it",
+    "fix": "pierd tools install codex",
+    "name": "Codex",
+    "status": "info",
+    "tool": "codex"
+  },
+  {
+    "area": "Agents",
+    "detail": "pierd's hooks installed",
+    "name": "Claude Code hooks",
+    "status": "ok"
+  },
+  {
+    "account": "claude",
+    "area": "Agents",
+    "detail": "not signed in on this box: a new session would stop at its login prompt",
+    "fix": "claude auth login",
+    "name": "Claude Code sign-in",
+    "status": "warn",
+    "tool": "claude"
+  },
+  {
+    "account": "claude-1a2b3c4d",
+    "area": "Agents",
+    "detail": "the account Trabalho is not signed in: sessions on it would stop at the login prompt",
+    "fix": "CLAUDE_CONFIG_DIR='/home/ubuntu/.config/pier/box/accounts/claude-1a2b3c4d' claude auth login",
+    "name": "Claude Code (Trabalho) sign-in",
+    "status": "warn",
+    "tool": "claude"
+  },
+  {
+    "area": "Worktrees and sessions",
+    "detail": "not installed; pull requests and the GitHub list need it, and the Pier app can install it",
+    "fix": "pierd tools install gh",
+    "name": "gh",
+    "status": "warn",
+    "tool": "gh"
+  }
+]

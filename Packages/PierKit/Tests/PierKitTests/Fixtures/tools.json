@@ -1,0 +1,26 @@
+[
+  {
+    "command": "claude",
+    "id": "claude",
+    "installed": true,
+    "name": "Claude Code",
+    "path": "/home/ubuntu/.local/bin/claude",
+    "version": "2.1.302 (Claude Code)"
+  },
+  {
+    "command": "codex",
+    "id": "codex",
+    "installed": true,
+    "name": "Codex",
+    "path": "/home/ubuntu/.local/bin/codex",
+    "version": "codex-cli 0.160.1"
+  },
+  {
+    "command": "gh",
+    "error": "checksum mismatch for gh_2.102.0_linux_amd64.tar.gz (3f1c…, the release says bb76…), so it was not installed",
+    "id": "gh",
+    "installed": false,
+    "log": "/home/ubuntu/.config/pier/box/logs/tools/gh.log",
+    "name": "GitHub CLI"
+  }
+]

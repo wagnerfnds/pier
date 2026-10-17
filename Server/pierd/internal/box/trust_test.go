@@ -162,12 +162,9 @@ func TestANewAccountIsReadyAndSignsInInATerminal(t *testing.T) {
 		t.Fatalf("login = %d", st)
 	}
 	defer bx.Sessions.Kill(t.Context(), sess.Name)
-	if sess.Command != "claude /login" || sess.Dir != filepath.Join(bx.StateDir, "sign-in") {
+	// The CLI's own sign-in (no screen of Claude Code's, so no folder to trust), on the account's folder.
+	if !strings.HasSuffix(sess.Command, " auth login") || sess.Dir != a.Dir {
 		t.Fatalf("sign-in session = %+v", sess)
-	}
-	real, _ := filepath.EvalSymlinks(sess.Dir)
-	if !claudeTrusts(t, config, real) {
-		t.Fatal("Claude Code would ask about the sign-in folder")
 	}
 	var list []Session
 	call(t, c, "GET", "/v1/sessions", "", nil, &list)

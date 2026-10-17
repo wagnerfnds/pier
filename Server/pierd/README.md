@@ -38,6 +38,8 @@ curl -fsSL https://docktopier.com/install.sh | sh
 The script downloads the release for this system from GitHub (`pierd-v*` tags, checked against their SHA-256), puts
 it in `~/.local/bin` and runs `pierd setup`, which:
 
+- installs Claude Code, Codex and the GitHub CLI in `~/.local/bin` where they are missing, with no sudo (`pierd tools
+  install`, below);
 - runs pierd as a user service on every interface, port 7444 (`~/.config/systemd/user/pierd.service`; a launchd agent
   on a Mac) and installs the agents' hooks (see Agent hooks);
 - adds the git repositories in the usual folders (`~/code`, `~/Projects`, `~/src`, `~/Developer`, …; `--repos DIR`
@@ -45,17 +47,30 @@ it in `~/.local/bin` and runs `pierd setup`, which:
 - prints a single-use `pier://` link (10 minutes) and its QR code: scan it with the app, or paste the link. On a Mac,
   at its own screen, it hands the link to the Pier app, which pairs with that Mac by itself.
 
-On Linux, run `sudo loginctl enable-linger $USER` once so pierd keeps running after you log out. `pierd doctor` says
-what works and what to fix, `pierd pair` prints a new link any time, and running `pierd setup` again keeps what was
-chosen before.
+On Linux, setup also turns on lingering, so pierd keeps running after you log out: `loginctl enable-linger`, which
+systemd lets a user do for themselves where polkit runs; where it does not (many containers), setup and `pierd doctor`
+say so, and an admin runs `sudo loginctl enable-linger USER` once. `pierd doctor` says what works and what to fix,
+`pierd pair` prints a new link any time, and running `pierd setup` again keeps what was chosen before.
 
 The link names the address the app should dial: the box's public IPv4 address when it has one, else (a Mac) its
 Bonjour name `<name>.local`, else a tailnet address, else a LAN one; `--address HOST[:PORT]` says otherwise. pierd
 answers only paired devices (mutual TLS with pinned keys) and pairing needs the single-use link, so a server with a
 public address needs no VPN; behind NAT, forward the port or use a VPN such as Tailscale. `--listen ADDR:PORT` limits
-pierd to one address. The other flags: `--name`, `--ports` (below), `--no-projects`, `--no-integrations`, `--no-open`,
-and `--no-service` when pierd already runs under a supervisor of your own (a container): setup only adds the projects
-and pairs.
+pierd to one address. The other flags: `--name`, `--ports` (below), `--no-projects`, `--no-integrations`, `--no-tools`
+(or `PIERD_NO_TOOLS=1`, which the install script passes on), `--no-open`, and `--no-service` when pierd already runs
+under a supervisor of your own (a container): setup only adds the projects and pairs.
+
+### The agents and the GitHub CLI
+
+`pierd tools` says where Claude Code, Codex and the GitHub CLI are; `pierd tools install [claude] [codex] [gh]` installs
+the missing ones (all three without names; `--force` installs again), each in `~/.local/bin` with no sudo: Claude Code
+and Codex through their own installers (`https://claude.ai/install.sh`; Codex's standalone
+`https://chatgpt.com/codex/install.sh`, falling back to the binary of its latest GitHub release, checked against the
+SHA-256 GitHub keeps with it), the GitHub CLI from its latest release's archive, checked against the release's checksums
+file. Nothing is installed whose checksum does not match. The app asks for the same through `POST /v1/tools/install`,
+and signs the three in through `/v1/logins`: pierd runs the CLI's own sign-in (`claude auth login`, `codex login
+--device-auth`, `gh auth login --web`) in a session of its own, reads the link and the code off its screen for the app,
+and calls it done once the CLI's own status agrees (the app's docs/API.md §2.10.1).
 
 Underneath, `pierd install [--listen ADDR:PORT]` writes and starts the service and installs the hooks;
 `pierd uninstall` removes the service (state stays). The unit is a plain user unit: `systemctl --user status pierd`,
@@ -180,7 +195,7 @@ contract in the app's `docs/PUSH.md`.
 ## Commands
 
 `pierd help` lists them all: `setup`, `serve`, `relay`, `install`, `uninstall`, `pair`, `clients`, `revoke`, `id`,
-`doctor`, `version`, `hook`, `integrations`, `client` (a paired client for scripts: `pierd client pair LINK`,
+`doctor`, `version`, `tools`, `hook`, `integrations`, `client` (a paired client for scripts: `pierd client pair LINK`,
 then `pierd client GET /v1/sessions`), and the box commands over the local socket: `locations`,
 `location add|rm|config`, `worktree new|rm`, `services`, `service list|start|stop|restart`, `sessions`,
 `session new|send|screen|rename|wait|turns|kill`, `task new`, `exec`, `stats`, `info`, `emit`, `events`.

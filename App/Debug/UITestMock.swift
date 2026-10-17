@@ -125,6 +125,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
     /// The worktrees' files and history (UITestMockWorkspace.swift).
     private var workspace = MockWorkspace()
     private var projects = MockProjects()
+    /// The tools it installs and the sign-ins it runs (UITestMockSignIn.swift).
+    private var signIns = MockSignIns()
     /// The shells started without an agent (UITestMockTerminals.swift).
     private var terminals = MockTerminals()
 
@@ -231,7 +233,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
         } else {
             checks.append(["area": "pierd", "name": "survives logout", "status": "ok", "detail": "user lingering is on"])
         }
-        return checks
+        return checks + signIns.doctorChecks()
     }
 
     /// The question's reply once a choice arrives (a structured answer, or the digit of its row on screen).
@@ -453,12 +455,15 @@ final class MockBox: PierTransport, @unchecked Sendable {
             sessions.insert(s, at: 0)
             return (200, Self.json(s))
         }
+        if let r = signIns.route(method, p, body) { return r }   // tools and sign-ins (UITestMockSignIn.swift)
+        projects.signedOut = signIns.signedOut
+        projects.signedIn = signIns.signedIn
         if let r = projects.route(method, p, query, body, locations: MockFixtures.locations) { return r }   // clones, GitHub, removal (UITestMockProjects.swift)
         switch (method, p[1]) {
         case (.get, "info"):
             // pierd with the file routes.
             var info = Self.fixtureObject(MockFixtures.info)
-            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare"]
+            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare", "tools", "logins"]
                 // Terminals stream (`-mockTTY 0`: a box before them, its screen read every second).
                 + (UserDefaults.standard.string(forKey: "mockTTY") == "0" ? [] : ["tty"])
             return (200, Self.json(info))

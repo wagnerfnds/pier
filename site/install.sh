@@ -4,10 +4,12 @@
 #   curl -fsSL https://docktopier.com/install.sh | sh
 #
 # It downloads the latest pierd release for this OS and CPU from GitHub (github.com/wagnerfnds/pier), checks it
-# against the release's checksums, puts it in ~/.local/bin and runs `pierd setup`: pierd as a user service, the
-# agents' hooks, your git repositories as projects, and a pairing link (on a Mac, the Pier app pairs by itself).
+# against the release's checksums, puts it in ~/.local/bin and runs `pierd setup`: Claude Code, Codex and the GitHub
+# CLI in ~/.local/bin where they are missing (no sudo), pierd as a user service, the agents' hooks, your git
+# repositories as projects, and a pairing link (on a Mac, the Pier app pairs by itself).
 # Arguments go to `pierd setup` (`sh -s -- --no-projects`); PIERD_VERSION=1.2.3 picks a release; PIERD_NO_SETUP=1
-# only installs; PIERD_DOWNLOAD=<url> downloads the release's files from a mirror.
+# only installs; PIERD_NO_TOOLS=1 leaves Claude Code, Codex and the GitHub CLI alone (setup reads it);
+# PIERD_DOWNLOAD=<url> downloads the release's files from a mirror.
 set -eu
 
 repo=wagnerfnds/pier

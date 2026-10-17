@@ -37,7 +37,10 @@ func daemonChecks(b boxHome, listening string) []doctor.Check {
 		if lingering() {
 			checks = append(checks, doctor.Check{Area: area, Name: "survives logout", Status: doctor.OK, Detail: "user lingering is on"})
 		} else {
-			checks = append(checks, doctor.Check{Area: area, Name: "survives logout", Status: doctor.Warn, Detail: "pierd stops when you log out", Fix: "sudo loginctl enable-linger " + currentUser()})
+			// pierd install and setup turn it on themselves where the system lets the user: here it is left to an admin.
+			checks = append(checks, doctor.Check{Area: area, Name: "survives logout", Status: doctor.Warn,
+				Detail: "pierd stops when you log out; pierd install turns lingering on where this system lets your user, else an admin of the machine has to",
+				Fix:    "sudo loginctl enable-linger " + currentUser()})
 		}
 	}
 	peers, err := b.clients().List()

@@ -1,0 +1,12 @@
+{
+  "account": "codex-1a2b3c4d",
+  "finished": "2026-10-17T00:47:02.120512Z",
+  "id": "a2f8458ae476",
+  "needs_code": false,
+  "session": "login-codex-1a2b3c4d",
+  "started": "2026-10-17T00:46:16.063741Z",
+  "state": "done",
+  "tool": "codex",
+  "url": "https://auth.openai.com/codex/device",
+  "user_code": "10T4-M2P3P"
+}
