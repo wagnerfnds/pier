@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -25,26 +24,38 @@ func toolsCmd(args []string) error {
 	if args[0] != "install" {
 		return errors.New("usage: pierd tools [install [claude] [codex] [gh] [--force]]")
 	}
-	fs := flag.NewFlagSet("tools install", flag.ContinueOnError)
-	force := fs.Bool("force", false, "install again where it is already found (an update)")
-	if err := fs.Parse(args[1:]); err != nil {
+	ids, force, err := toolsInstallArgs(args[1:])
+	if err != nil {
 		return err
 	}
-	ids := fs.Args()
-	for _, id := range ids {
-		if _, ok := installer.Lookup(id); !ok {
-			return fmt.Errorf("pierd does not install %q; it installs claude, codex and gh", id)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if failed := installTools(ctx, ids, force, os.Stdout); failed > 0 {
+		return fmt.Errorf("%d of them not installed", failed)
+	}
+	return nil
+}
+
+// toolsInstallArgs reads `pierd tools install`'s arguments: the tools (all of them when none is named) and --force
+// (install again where it is already found: an update), before or after the names.
+func toolsInstallArgs(args []string) (ids []string, force bool, err error) {
+	for _, a := range args {
+		switch {
+		case a == "--force" || a == "-force":
+			force = true
+		case strings.HasPrefix(a, "-"):
+			return nil, false, fmt.Errorf("unknown flag %s; usage: pierd tools install [claude] [codex] [gh] [--force]", a)
+		default:
+			if _, ok := installer.Lookup(a); !ok {
+				return nil, false, fmt.Errorf("pierd does not install %q; it installs claude, codex and gh", a)
+			}
+			ids = append(ids, a)
 		}
 	}
 	if len(ids) == 0 {
 		ids = allTools()
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	if failed := installTools(ctx, ids, *force, os.Stdout); failed > 0 {
-		return fmt.Errorf("%d of them not installed", failed)
-	}
-	return nil
+	return ids, force, nil
 }
 
 func allTools() []string {

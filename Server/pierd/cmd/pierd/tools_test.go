@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -28,5 +29,20 @@ func TestLineIndent(t *testing.T) {
 	}
 	if want := "  Downloading…\n  Setting up\n  \n  Done\n"; b.String() != want {
 		t.Fatalf("got %q, want %q", b.String(), want)
+	}
+}
+
+func TestToolsInstallArgs(t *testing.T) {
+	ids, force, err := toolsInstallArgs([]string{"gh", "--force", "codex"})
+	if err != nil || !force || !reflect.DeepEqual(ids, []string{"gh", "codex"}) {
+		t.Fatalf("ids %v, force %v, err %v", ids, force, err)
+	}
+	if ids, force, _ := toolsInstallArgs(nil); force || !reflect.DeepEqual(ids, []string{"claude", "codex", "gh"}) {
+		t.Fatalf("no names: ids %v, force %v", ids, force)
+	}
+	for _, bad := range [][]string{{"node"}, {"--yes"}} {
+		if _, _, err := toolsInstallArgs(bad); err == nil {
+			t.Errorf("%v was taken", bad)
+		}
 	}
 }

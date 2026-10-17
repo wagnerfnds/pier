@@ -207,7 +207,12 @@ struct GitHubReposScreen: View {
             }
             .sheet(isPresented: $cloneLink) { CloneLinkSheet(initialBox: box) { dismiss() }.environment(model).environment(router) }
             .sheet(item: $signIn) { r in
-                SignInSheet(request: r, onDone: { Task { await load() } }).environment(model)
+                // The terminal opens on the Home, this list closed first.
+                SignInSheet(request: r, openTerminal: { s in
+                    dismiss()
+                    Task { try? await Task.sleep(for: .milliseconds(350)); router.openSession(box: r.box, session: s) }
+                }, onDone: { Task { await load() } })
+                .environment(model)
             }
             // The GitHub CLI installed from here: the list, once the box has it.
             .onChange(of: tools.installing("gh", box: box)) { _, now in if !now { Task { await load() } } }
