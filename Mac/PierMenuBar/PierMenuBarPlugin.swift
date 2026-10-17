@@ -12,8 +12,8 @@ import Carbon.HIToolbox
 ///   `"card:…"` (the Inbox), `"agent:…"`, `"compose:…"`, `"talk:…"`, `"dictation:…"`, `"panel:screen:…"` (the side panel).
 /// * `update:strings:` gives the agents (`id`, `state` = needsYou | working | done | ready, `title`, `project`, `word`,
 ///   `focused`, already in order) and the localized texts, so this bundle holds no strings of its own.
-/// * `configureSurface:` the settings; `updateSurface:` the Inbox, the agents, the form, Falar; `permissions`,
-///   `requestPermission:`, `pointAt:`, `screens`, `debugSurface:` for the rest.
+/// * `configureSurface:` the settings; `updateSurface:` the Inbox, the agents, the form, Falar, a part at a time;
+///   `permissions`, `requestPermission:`, `pointAt:`, `screens`, `debugSurface:` for the rest.
 ///
 /// ⌃⌥Space in any app is "talk" and ⌃⌥P shows or hides the tab (Carbon hot keys: no Accessibility permission, nothing
 /// read from other apps).
@@ -85,6 +85,7 @@ public final class PierMenuBarPlugin: NSObject {
     }
 
     @objc public func update(_ agents: [[String: String]], strings: [String: String]) {
+        guard agents != self.agents || strings != self.strings else { return }
         self.agents = agents
         self.strings = strings
         render()
@@ -101,6 +102,10 @@ public final class PierMenuBarPlugin: NSObject {
     // MARK: the edge surface and the side panel
 
     private var unseen = 0
+    /// The side panel's payload as the app sent it, by part (`MenuBarBridge`: "inbox", "dots", "agent"), and their union,
+    /// which the screens read.
+    private var parts: [String: [String: Any]] = [:]
+    private var surfaceData: [String: Any] = [:]
 
     /// The settings: `enabled`, `edge` (left | right), `fraction`, `fullScreen`, `appearance` (system | light | dark),
     /// `display` (main | pointer | a display id), `size` (small | medium | large), `menuBar` (the status item),
@@ -112,7 +117,8 @@ public final class PierMenuBarPlugin: NSObject {
         if surface == nil {
             let s = EdgeSurfaceController { [weak self] action in self?.handle(action) }
             surface = s
-            update(agents, strings: strings)
+            s.update(dots: dots, unseen: unseen, strings: strings)
+            if !surfaceData.isEmpty { s.panelController.update(surfaceData, changed: Set(surfaceData.keys)) }
         }
         var c = EdgeSurfaceController.Config()
         c.enabled = tabEnabled
@@ -134,13 +140,35 @@ public final class PierMenuBarPlugin: NSObject {
         optionTap?.start(global: wantTap)
     }
 
-    /// The Inbox count and everything the side panel shows: `unseen`, `cards`, `current`, `pending`, `receipt`, `receiptFor`,
-    /// `agents`, `agentDetail`, `compose`, `talk`, `dictation`, `started`.
+    /// The Inbox count and everything the side panel shows, one part at a time (`part`; its keys replace the ones it sent
+    /// before): `unseen`, `cards`, `current`, `pending`, `receipt`, `receiptFor`, `dictation`, `compose`, `talk` (inbox);
+    /// `agents` (dots); `agentDetail`, `started` (agent). Only what changed goes on: the tab when the count did, the
+    /// panel's screen when a key it reads did.
     @objc public func updateSurface(_ data: [String: Any]) {
-        unseen = (data["unseen"] as? NSNumber)?.intValue ?? 0
+        var part = data
+        let name = part.removeValue(forKey: "part") as? String ?? ""
+        let old = parts[name] ?? [:]
+        parts[name] = part
+        let changed = Set(old.keys).union(part.keys).filter { !Self.same(old[$0], part[$0]) }
+        guard !changed.isEmpty else { return }
+        var all: [String: Any] = [:]
+        for p in parts.values { all.merge(p) { a, _ in a } }
+        surfaceData = all
+        let count = (all["unseen"] as? NSNumber)?.intValue ?? 0
+        let countChanged = count != unseen
+        unseen = count
         guard let surface else { return }
-        surface.panelController.update(data)
-        surface.update(dots: dots, unseen: unseen, strings: strings)
+        surface.panelController.update(all, changed: changed)
+        if countChanged { surface.update(dots: dots, unseen: unseen, strings: strings) }
+    }
+
+    /// Two payload values (Foundation objects) are equal.
+    private static func same(_ a: Any?, _ b: Any?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): true
+        case let (a?, b?): (a as? NSObject)?.isEqual(b) ?? false
+        default: false
+        }
     }
 
     /// The displays, for Ajustes → Mac → Tela: `id` and `name`, the main one first.

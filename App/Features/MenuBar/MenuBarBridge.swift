@@ -27,14 +27,17 @@ import PierKit
 
     @ObservationIgnored private var plugin: PierMenuBarPluginAPI?
     @ObservationIgnored private weak var model: AppModel?
-    @ObservationIgnored private var pending: Task<Void, Never>?
+    @ObservationIgnored private var pending: [Part: Task<Void, Never>] = [:]
     @ObservationIgnored private var lastSent: [[String: String]]?
-    @ObservationIgnored private var lastSurface: NSDictionary?
+    @ObservationIgnored private var lastParts: [Part: NSDictionary] = [:]
     @ObservationIgnored private var configTask: Task<Void, Never>?
     @ObservationIgnored let surface = MacSurfaceStore()
     /// What macOS lets the app do (Ajustes → Mac reads it): `inputMonitoring`, `accessibility`, `screenRecording`,
     /// `optionTapGlobal`.
     private(set) var permissions: [String: Bool] = [:]
+    /// How many of Ajustes → Mac's rows are on screen (they count themselves in and out): coming back to the app reads
+    /// the permissions again only then, for one the person may have just granted in System Settings.
+    @ObservationIgnored var settingsRowsShown = 0
     /// The displays (id, name) for Ajustes → Mac → Tela.
     var screens: [(id: Int, name: String)] {
         (plugin?.screens ?? []).compactMap { d in
@@ -58,7 +61,10 @@ import PierKit
         let p = unsafeBitCast(obj, to: PierMenuBarPluginAPI.self)
         plugin = p
         p.start { [weak self] action in MainActor.assumeIsolated { self?.handle(action) } }
-        surface.onChange = { [weak self] in self?.schedule(fast: true) }
+        // An action changed the surface's own state (not observed): every part is read again, at once.
+        surface.onChange = { [weak self] in
+            for part in Part.allCases { self?.schedule(part, fast: true) }
+        }
         #if DEBUG
         let dups = Self.duplicateStringKeys
         if !dups.isEmpty { NSLog("PierMenuBar: duplicate string keys %@", dups.joined(separator: ", ")) }
@@ -72,12 +78,14 @@ import PierKit
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleConfigure() }
         }
-        // A permission granted in System Settings shows when the app comes back (the checks are synchronous privacy
-        // queries: not on every settings write); the surface is configured again, its key monitors with it.
+        // Coming back to the app: the settings, if they changed meanwhile, and — only while Ajustes → Mac is on screen —
+        // the permissions, which the person may have just granted in System Settings (the checks are synchronous privacy
+        // queries: not on every activation).
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.configure(force: true)
-                self?.refreshPermissions()
+                guard let self else { return }
+                self.configure()
+                if self.settingsRowsShown > 0 { self.refreshPermissions() }
             }
         }
         #if DEBUG
@@ -102,34 +110,70 @@ import PierKit
 
     // MARK: updates
 
-    /// Re-reads the sessions and the Inbox whenever something they depend on changes (observation), at most a few times
-    /// a second.
+    /// What the plugin gets, in three parts that each follow what they read on their own (an observation, a debounce
+    /// and a last value sent of their own), so a change re-reads and re-sends only what depends on it: a reply streaming
+    /// in the panel's agent re-reads that agent, not every Inbox card and every session's dot.
+    /// * `inbox`: the Inbox's count and cards, the answer waiting and its receipt, dictation, the form, Falar;
+    /// * `dots`: the tab's indicators (`update:strings:`) and the panel's list of agents (`agents`);
+    /// * `agent`: the agent the panel shows (`agentDetail`) and a task just started there (`started`).
+    /// The side panel's parts go through `updateSurface:` tagged with `part`; the plugin keeps the last of each.
+    private enum Part: String, CaseIterable {
+        // The Inbox first: it settles which card is shown, which the dots mark.
+        case inbox, dots, agent
+    }
+
+    /// Every part, now (launch).
     private func push() {
+        for part in Part.allCases { push(part) }
+    }
+
+    private func push(_ part: Part) {
         guard let model, let plugin else { return }
-        let (agents, surfaceData) = withObservationTracking {
-            let dots = AgentDots.make(model)
-            let data = surface.payload(dots: dots)
-            return (surface.mark(dots), data)
-        } onChange: { [weak self] in
-            Task { @MainActor in self?.schedule(fast: false) }
-        }
-        if agents != lastSent {
-            lastSent = agents
-            plugin.update(agents, strings: Self.strings)
-        }
-        let dict = surfaceData as NSDictionary
-        if !(lastSurface?.isEqual(to: surfaceData) ?? false) {
-            lastSurface = dict
-            plugin.updateSurface(surfaceData)
+        switch part {
+        case .inbox:
+            let shown = surface.current
+            send(.inbox, tracking(.inbox) { surface.inboxPart() })
+            // The card shown left the Inbox and another took its place: the tab's full amber dot follows it.
+            if surface.current != shown { schedule(.dots, fast: true) }
+        case .dots:
+            let (dots, marked, rows) = tracking(.dots) { () -> ([AgentDot], [[String: String]], [[String: Any]]) in
+                let dots = AgentDots.make(model)
+                return (dots, surface.mark(dots), surface.agentRows(dots))
+            }
+            surface.dots = dots
+            if marked != lastSent {
+                lastSent = marked
+                plugin.update(marked, strings: Self.strings)
+            }
+            send(.dots, ["agents": rows])
+        case .agent:
+            send(.agent, tracking(.agent) { surface.agentPart() })
         }
     }
 
-    private func schedule(fast: Bool) {
-        guard pending == nil else { return }
-        pending = Task { [weak self] in
+    /// Reads `read` and pushes `part` again (after its debounce) once something it read changes.
+    private func tracking<T>(_ part: Part, _ read: () -> T) -> T {
+        withObservationTracking(read, onChange: { [weak self] in
+            Task { @MainActor in self?.schedule(part, fast: false) }
+        })
+    }
+
+    /// A part of the side panel's payload, unless it is the one this part sent last.
+    private func send(_ part: Part, _ data: [String: Any]) {
+        if lastParts[part]?.isEqual(to: data) == true { return }
+        lastParts[part] = data as NSDictionary
+        var tagged = data
+        tagged["part"] = part.rawValue
+        plugin?.updateSurface(tagged)
+    }
+
+    /// At most a few pushes a second per part; `fast` for an action's result.
+    private func schedule(_ part: Part, fast: Bool) {
+        guard pending[part] == nil else { return }
+        pending[part] = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(fast ? 30 : 250))
-            self?.pending = nil
-            self?.push()
+            self?.pending[part] = nil
+            self?.push(part)
         }
     }
 
@@ -137,7 +181,8 @@ import PierKit
 
     /// Sends the surface's settings, unless they are the ones it already has: `configureSurface` restarts the ⌥ key
     /// monitors, rebuilds the status menu and re-pins both panels, and UserDefaults changes for many other reasons (the
-    /// window's frame, split panes, session snapshots).
+    /// window's frame, split panes, session snapshots), as does the app's activation. `force` when the monitors must
+    /// start again (a permission just granted).
     private func configure(force: Bool = false) {
         let config = MacSurfaceSettings.config
         let dict = config as NSDictionary
@@ -220,10 +265,16 @@ import PierKit
 
     // MARK: permissions, point at it, debug
 
+    /// Reads what macOS lets the app do (at launch, and while Ajustes → Mac is on screen).
     func refreshPermissions() {
         guard let plugin else { return }
-        var out: [String: Bool] = [:]
-        for (k, v) in plugin.permissions { out[k] = (v as? Bool) ?? false }
+        var out = plugin.permissions.mapValues { ($0 as? Bool) ?? false }
+        // Input Monitoring (or Accessibility) granted since the ⌥ monitors started: configuring the surface again
+        // starts them again, for every app now.
+        if MacSurfaceSettings.optionTap, out["optionTapGlobal"] == false, out["inputMonitoring"] == true || out["accessibility"] == true {
+            configure(force: true)
+            out = plugin.permissions.mapValues { ($0 as? Bool) ?? false }
+        }
         if out != permissions { permissions = out }
     }
 

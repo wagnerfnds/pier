@@ -162,6 +162,7 @@ extension NSFont {
 final class AgentsScreen: NSView, PanelScreenView, PanelDataSink {
     var onAction: ((String) -> Void)?
     var title: String { strings["agents"] ?? "Agentes" }
+    let reads: Set<String> = ["agents"]
     private var strings: [String: String] = [:]
     private var rows: [AgentRow] = []
     private var ids: [String] = []
@@ -205,8 +206,11 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     let id: String
     var onAction: ((String) -> Void)? { didSet { conversation.onAction = onAction } }
     private(set) var title = ""
+    /// The agents' list only matters while the app sends no detail of this agent (it is starting, or just left).
+    var reads: Set<String> { detailFromList ? ["agentDetail", "agents", "pending", "receipt", "receiptFor"] : ["agentDetail", "pending", "receipt", "receiptFor"] }
     private var strings: [String: String] = [:]
     private var detail: [String: Any] = [:]
+    private var detailFromList = true
     private var pending: [String: Any]?
     private var receipt: String?
     private var dictationBase = ""
@@ -230,6 +234,10 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     private var failureToken: String?
     private var restoredText: String?
     private let hint = HintPill()
+    // The actions, made once and shown as they apply; `actions` are the ones shown, in order.
+    private let interruptButton = PillButton(title: "", symbol: "stop.fill", color: PanelStyle.red)
+    private let archiveButton = PillButton(title: "", symbol: "archivebox", color: PanelStyle.textDim)
+    private let reviewButton = PillButton(title: "", symbol: "doc.text.magnifyingglass", color: PanelStyle.accent)
     private var actions: [PillButton] = []
     private let openLink = ClickableView()
     private let openLabel = SurfaceStyle.label("", font: PanelStyle.font(12, .medium), color: PanelStyle.textDim)
@@ -259,6 +267,11 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         }
         composer.onEscape = { [weak self] in self?.window?.makeFirstResponder(self?.superview) }
         hint.onUndo = { [weak self] in self?.onAction?("agent:undo") }
+        for (b, action) in [(interruptButton, "interrupt"), (archiveButton, "archive"), (reviewButton, "review")] {
+            b.onClick = { [weak self] in guard let self else { return }; self.onAction?("agent:\(action):\(self.id)") }
+            b.isHidden = true
+            addSubview(b)
+        }
     }
     required init?(coder: NSCoder) { nil }
 
@@ -268,14 +281,20 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
     }
 
     func apply(_ data: [String: Any], strings: [String: String]) {
-        self.strings = strings
         let d = (data["agentDetail"] as? [String: Any]).flatMap { ($0["id"] as? String) == id ? $0 : nil }
         let listed = (data["agents"] as? [[String: Any]])?.first { ($0["id"] as? String) == id }
-        detail = d ?? listed ?? ["id": id, "starting": true]
+        let detail = d ?? listed ?? ["id": id, "starting": true]
         let p = data["pending"] as? [String: Any]
-        pending = (p?["card"] as? String) == id ? p : nil
-        receipt = (data["receiptFor"] as? String) == id ? data["receipt"] as? String : nil
-        render()
+        let pending = (p?["card"] as? String) == id ? p : nil
+        let receipt = (data["receiptFor"] as? String) == id ? data["receipt"] as? String : nil
+        // The agent, its answer waiting and its receipt as drawn: nothing to draw again.
+        let same = strings == self.strings && Self.same(detail, self.detail) && Self.same(pending, self.pending) && receipt == self.receipt
+        self.strings = strings
+        self.detail = detail
+        detailFromList = d == nil
+        self.pending = pending
+        self.receipt = receipt
+        if !same { render() }
         // The hint's countdown wants 20 frames a second while an answer waits; otherwise the clocks move once a second.
         let fast = pending != nil
         if ticker == nil || tickerFast != fast {
@@ -315,28 +334,25 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         question.stringValue = waiting ? (d["question"] as? String ?? "") : ""
         command.stringValue = waiting ? (d["command"] as? String ?? "") : ""
         why.stringValue = waiting ? (d["why"] as? String ?? d["detail"] as? String ?? "") : ""
-        for r in optionRows { r.removeFromSuperview() }
-        optionRows = []
+        // The rows are kept from one render to the next and changed in place (this screen renders a few times a second
+        // while a reply streams in).
         let chosen = (pending?["option"] as? NSNumber)?.intValue
-        if waiting {
-            for o in d["options"] as? [[String: Any]] ?? [] {
-                let n = (o["number"] as? NSNumber)?.intValue ?? 0
-                let r = OptionRowView(number: n, title: o["title"] as? String ?? "", detail: o["detail"] as? String,
-                                      recommended: o["recommended"] as? Bool ?? false, role: o["role"] as? String ?? "plain", strings: strings)
-                r.chosen = chosen == n
-                r.onClick = { [weak self] in guard let self else { return }; self.onAction?("agent:pick:\(self.id)|\(n)") }
-                addSubview(r); optionRows.append(r)
-            }
+        let options = waiting ? d["options"] as? [[String: Any]] ?? [] : []
+        resize(&optionRows, to: options.count)
+        for (r, o) in zip(optionRows, options) {
+            let n = (o["number"] as? NSNumber)?.intValue ?? 0
+            r.set(number: n, title: o["title"] as? String ?? "", detail: o["detail"] as? String,
+                  recommended: o["recommended"] as? Bool ?? false, role: o["role"] as? String ?? "plain", strings: strings)
+            r.chosen = chosen == n
+            r.onClick = { [weak self] in guard let self else { return }; self.onAction?("agent:pick:\(self.id)|\(n)") }
         }
-        for r in stepRows { r.removeFromSuperview() }
-        stepRows = []
         let steps = d["nextSteps"] as? [String] ?? []
         stepsHeading.stringValue = steps.isEmpty && !(d["nextStepsLoading"] as? Bool ?? false) ? "" : (strings["nextSteps"] ?? "").uppercased()
-        for (i, s) in steps.enumerated() {
-            let r = OptionRowView(number: i + 1, title: s, detail: nil, recommended: false, role: "plain", strings: strings)
+        resize(&stepRows, to: steps.count)
+        for (i, (r, s)) in zip(stepRows, steps).enumerated() {
+            r.set(number: i + 1, title: s, detail: nil, recommended: false, role: "plain", strings: strings)
             r.chosen = chosen == i + 1 && !waiting
             r.onClick = { [weak self] in guard let self else { return }; self.onAction?("agent:pick:\(self.id)|\(i + 1)") }
-            addSubview(r); stepRows.append(r)
         }
         loading.stringValue = (d["nextStepsLoading"] as? Bool ?? false) && steps.isEmpty ? (strings["suggesting"] ?? "") : ""
         composer.placeholder = d["replyPlaceholder"] as? String ?? (strings["message"] ?? "")
@@ -355,20 +371,15 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         } else {
             failure.stringValue = ""
         }
-        for a in actions { a.removeFromSuperview() }
-        actions = []
-        func pill(_ key: String, _ symbol: String, _ color: NSColor, _ action: String) {
-            let b = PillButton(title: strings[key] ?? key, symbol: symbol, color: color)
-            b.onClick = { [weak self] in self?.onAction?(action) }
-            addSubview(b); actions.append(b)
+        for (b, key, shown) in [(interruptButton, "interrupt", d["canInterrupt"]), (archiveButton, "archive", d["canArchive"]),
+                                (reviewButton, "review", d["canReview"])] {
+            b.isHidden = !((shown as? Bool) ?? false)
+            if b.title != strings[key] ?? key { b.title = strings[key] ?? key }
         }
-        if d["canInterrupt"] as? Bool ?? false { pill("interrupt", "stop.fill", PanelStyle.red, "agent:interrupt:\(id)") }
-        if d["canArchive"] as? Bool ?? false { pill("archive", "archivebox", PanelStyle.textDim, "agent:archive:\(id)") }
-        if d["canReview"] as? Bool ?? false {
-            let change = d["change"] as? String
-            pill("review", "doc.text.magnifyingglass", PanelStyle.accent, "agent:review:\(id)")
-            if let change, let last = actions.last { last.accessibilityTitle = "\(strings["review"] ?? "") \(change)"; last.suffix = change }
-        }
+        let change = d["change"] as? String
+        if reviewButton.suffix != change { reviewButton.suffix = change }
+        if let change { reviewButton.accessibilityTitle = "\(strings["review"] ?? "") \(change)" }
+        actions = [interruptButton, archiveButton, reviewButton].filter { !$0.isHidden }
         openLabel.stringValue = strings["openInPier"] ?? "Abrir no Pier"
         openLink.accessibilityTitle = openLabel.stringValue
         hint.render(kind: waiting ? "needsYou" : "finished", count: waiting ? optionRows.count : stepRows.count, pending: pending.map {
@@ -377,6 +388,21 @@ final class AgentScreen: NSView, PanelScreenView, PanelDataSink {
         }, receipt: receipt, strings: strings)
         hint.isHidden = hint.measure().width == 0
         needsLayout = true
+    }
+
+    /// `rows` made or dropped to `count`; the ones kept are changed in place by the caller.
+    private func resize(_ rows: inout [OptionRowView], to count: Int) {
+        while rows.count > count { rows.removeLast().removeFromSuperview() }
+        while rows.count < count {
+            let r = OptionRowView(frame: .zero)
+            addSubview(r)
+            rows.append(r)
+        }
+    }
+
+    private static func same(_ a: [String: Any]?, _ b: [String: Any]?) -> Bool {
+        guard let a, let b else { return a == nil && b == nil }
+        return (a as NSDictionary).isEqual(to: b)
     }
 
     func layoutContent(width: CGFloat) -> CGFloat { layoutContent(width: width, available: 560) }
@@ -513,6 +539,7 @@ final class ComposeScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDel
     private(set) var chat: Bool
     var onAction: ((String) -> Void)?
     var title: String { chat ? (strings["newChat"] ?? "Nova conversa") : (strings["newTask"] ?? "Nova tarefa") }
+    let reads: Set<String> = ["compose", "dictation"]
     private var strings: [String: String] = [:]
     private var data: [String: Any] = [:]
     private var dictationBase = ""
@@ -721,6 +748,7 @@ final class ComposeScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDel
 final class ProjectScreen: NSView, PanelScreenView, PanelDataSink, NSSearchFieldDelegate {
     var onAction: ((String) -> Void)?
     var title: String { strings["project"] ?? "Projeto" }
+    let reads: Set<String> = ["compose"]
     private var strings: [String: String] = [:]
     private var projects: [[String: Any]] = []
     private let search = NSSearchField()
@@ -788,6 +816,7 @@ final class ProjectScreen: NSView, PanelScreenView, PanelDataSink, NSSearchField
 final class TalkScreen: NSView, PanelScreenView, PanelDataSink, NSTextViewDelegate {
     var onAction: ((String) -> Void)?
     var title: String { strings["talk"] ?? "Falar" }
+    let reads: Set<String> = ["talk", "dictation"]
     private var strings: [String: String] = [:]
     private var state: [String: Any] = [:]
     private var dictationBase = ""

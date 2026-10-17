@@ -544,7 +544,9 @@ Revisar button is tapped by position in that test.
   `PierMenuBar`, embedded in `Contents/PlugIns` for Mac Catalyst only). `MenuBarBridge` loads it with `Bundle.load()` and
   talks through Objective-C methods with Foundation values (`start:` with the action handler, `update:strings:` with the
   agents and the localized texts, `configureSurface:` / `updateSurface:` for the edge surface below); updates follow the
-  model through Observation. The **menu bar item** (the dots in the macOS menu bar, with a menu of the agents) is off by
+  model through Observation, in three parts that each track, debounce and send only what they read (`inbox`: the Inbox,
+  the form, Falar; `dots`: the indicators and the agents list; `agent`: the agent the panel shows), so a reply streaming
+  in the panel re-reads that agent alone. The **menu bar item** (the dots in the macOS menu bar, with a menu of the agents) is off by
   default now that the edge tab exists (Ajustes → Mac → "Mostrar na barra de menus"); hiding the tab turns it on by
   itself, so Pier never has no always-present surface (`MacSurfaceSettings.enforce`). ⌃⌥Space (the Carbon hot key) is
   registered either way. Set `PIER_MENUBAR_DUMP=<dir>` to write the button image and the menu titles; Debug
@@ -622,7 +624,8 @@ Revisar button is tapped by position in that test.
   window is never brought forward unless asked (Abrir no Pier, Revisar, Ajustes). The plugin ↔ app protocol: actions
   `panel:screen:<name>`, `agent:<pick|send|interrupt|archive|review|open>:<id>…`, `compose:<set…|project|camera|start>`,
   `talk:<route|confirm|open>`, `dictation:toggle:<target>`, `shot:<target>|<path>`; payload keys `agents`, `agentDetail`,
-  `started`, `compose`, `talk`, `dictation`, next to the Inbox's `cards` / `current` / `pending` / `receipt`.
+  `started`, `compose`, `talk`, `dictation`, next to the Inbox's `cards` / `current` / `pending` / `receipt`, sent a part
+  at a time (`part`: the plugin keeps the last of each and redraws the screen on top only when a key it reads changed).
 - **⌥ twice → Falar (Mac)**: `OptionTapMonitor` in the plugin feeds every modifier change to `OptionDoubleTap` (two taps of
   ⌥ alone within 0.35 s each and 0.45 s apart; any other key or modifier cancels). Other apps' keys reach the process only
   with Input Monitoring (or Accessibility): checked with `IOHIDCheckAccess` / `AXIsProcessTrusted`, asked for with

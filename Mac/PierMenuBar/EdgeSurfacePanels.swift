@@ -119,6 +119,8 @@ import AppKit
     }
 
     func update(dots: [Dot], unseen: Int, strings: [String: String]) {
+        // Nothing the tab draws changed: no layout, and the side panel is not placed again.
+        guard dots != self.dots || unseen != self.unseen || strings != self.strings else { return }
         // A turn that just ended: "Sua vez · title" beside its dot for a moment.
         for d in dots where d.state == "done" {
             if let old = self.dots.first(where: { $0.id == d.id }), old.state == "working" { showToast("\(strings["done"] ?? "Sua vez") · \(d.title)") }
@@ -396,8 +398,10 @@ import AppKit
         return written.isEmpty ? "snapshot: nothing written" : "snapshot: " + written.joined(separator: " ")
     }
 
-    /// A view drawn into a PNG at `scale` (its own drawing, no window capture), with alpha.
+    /// A view drawn into a PNG at `scale` (its own drawing, no window capture), with alpha. Laid out first: an offscreen
+    /// panel has no display pass of its own to do it.
     static func png(of view: NSView, scale: CGFloat = 2) -> Data? {
+        view.layoutSubtreeIfNeeded()
         let b = view.bounds
         guard b.width > 0, b.height > 0,
               let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(b.width * scale), pixelsHigh: Int(b.height * scale), bitsPerSample: 8,
@@ -530,8 +534,10 @@ final class EdgeTabView: NSView {
     private var overflow: NSTextField?
     private var toastPill: PillLabel?
     private var hoverLabel: PillLabel?
-    /// Room kept beside the shape for the widest hover label, so showing one never resizes the window.
+    /// Room kept beside the shape for the widest hover label, so showing one never resizes the window; measured again
+    /// only when a name changes (`reserveNames`).
     private var labelReserve: CGFloat = 0
+    private var reserveNames: [String] = []
     private var edge = EdgeSide.right
     private var labelsShown = false
     private var sideWidth: CGFloat = 0
@@ -601,22 +607,40 @@ final class EdgeTabView: NSView {
         camera.accessibilityTitle = strings["menuPoint"] ?? "Apontar"
         more.accessibilityTitle = strings["more"] ?? "Mais"
         let shown = Array(dots.prefix(Self.maxDots))
-        indicatorRects = Array(repeating: .zero, count: shown.count)
-        overflow?.removeFromSuperview(); overflow = nil
+        if indicatorRects.count != shown.count { indicatorRects = Array(repeating: .zero, count: shown.count) }
         if dots.count > shown.count {
-            let f = SurfaceStyle.label("+\(dots.count - shown.count)", font: SurfaceStyle.mono(9, .semibold), color: NSColor.white.withAlphaComponent(0.7), alignment: .center)
-            addSubview(f)
-            overflow = f
+            let text = "+\(dots.count - shown.count)"
+            if let overflow {
+                if overflow.stringValue != text { overflow.stringValue = text }
+            } else {
+                let f = SurfaceStyle.label(text, font: SurfaceStyle.mono(9, .semibold), color: NSColor.white.withAlphaComponent(0.7), alignment: .center)
+                addSubview(f)
+                overflow = f
+            }
+        } else {
+            overflow?.removeFromSuperview(); overflow = nil
         }
-        for l in labels { l.removeFromSuperview() }
-        labels = shown.map { d in
-            let text = d.project.isEmpty ? d.title : "\(d.title) · \(d.project)"
-            let pill = PillLabel("\(text)  \(d.word)", font: SurfaceStyle.font(12, .medium), color: SurfaceStyle.text, fill: SurfaceStyle.capsule, border: SurfaceStyle.stroke)
-            pill.leading = DotView(color: SurfaceStyle.tabColor(forState: d.state))
-            pill.sizeToFit()
-            return pill
+        // The ⌥ labels are kept from one update to the next: a pill's words are measured again only when they change.
+        while labels.count > shown.count { labels.removeLast().removeFromSuperview() }
+        for (i, d) in shown.enumerated() {
+            let text = "\(d.project.isEmpty ? d.title : "\(d.title) · \(d.project)")  \(d.word)"
+            let color = SurfaceStyle.tabColor(forState: d.state)
+            if i < labels.count {
+                let pill = labels[i]
+                (pill.leading as? DotView)?.color = color
+                if pill.text != text { pill.text = text; pill.sizeToFit() }
+            } else {
+                let pill = PillLabel(text, font: SurfaceStyle.font(12, .medium), color: SurfaceStyle.text, fill: SurfaceStyle.capsule, border: SurfaceStyle.stroke)
+                pill.leading = DotView(color: color)
+                pill.sizeToFit()
+                labels.append(pill)
+            }
         }
-        labelReserve = min(320, (0..<slotCount).compactMap { slotName($0) }.map { Self.hoverPill($0).frame.width }.max() ?? 0)
+        let names = (0..<slotCount).compactMap { slotName($0) }
+        if names != reserveNames {
+            reserveNames = names
+            labelReserve = min(320, names.map { Self.hoverPill($0).frame.width }.max() ?? 0)
+        }
         needsLayout = true
         needsDisplay = true
     }
@@ -767,14 +791,17 @@ final class EdgeTabView: NSView {
         sideWidth = labelReserve
         if labels, !self.labels.isEmpty { sideWidth = max(sideWidth, min(320, self.labels.map(\.frame.width).max() ?? 0)) }
         if let toast {
-            toastPill?.removeFromSuperview()
-            let pill = PillLabel(toast, font: SurfaceStyle.font(12, .semibold), color: SurfaceStyle.text, fill: SurfaceStyle.capsule, border: SurfaceStyle.stroke)
-            pill.leading = DotView(color: SurfaceStyle.tabColor(forState: "done"))
-            pill.padding = NSSize(width: 12, height: 7)
-            pill.sizeToFit()
-            if pill.frame.width > 360 { pill.frame.size.width = 360 }
-            toastPill = pill
-            sideWidth = max(sideWidth, pill.frame.width)
+            // Made once per toast: the tab lays itself out many times while it shows.
+            if toastPill?.text != toast {
+                toastPill?.removeFromSuperview()
+                let pill = PillLabel(toast, font: SurfaceStyle.font(12, .semibold), color: SurfaceStyle.text, fill: SurfaceStyle.capsule, border: SurfaceStyle.stroke)
+                pill.leading = DotView(color: SurfaceStyle.tabColor(forState: "done"))
+                pill.padding = NSSize(width: 12, height: 7)
+                pill.sizeToFit()
+                if pill.frame.width > 360 { pill.frame.size.width = 360 }
+                toastPill = pill
+            }
+            sideWidth = max(sideWidth, toastPill?.frame.width ?? 0)
         } else {
             toastPill?.removeFromSuperview(); toastPill = nil
         }
@@ -879,17 +906,22 @@ final class EdgeTabView: NSView {
             toastPill.isHidden = labelsShown && !labels.isEmpty
         }
         if let slot = hoveredSlot, let name = slotName(slot), pointerBase != nil, !labelsShown, toastPill == nil, tops.indices.contains(slot) {
-            if hoverLabel?.text != name {
-                hoverLabel?.removeFromSuperview()
-                hoverLabel = Self.hoverPill(name)
+            // One label, kept: it takes the next item's name as the pointer moves along the tab.
+            let pill: PillLabel
+            if let hoverLabel {
+                pill = hoverLabel
+                if pill.text != name { pill.text = name; pill.sizeToFit() }
+            } else {
+                pill = Self.hoverPill(name)
+                hoverLabel = pill
             }
-            guard let hoverLabel else { return }
-            if hoverLabel.superview == nil { addSubview(hoverLabel) }
-            let w = hoverLabel.frame.width
+            if pill.superview == nil { addSubview(pill) }
+            pill.isHidden = false
+            let w = pill.frame.width
             let cy = tops[slot] + column.slots[slot].size / 2 + shapeTop
-            hoverLabel.frame = NSRect(x: edge == .right ? sideX - w : sideX, y: cy - hoverLabel.frame.height / 2, width: w, height: hoverLabel.frame.height)
+            pill.frame = NSRect(x: edge == .right ? sideX - w : sideX, y: cy - pill.frame.height / 2, width: w, height: pill.frame.height)
         } else {
-            hoverLabel?.removeFromSuperview(); hoverLabel = nil
+            hoverLabel?.isHidden = true
         }
     }
 

@@ -89,14 +89,26 @@ enum MacSurfaceSettings {
     /// The receipt's agent (the panel shows it on that agent's screen too).
     private var receiptFor: String?
     private var dictationTarget: String?
+    /// The agents as the tab shows them (the bridge's `dots` part keeps this current).
+    var dots: [AgentDot] = []
 
     // MARK: payload
 
-    /// Everything the card and the Inbox button show. Read inside the bridge's observation tracking.
-    func payload(dots: [AgentDot]) -> [String: Any] {
+    // The parts below are read inside the bridge's observation tracking (`MenuBarBridge.push`), so they start no work:
+    // what it changed would come back as a change that pushes them again. The refresh loops (`setOpen`, `select`) and
+    // the actions start it instead.
+
+    /// The Inbox, the form and Falar (the plugin's `inbox` part): `unseen`, `cards`, `current`, `pending`, `receipt`,
+    /// `receiptFor`, `dictation`, `compose`, `talk`.
+    func inboxPart() -> [String: Any] {
         guard let model else { return [:] }
         let items = store.items(model: model)
         var cards = items.map { card($0, model: model) }
+        // Cards that left take what was built for them along.
+        if cardCache.count > items.count {
+            let listed = Set(items.map(\.id))
+            cardCache = cardCache.filter { listed.contains($0.key) }
+        }
         // The answered card stays, where it was, while its answer waits and for the receipt.
         if let frozen, let id = frozen.card["id"] as? String, !cards.contains(where: { ($0["id"] as? String) == id }) {
             cards.insert(frozen.card, at: min(frozen.index, cards.count))
@@ -104,10 +116,6 @@ enum MacSurfaceSettings {
         let ids = cards.compactMap { $0["id"] as? String }
         if let c = current, !ids.contains(c) { current = nil }
         if current == nil { current = ids.first }
-        // New questions: read their screens now, so the options are there when the card opens.
-        let needs = Set(items.filter { $0.kind == .needsYou }.map(\.id))
-        if !needs.subtracting(lastNeedsYou).isEmpty { Task { await self.signals.refreshScreensNow(model: model) } }
-        lastNeedsYou = needs
         var out: [String: Any] = ["unseen": store.unseenCount(model: model), "cards": cards, "cardOpen": cardOpen]
         if let current { out["current"] = current }
         if let pending {
@@ -119,12 +127,24 @@ enum MacSurfaceSettings {
             let d = TalkCenter.shared.dictation
             out["dictation"] = ["target": target, "active": d.isListening, "text": d.transcript]
         }
-        // The side panel: the agents, the one shown, the form, Falar.
-        out["agents"] = dots.map { agentRow($0, model: model) }
-        if let selectedAgent, let detail = agentDetail(selectedAgent, model: model) { out["agentDetail"] = detail }
-        if let started, started.until > Date() { out["started"] = started.id }
         out["compose"] = composePayload(model: model)
         out["talk"] = talkPayload(model: model)
+        return out
+    }
+
+    /// The side panel's list of agents (part of the plugin's `dots` part: `agents`), in the tab's order.
+    func agentRows(_ dots: [AgentDot]) -> [[String: Any]] {
+        guard let model else { return [] }
+        return dots.map { agentRow($0, model: model) }
+    }
+
+    /// The agent the panel shows, built only while its screen is up, and a task just started there (the plugin's `agent`
+    /// part: `agentDetail`, `started`). The part that changes as the agent's reply streams in.
+    func agentPart() -> [String: Any] {
+        guard let model else { return [:] }
+        var out: [String: Any] = [:]
+        if let selectedAgent, let detail = agentDetail(selectedAgent, dots: AgentDots.make(model), model: model) { out["agentDetail"] = detail }
+        if let started, started.until > Date() { out["started"] = started.id }
         return out
     }
 
@@ -143,9 +163,9 @@ enum MacSurfaceSettings {
     }
 
     /// Everything the agent's screen shows: the question and its answers (the Inbox's options) while it waits, the step
-    /// while it works, the last reply (fetched by `followAgent`), the next steps when its turn ended, and what can be done.
-    private func agentDetail(_ id: String, model: AppModel) -> [String: Any]? {
-        let dots = AgentDots.make(model)
+    /// while it works, the conversation, the next steps when its turn ended (asked by `requestNextSteps`), and what can be
+    /// done. `dots` are the agents as listed now.
+    private func agentDetail(_ id: String, dots: [AgentDot], model: AppModel) -> [String: Any]? {
         guard let d = dots.first(where: { $0.id == id }), let conn = model.connection(for: d.box),
               let s = conn.sessions.first(where: { $0.name == d.session }) else { return nil }
         var out = agentRow(d, model: model)
@@ -160,34 +180,67 @@ enum MacSurfaceSettings {
             out["question"] = s.needsYouKind == .question ? (InboxStore.questionText(for: s, id: id) ?? S("\(s.agentShortName) tem uma pergunta")) : wording.text
             if s.needsYouKind != .question, let input = s.ask?.input, !input.isEmpty { out[wording.mono ? "command" : "detail"] = input }
             if s.needsYouKind != .question, let why = s.ask?.why, !why.isEmpty { out["why"] = why }
-            out["options"] = InboxStore.options(for: s, id: id, screen: signals.screens[id]).map { o -> [String: Any] in
-                var r: [String: Any] = ["number": o.number, "title": o.title, "recommended": o.recommended]
-                if let detail = o.detail { r["detail"] = detail }
-                r["role"] = switch o.role { case .allow: "allow"; case .always: "always"; case .deny: "deny"; case .plain: "plain" }
-                return r
-            }
+            out["options"] = Self.optionRows(InboxStore.options(for: s, id: id, screen: signals.screens[id]))
         }
-        let vm = agentVMs[id]
-        if let vm { out["conversation"] = PanelConversation.payload(vm, limit: conversationLimit[id] ?? Self.conversationPage) }
+        if let vm = agentVMs[id] { out["conversation"] = PanelConversation.payload(vm, limit: conversationLimit[id] ?? Self.conversationPage) }
         if let f = agentFailure, f.id == id { out["failure"] = ["token": f.token, "text": f.text, "error": f.error] }
         if s.agentState == .finished, let since = s.stateSince {
-            let key = NextSteps.Key(box: d.box, session: s.name, since: since)
-            // This very turn's reply: the board's (read for this turn), else the conversation's once its record was
-            // written as the turn ended (a kept or late conversation can still end on the turn before, and the next
-            // steps are asked once per turn).
-            let written = vm.flatMap { v -> String? in
-                guard let last = v.store.last, Double(last) / 1000 >= since.timeIntervalSince1970 - 60 else { return nil }
-                return v.store.items.last { $0.type == .text }?.text
-            }
-            let reply = signals.replies[id]?.since == since ? (signals.replyTexts[id] ?? written) : written
-            if panelScreen == "agent:\(id)", let reply { steps.request(key, place: s.execPlace, reply: reply, task: s.title, client: conn.client) }
-            switch steps.phase(key) {
+            switch steps.phase(NextSteps.Key(box: d.box, session: s.name, since: since)) {
             case .ready(let r)?: out["nextSteps"] = r
             case .loading?: out["nextStepsLoading"] = true
             default: break
             }
         }
         return out
+    }
+
+    /// This very turn's reply: the board's (read for this turn), else the conversation's once its record was written as
+    /// the turn ended (a kept or late conversation can still end on the turn before, and the next steps are asked once
+    /// per turn).
+    private func turnReply(_ id: String, since: Date) -> String? {
+        let written = agentVMs[id].flatMap { v -> String? in
+            guard let last = v.store.last, Double(last) / 1000 >= since.timeIntervalSince1970 - 60 else { return nil }
+            return v.store.items.last { $0.type == .text }?.text
+        }
+        return signals.replies[id]?.since == since ? (signals.replyTexts[id] ?? written) : written
+    }
+
+    /// The answers as the plugin's rows.
+    private static func optionRows(_ options: [InboxOption]) -> [[String: Any]] {
+        options.map { o in
+            var r: [String: Any] = ["number": o.number, "title": o.title, "recommended": o.recommended]
+            if let detail = o.detail { r["detail"] = detail }
+            r["role"] = switch o.role { case .allow: "allow"; case .always: "always"; case .deny: "deny"; case .plain: "plain" }
+            return r
+        }
+    }
+
+    // MARK: what the refresh loops start
+
+    /// Questions that came in since the last look get their screens read now, so their answers are there when shown.
+    private func readNewQuestions(model: AppModel) async {
+        let needs = Set(store.items(model: model).filter { $0.kind == .needsYou }.map(\.id))
+        let asked = !needs.subtracting(lastNeedsYou).isEmpty
+        lastNeedsYou = needs
+        if asked { await signals.refreshScreensNow(model: model) }
+    }
+
+    /// The next steps of a finished turn on screen — the Inbox's card shown, the agent shown — asked lazily like the Inbox
+    /// does: once per turn, only when it can be shown. Run by the refresh loops and by the actions that change what is
+    /// shown.
+    private func requestNextSteps() {
+        guard let model else { return }
+        if cardOpen, let id = current, let i = item(id), i.kind == .finished, let since = i.item.session.stateSince,
+           let r = signals.replies[id], r.since == i.since {
+            let s = i.item.session
+            steps.request(NextSteps.Key(box: i.item.box, session: s.name, since: since), place: s.execPlace,
+                          reply: signals.replyTexts[id] ?? r.text, task: s.title, client: model.client(for: i.item.box))
+        }
+        if let id = selectedAgent, panelScreen == "agent:\(id)", let d = dots.first(where: { $0.id == id }),
+           let conn = model.connection(for: d.box), let s = conn.sessions.first(where: { $0.name == d.session }),
+           s.agentState == .finished, let since = s.stateSince, let reply = turnReply(id, since: since) {
+            steps.request(NextSteps.Key(box: d.box, session: s.name, since: since), place: s.execPlace, reply: reply, task: s.title, client: conn.client)
+        }
     }
 
     /// The panel shows this agent: its view model runs as the session screen's does (events, the record, the screen, the
@@ -217,6 +270,7 @@ enum MacSurfaceSettings {
                     model.prefs.markSeen(box: vm.box, session: vm.name)
                 }
                 await self.signals.refreshBoard(model: model)
+                self.requestNextSteps()
                 try? await Task.sleep(for: .seconds(3))
             }
         }
@@ -242,8 +296,9 @@ enum MacSurfaceSettings {
 
     private func vm(for id: String) -> SessionViewModel? {
         if let v = agentVMs[id] { return v }
-        guard let model, let d = AgentDots.make(model).first(where: { $0.id == id }), let conn = model.connection(for: d.box),
-              let s = conn.sessions.first(where: { $0.name == d.session }) else { return nil }
+        // Among the dots the tab shows; a task just started can be listed by its box a moment before it is there.
+        guard let model, let d = dots.first(where: { $0.id == id }) ?? AgentDots.make(model).first(where: { $0.id == id }),
+              let conn = model.connection(for: d.box), let s = conn.sessions.first(where: { $0.name == d.session }) else { return nil }
         let v = SessionViewModel.shared(box: d.box, session: s, client: conn.client, model: model)
         // Only the agent on screen is kept (each holds its conversation): the rest went for good with every agent ever
         // shown in the panel. The window's screen shares the same model while it shows that session.
@@ -549,15 +604,49 @@ enum MacSurfaceSettings {
         }
     }
 
+    /// Everything a card is built from: the session as listed, where it runs, and what the board read for it.
+    private struct CardInputs: Equatable {
+        let item: InboxItem
+        let place: String
+        let screen: String?
+        let form: QuestionSteps?
+        let replySince: Date?
+        let reply: String?
+        let replyText: String?
+        let nextSteps: NextStepsStore.Phase?
+        let change: SessionSignals.LineChange?
+    }
+
+    /// The cards as last built, by id: one whose inputs did not change is not built again (a question's answers come from
+    /// parsing the agent's whole screen, and the Inbox part is read whenever anything it depends on changes).
+    private var cardCache: [String: (inputs: CardInputs, card: [String: Any])] = [:]
+
     private func card(_ i: InboxItem, model: AppModel) -> [String: Any] {
         let s = i.item.session
-        let prefs = model.prefs
-        var place = [i.item.placeName(prefs)]
+        var place = [i.item.placeName(model.prefs)]
         if let wt = i.item.worktree, wt != s.displayTitle { place.append(wt) }
         if model.boxes.count > 1 { place.append(i.item.box) }
+        let waiting = i.kind == .needsYou
+        let inputs = CardInputs(
+            item: i, place: place.joined(separator: " · "),
+            screen: waiting ? signals.screens[i.id] : nil,
+            form: waiting ? store.steps[InboxStore.stepsKey(id: i.id, session: s)] : nil,
+            replySince: waiting ? nil : signals.replies[i.id]?.since,
+            reply: waiting ? nil : signals.replies[i.id]?.text,
+            replyText: waiting ? nil : signals.replyTexts[i.id],
+            nextSteps: waiting ? nil : s.stateSince.flatMap { steps.phase(NextSteps.Key(box: i.item.box, session: s.name, since: $0)) },
+            change: waiting ? nil : signals.changes["\(i.item.box)/\(s.location ?? "")"])
+        if let cached = cardCache[i.id], cached.inputs == inputs { return cached.card }
+        let c = card(i, inputs)
+        cardCache[i.id] = (inputs, c)
+        return c
+    }
+
+    private func card(_ i: InboxItem, _ inputs: CardInputs) -> [String: Any] {
+        let s = i.item.session
         let agentLabel = s.agent.map(DisplayNames.agentLabel) ?? S("Terminal")
         var c: [String: Any] = ["id": i.id, "kind": i.kind == .needsYou ? "needsYou" : "finished", "title": s.displayTitle,
-                                "agentLabel": agentLabel, "place": place.joined(separator: " · "),
+                                "agentLabel": agentLabel, "place": inputs.place,
                                 "replyPlaceholder": S("Responder a \(s.agentShortName)…")]
         if let a = s.agent { c["agent"] = a }
         var signature = "\(i.id)|\(i.since.timeIntervalSince1970)|\(s.displayTitle)"
@@ -569,26 +658,19 @@ enum MacSurfaceSettings {
             // What the agent wants to run or edit, under the headline; a command reads better in monospace.
             if s.needsYouKind != .question, let input = s.ask?.input, !input.isEmpty { c[wording.mono ? "command" : "detail"] = input }
             if s.needsYouKind != .question, let why = s.ask?.why, !why.isEmpty { c["why"] = why }
-            let options = InboxStore.options(for: s, id: i.id, screen: signals.screens[i.id])
-            c["options"] = options.map { o -> [String: Any] in
-                var d: [String: Any] = ["number": o.number, "title": o.title, "recommended": o.recommended]
-                if let detail = o.detail { d["detail"] = detail }
-                d["role"] = switch o.role { case .allow: "allow"; case .always: "always"; case .deny: "deny"; case .plain: "plain" }
-                return d
-            }
+            let options = InboxStore.options(for: s, id: i.id, screen: inputs.screen)
+            c["options"] = Self.optionRows(options)
             signature += "|" + options.map { "\($0.number):\($0.title):\($0.recommended)" }.joined(separator: ",") + "|\(question)|\(s.ask?.input ?? "")|\(s.ask?.why ?? "")"
         } else {
             c["word"] = AgentDots.stateWord(.done)
-            let fresh = signals.replies[i.id]?.since == i.since
-            let reply = fresh ? (signals.replies[i.id]?.text ?? signals.replyTexts[i.id]) : nil
+            let fresh = inputs.replySince == i.since
+            let reply = fresh ? (inputs.reply ?? inputs.replyText) : nil
             c["reply"] = reply.map { SessionActivityAttributes.ContentState.excerpt($0, limit: 600) ?? $0 } ?? (fresh ? S("Terminou a vez.") : S("Lendo a resposta…"))
             var next: [String] = []
             var loading = false
-            if let since = s.stateSince, fresh {
-                let key = NextSteps.Key(box: i.item.box, session: s.name, since: since)
-                // Asked lazily, like the Inbox card does: once per turn, only when the card can show it.
-                if cardOpen, current == i.id { steps.request(key, place: s.execPlace, reply: signals.replyTexts[i.id] ?? reply, task: s.title, client: model.client(for: i.item.box)) }
-                switch steps.phase(key) {
+            // Asked lazily, like the Inbox card does (`requestNextSteps`): once per turn, only when the card can show it.
+            if s.stateSince != nil, fresh {
+                switch inputs.nextSteps {
                 case .ready(let r)?: next = r
                 case .loading?: loading = true
                 default: break
@@ -596,7 +678,7 @@ enum MacSurfaceSettings {
             }
             c["nextSteps"] = next
             c["nextStepsLoading"] = loading
-            if let ch = signals.changes["\(i.item.box)/\(s.location ?? "")"], ch.added + ch.removed > 0 { c["change"] = "+\(ch.added) −\(ch.removed)" }
+            if let ch = inputs.change, ch.added + ch.removed > 0 { c["change"] = "+\(ch.added) −\(ch.removed)" }
             c["canReview"] = !i.item.location.isEmpty
             signature += "|\(c["reply"] as? String ?? "")|\(next.joined(separator: ","))|\(loading)|\(c["change"] as? String ?? "")"
         }
@@ -610,17 +692,21 @@ enum MacSurfaceSettings {
         guard cardOpen != open else { return }
         cardOpen = open
         if open {
-            // The Inbox's own refresh loop while the card is up: screens, replies, line changes.
+            // The Inbox's own refresh loop while the card is up: screens (a new question's at once), replies, line
+            // changes, then the next steps of the turn on screen.
             tickTask?.cancel()
             tickTask = Task { [weak self] in
                 while !Task.isCancelled {
                     guard let self, let model = self.model else { return }
+                    await self.readNewQuestions(model: model)
                     await self.store.followUp(model: model)
                     await self.signals.refreshBoard(model: model)
+                    self.requestNextSteps()
                     try? await Task.sleep(for: .seconds(3))
                 }
             }
             if let model { Task { await self.signals.refreshBoard(model: model, force: true) } }
+            requestNextSteps()
         } else {
             tickTask?.cancel(); tickTask = nil
             stopDictation()
@@ -632,6 +718,7 @@ enum MacSurfaceSettings {
         guard let model else { return }
         let ids = store.items(model: model).map(\.id)
         current = SurfacePaging.page(from: current, by: delta, in: ids)
+        requestNextSteps()
         onChange?()
     }
 
@@ -640,6 +727,7 @@ enum MacSurfaceSettings {
         let ids = store.items(model: model).map(\.id)
         guard ids.indices.contains(index) else { return }
         current = ids[index]
+        requestNextSteps()
         onChange?()
     }
 
@@ -710,6 +798,7 @@ enum MacSurfaceSettings {
                     let ids = self.store.items(model: model).map(\.id)
                     self.current = ids.first { $0 != id } ?? ids.first
                 }
+                self.requestNextSteps()
             } else {
                 self.frozen = nil   // undone, or it failed: the card is back in the list by itself
             }
@@ -739,6 +828,7 @@ enum MacSurfaceSettings {
         if i.kind == .finished { store.archive(i, model: model) } else { store.dismiss(i, model: model) }
         let ids = store.items(model: model).map(\.id)
         current = ids.first { $0 != id } ?? ids.first
+        requestNextSteps()
         onChange?()
     }
 

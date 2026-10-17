@@ -303,6 +303,9 @@ struct MacSurfaceSettingsSection: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+        // On screen, coming back to the app reads the permissions at once (`MenuBarBridge`); elsewhere it does not.
+        .onAppear { bridge.settingsRowsShown += 1 }
+        .onDisappear { bridge.settingsRowsShown = max(0, bridge.settingsRowsShown - 1) }
     }
 
     /// Granted: a green check and a word; missing: the explanation, "Permitir…" (the system's dialog) and the pane.

@@ -231,6 +231,9 @@ final class LiveRowView: NSView {
     private let step = SurfaceStyle.label("", font: PanelStyle.font(12), color: PanelStyle.textFaint)
     private let elapsed = SurfaceStyle.label("", font: PanelStyle.font(12).withMonospacedDigits, color: PanelStyle.textFaint, alignment: .right)
     private var hasDraft = false
+    /// The words the draft was last drawn from: the live part comes again a few times a second (the clocks, the step),
+    /// and its Markdown is parsed again only when the words changed.
+    private var draftText = ""
     private var since: Date?
     override var isFlipped: Bool { true }
 
@@ -244,7 +247,10 @@ final class LiveRowView: NSView {
         let text = live["draft"] as? String ?? ""
         hasDraft = !text.isEmpty
         draft.isHidden = !hasDraft
-        if hasDraft { draft.set(MarkdownText.render(text, size: 13, color: PanelStyle.text.withAlphaComponent(0.85))) }
+        if hasDraft, text != draftText {
+            draftText = text
+            draft.set(MarkdownText.render(text, size: 13, color: PanelStyle.text.withAlphaComponent(0.85)))
+        }
         word.stringValue = live["word"] as? String ?? ""
         let s = live["step"] as? String ?? ""
         step.stringValue = s.isEmpty ? "" : "· \(s)"
