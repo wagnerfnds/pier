@@ -16588,6 +16588,16 @@
           }
         }
       }
+    },
+    "A página parou de responder várias vezes seguidas." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The page stopped responding several times in a row."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

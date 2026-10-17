@@ -239,8 +239,8 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   `PreviewBrowserRoute`) show the same page and history, the newest view taking the web view over. The page shown last
   is kept per worktree for the app's run, the web view itself for the three shown last (two on the iPhone and iPad).
   Plain http to a host on the network, and hot reload's websockets, load through `NSAllowsArbitraryLoadsInWebContent`
-  and `NSAllowsLocalNetworking` (Info.plist); the box's API keeps its mutual TLS. Safari's Web Inspector can look into
-  the page (`isInspectable`). On the mock or the demo box the page is drawn in the app under the server's address
+  and `NSAllowsLocalNetworking` (Info.plist); the box's API keeps its mutual TLS. In Debug builds Safari's Web Inspector
+  can look into the page (`isInspectable`). On the mock or the demo box the page is drawn in the app under the server's address
   (`loadHTMLString`): nothing is fetched.
 
 - Startup dialogs no hook announces (Claude Code's "New MCP server found", trust) are read from the screen. The box reports

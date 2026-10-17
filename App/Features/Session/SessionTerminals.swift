@@ -425,7 +425,9 @@ struct SessionTerminalTabs<Conversation: View>: View {
     }
 
     /// Side by side can show: the iPad's or the Mac's width (the iPhone keeps its tabs), and room for both panes.
-    private var fits: Bool { sizeClass == .regular && roomy }
+    private var fits: Bool { sideBySideAllowed && roomy }
+    /// iPad and Mac: an iPhone keeps its tabs, landscape included.
+    private var sideBySideAllowed: Bool { sizeClass == .regular && !Platform.isPhone }
 
     var body: some View {
         let list = terminals.all
@@ -436,7 +438,7 @@ struct SessionTerminalTabs<Conversation: View>: View {
             .onChange(of: list.map(\.name)) { _, names in terminals.prune(keeping: names) }
             .onChange(of: terminals.sideBySide) { _, on in if on { explainNarrow() } }
             .focusedSceneValue(\.newTerminal, terminals.available ? NewTerminalAction(terminals: terminals) : nil)
-            .focusedSceneValue(\.sessionSide, terminals.available && sizeClass == .regular
+            .focusedSceneValue(\.sessionSide, terminals.available && sideBySideAllowed
                                ? SessionSideAction(terminals: terminals, on: terminals.sideBySide) : nil)
             #if DEBUG
             .task {
@@ -469,7 +471,7 @@ struct SessionTerminalTabs<Conversation: View>: View {
     private func explainNarrow() {
         Task {
             try? await Task.sleep(for: .milliseconds(500))
-            guard terminals.sideBySide, !fits, sizeClass == .regular else { return }
+            guard terminals.sideBySide, !fits, sideBySideAllowed else { return }
             terminals.banner = BannerMessage(text: S("Lado a lado precisa de uma janela mais larga: as abas ficam lado a lado sozinhas quando houver espaço."))
         }
     }
@@ -634,7 +636,7 @@ struct SessionTerminalTabs<Conversation: View>: View {
                 }
             }
             .scrollIndicators(.hidden)
-            if sizeClass == .regular { sideBySideButton }
+            if sideBySideAllowed { sideBySideButton }
         }
         .frame(height: Platform.isMac ? 30 : 36)
         // A strip with its line under the tabs: the tab picked, in the color of what it shows, runs into it.

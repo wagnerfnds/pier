@@ -271,7 +271,7 @@ struct SessionScreen: View {
                             : Label("Ver terminal", systemImage: "terminal")
                     }
                 }
-                SessionTerminalMenuItem(vm: vm, regular: sizeClass == .regular)
+                SessionTerminalMenuItem(vm: vm, regular: sizeClass == .regular && !Platform.isPhone)
                 if session.isAgent && !vm.isClosed && model.liveActivities.areEnabled {
                     let tracking = model.liveActivities.isTracking(box: route.box, session: session.name)
                     Button { model.liveActivities.toggle(box: route.box, session: session.name) } label: {

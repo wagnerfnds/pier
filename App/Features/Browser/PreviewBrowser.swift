@@ -106,7 +106,8 @@ final class PreviewBrowserModel {
     /// Picks the worktree's page again and opens it (nothing shows yet: the dev server may have come up since).
     func pick() async {
         await choose()
-        if let u = target?.url, url == nil { go(to: u) }
+        // Not over a page the person asked for meanwhile (typed while this looked).
+        if let u = target?.url, url == nil, requested == nil { go(to: u) }
     }
 
     /// The worktree's dev servers (`GET /v1/services`), whether this device reaches their ports at the box's address
@@ -204,9 +205,10 @@ final class PreviewBrowserModel {
         config.allowsInlineMediaPlayback = true
         let web = WKWebView(frame: .zero, configuration: config)
         web.allowsBackForwardNavigationGestures = true
-        // A dev page: Safari's Web Inspector (Develop menu) can look into it, from the Mac. Opaque, as in Safari: a page
-        // with no background of its own is drawn on white, not on the app's dark theme.
+        #if DEBUG
+        // Debug builds only: Safari's Web Inspector could otherwise read what the person is signed in to on the page.
         web.isInspectable = true
+        #endif
         let d = PreviewBrowserDelegate(owner: self)
         web.navigationDelegate = d
         web.uiDelegate = d
@@ -321,7 +323,9 @@ private final class PreviewBrowserDelegate: NSObject, WKNavigationDelegate, WKUI
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let u = navigationAction.request.url, let scheme = u.scheme?.lowercased() else { return .allow }
         if ["http", "https", "about", "data", "blob"].contains(scheme) { return .allow }
-        _ = await UIApplication.shared.open(u)
+        // Mail, a phone number, a message go to the system; nothing else a page asks for leaves the browser (the app's
+        // own pier:// links included: a page must not open sessions or pair a box).
+        if ["mailto", "tel", "sms"].contains(scheme) { _ = await UIApplication.shared.open(u) }
         return .cancel
     }
 
@@ -331,8 +335,21 @@ private final class PreviewBrowserDelegate: NSObject, WKNavigationDelegate, WKUI
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { owner?.failed(error) }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { owner?.failed(error) }
 
-    /// The page's process ended (memory, a crash): the page loads again.
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
+    /// When the page's process ended lately.
+    private var ended: [Date] = []
+
+    /// The page's process ended (memory, a crash): the page loads again, unless it ended twice in half a minute (a page
+    /// too heavy for the device would load and end forever): then it says so, with Tentar de novo.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        ended = ended.filter { now.timeIntervalSince($0) < 30 } + [now]
+        if ended.count >= 3 {
+            ended = []
+            owner?.failure = S("A página parou de responder várias vezes seguidas.")
+        } else {
+            webView.reload()
+        }
+    }
 
     /// `target="_blank"` and `window.open`: in this same view, which has no other windows.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction,
@@ -392,6 +409,7 @@ struct PreviewBrowser: View {
     @Environment(AppModel.self) private var model
     @Environment(Router.self) private var router
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var address = ""
     @State private var invalid = false
     @State private var opened = false
@@ -536,13 +554,13 @@ struct PreviewBrowser: View {
                 notice(symbol: "wifi.exclamationmark", title: S("O servidor na porta \(String(port)) não é alcançado deste aparelho"),
                        text: S("Crie um link público para ele nos Detalhes da worktree, ou use a mesma rede da box (ou uma VPN)."),
                        retry: { Task { await browser.pick() } })
-                    .task { await watch() }
+                    .task(id: scenePhase == .active) { await watch() }
             } else {
                 notice(symbol: "globe", title: S("Nenhum servidor de desenvolvimento nesta worktree"),
                        text: browser.port.map { S("Suba o servidor dela na porta \(String($0)) ($PIER_PORT), num terminal ao lado ou pelos serviços nos Detalhes: a página aparece aqui assim que ele responder.") }
                            ?? S("Suba o servidor de desenvolvimento dela, num terminal ao lado ou pelos serviços nos Detalhes: a página aparece aqui assim que ele responder."),
                        retry: { Task { await browser.pick() } })
-                    .task { await watch() }
+                    .task(id: scenePhase == .active) { await watch() }
             }
         }
     }
@@ -550,6 +568,8 @@ struct PreviewBrowser: View {
     /// While there is no page, the worktree is looked at again every few seconds: a dev server started beside it (in a
     /// terminal, by the agent) shows here by itself.
     private func watch() async {
+        // Only while the app is in front: on the Mac a window behind others would otherwise ask the box all day.
+        guard scenePhase == .active else { return }
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(4))
             if Task.isCancelled || shown != nil { return }
