@@ -300,10 +300,36 @@ func lastWordyLines(screen string, n int) string {
 	return strings.Join(out, "\n")
 }
 
+// failedOnScreen says whether a sign-in's last words are an error of its CLI.
+func failedOnScreen(screen string) bool {
+	last := strings.ToLower(lastWordyLines(screen, 3))
+	for _, w := range []string{"error", "failed", "expired", "denied"} {
+		if strings.Contains(last, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // --- running it ---
 
-// paneExit says whether the program in session name ended, and with which status (-1 when tmux does not say).
+// paneExit says whether the program in session name ended, and with which status (-1 when tmux does not say). tmux
+// marks a pane dead as soon as its terminal closes, which can be a moment before it has collected the program's exit
+// status: a dead pane without one is asked again for up to a second, so a failure is not read as a clean exit.
 func (s *Sessions) paneExit(ctx context.Context, name string) (bool, int, error) {
+	dead, status, err := s.paneExitOnce(ctx, name)
+	for i := 0; dead && status < 0 && err == nil && i < 10; i++ {
+		select {
+		case <-ctx.Done():
+			return dead, status, nil
+		case <-time.After(100 * time.Millisecond):
+		}
+		dead, status, err = s.paneExitOnce(ctx, name)
+	}
+	return dead, status, err
+}
+
+func (s *Sessions) paneExitOnce(ctx context.Context, name string) (bool, int, error) {
 	out, err := s.tmux(ctx, "display-message", "-p", "-t", "="+name+":", "#{pane_dead} #{pane_dead_status}")
 	if err != nil {
 		if strings.Contains(string(out), "can't find") {
@@ -551,7 +577,8 @@ func (b *Box) finishLogin(ctx context.Context, origin, id string, status int, sc
 	run, _ := b.logins.get(id)
 	state, why := LoginDone, ""
 	switch {
-	case status > 0:
+	// An unknown status (tmux never said) with the CLI's own error on its screen is a failure too.
+	case status > 0, status < 0 && failedOnScreen(screen):
 		state, why = LoginFailed, lastWordyLines(screen, 4)
 		if why == "" {
 			why = fmt.Sprintf("the sign-in ended with status %d", status)
