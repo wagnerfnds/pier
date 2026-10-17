@@ -7,14 +7,23 @@ func S(_ key: String.LocalizationValue) -> String { String(localized: key) }
 
 enum SessionViewMode: String, Hashable { case conversation, terminal }
 
-/// Per-session memory of the view the person chose (conversation is the default; terminal only when asked for).
+/// Per-session memory of the view the person chose (conversation is the default; terminal only when asked for), and
+/// whether its terminal tabs show beside the conversation (tabs are the default).
 enum SessionViewPrefs {
     private static func key(_ box: String, _ name: String) -> String { "session.view.\(box)/\(name)" }
+    private static func sideKey(_ box: String, _ name: String) -> String { "session.side.\(box)/\(name)" }
     static func mode(box: String, name: String) -> SessionViewMode? {
         UserDefaults.standard.string(forKey: key(box, name)).flatMap(SessionViewMode.init(rawValue:))
     }
     static func set(_ mode: SessionViewMode, box: String, name: String) {
         UserDefaults.standard.set(mode.rawValue, forKey: key(box, name))
+    }
+    static func sideBySide(box: String, name: String) -> Bool {
+        UserDefaults.standard.bool(forKey: sideKey(box, name))
+    }
+    /// Only the sessions shown side by side keep a key: tabs, the default, leave none behind.
+    static func setSideBySide(_ on: Bool, box: String, name: String) {
+        if on { UserDefaults.standard.set(true, forKey: sideKey(box, name)) } else { UserDefaults.standard.removeObject(forKey: sideKey(box, name)) }
     }
 }
 

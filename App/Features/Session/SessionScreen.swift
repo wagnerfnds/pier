@@ -168,9 +168,12 @@ struct SessionScreen: View {
     /// Regular width (iPad, Mac): the details live in the inspector column; the iPhone shows them as a sheet.
     @Environment(\.windowWidth) private var windowWidth
     /// Details as an inspector column: regular width, and on the Mac a window wide enough for the sidebar, the chat and
-    /// the column (a narrow tile clipped the chat); else a sheet, as on the iPhone.
+    /// the column (a narrow tile clipped the chat); else a sheet, as on the iPhone. Side by side the session takes two
+    /// columns of its own, so the inspector needs a wider window to stay beside them (it folds away meanwhile, and comes
+    /// back as it was).
     private var sidePanel: Bool {
-        sizeClass == .regular && (!Platform.isMac || windowWidth == 0 || windowWidth >= WindowWidth.inspectorColumn)
+        let wide = SessionTerminals.of(vm).sideBySide ? WindowWidth.inspectorBesideSplit : WindowWidth.inspectorColumn
+        return sizeClass == .regular && (!Platform.isMac || windowWidth == 0 || windowWidth >= wide)
     }
 
     private func openDetails() {
@@ -268,7 +271,7 @@ struct SessionScreen: View {
                             : Label("Ver terminal", systemImage: "terminal")
                     }
                 }
-                SessionTerminalMenuItem(vm: vm)
+                SessionTerminalMenuItem(vm: vm, regular: sizeClass == .regular)
                 if session.isAgent && !vm.isClosed && model.liveActivities.areEnabled {
                     let tracking = model.liveActivities.isTracking(box: route.box, session: session.name)
                     Button { model.liveActivities.toggle(box: route.box, session: session.name) } label: {

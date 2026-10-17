@@ -125,6 +125,12 @@ targets:
         NSMicrophoneUsageDescription: "O microfone é usado para ditar pedidos aos agentes em Falar."
         NSSpeechRecognitionUsageDescription: "O reconhecimento de fala transforma o que você diz em Falar em texto, no próprio aparelho."
         NSLocalNetworkUsageDescription: "O Pier se conecta às suas boxes de desenvolvimento na rede local."
+        # The preview browser (App/Features/Browser) opens a worktree's dev server at the box's address over plain http,
+        # on the local network or a VPN, hot reload's websockets included: web content may load any page, and local hosts
+        # need no TLS. The box's own API keeps its mutual TLS.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
+          NSAllowsLocalNetworking: true
         NSSiriUsageDescription: "O Siri lê o que os agentes pedem e respondem, e manda a sua resposta por voz, no carro também."
         # Siri's messages, handled in the app (MessageIntentHandler), and the communication notifications' donations.
         INIntentsSupported: [INSendMessageIntent, INSearchForMessagesIntent, INSetMessageAttributeIntent]

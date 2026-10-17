@@ -63,6 +63,9 @@ enum WindowWidth {
     /// Below it, a screen's details open as a sheet on the Mac instead of an inspector column (the sidebar, the screen
     /// and the inspector would not fit, and the screen's content was clipped).
     static let inspectorColumn: CGFloat = 1080
+    /// The same for a session shown side by side, whose conversation and terminal are two columns already: the sidebar,
+    /// both of them at their narrowest and the inspector.
+    static let inspectorBesideSplit: CGFloat = 1400
 }
 
 extension EnvironmentValues {
