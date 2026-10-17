@@ -25,7 +25,9 @@ final class SessionViewModel {
     @ObservationIgnored weak var model: AppModel?
 
     // Conversation
-    var store = TranscriptStore()
+    /// What the conversation holds. Every change bumps `storeStamp`, which keys the fold below.
+    var store = TranscriptStore() { didSet { storeStamp &+= 1 } }
+    @ObservationIgnored private var storeStamp = 0
     var draft: Draft?
     var loaded = false
     var loadError: String?
@@ -233,10 +235,39 @@ final class SessionViewModel {
     /// What to offer in the "Revisar" card at the end of a finished turn: this turn's edits, else uncommitted changes.
     var reviewCard: (changes: TurnChanges, uncommittedOnly: Bool)? {
         guard !isRunning, !isWaiting, reviewTarget != nil else { return nil }
-        if let t = TurnChanges.lastTurn(store.displayItems) { return (t, false) }
+        if let t = folded.lastTurn { return (t, false) }
         if let u = uncommitted { return (u, true) }
         return nil
     }
+
+    /// The conversation as rows (`ConversationFold`): worked out once per change of the record, not on every draw. A
+    /// screen draws again on every observable change it reads, several times a second while an agent works, and folding
+    /// a long conversation each time held the main thread.
+    var blocks: [ConversationBlock] { folded.blocks }
+
+    private struct Folded {
+        let stamp: Int
+        let live: Bool
+        let blocks: [ConversationBlock]
+        let lastTurn: TurnChanges?
+    }
+    @ObservationIgnored private var foldCache: Folded?
+
+    private var folded: Folded {
+        let live = isRunning || isWaiting
+        // Read through the observable property, so whoever draws these rows follows the record's changes.
+        let store = self.store
+        if let f = foldCache, f.stamp == storeStamp, f.live == live { return f }
+        let items = store.displayItems
+        let f = Folded(stamp: storeStamp, live: live, blocks: ConversationFold.blocks(items, live: live), lastTurn: TurnChanges.lastTurn(items))
+        foldCache = f
+        return f
+    }
+
+    /// Past this many items a conversation keeps only its newest `keptItems` in memory (scrolling up reads the rest
+    /// from the box again): a session left open all day on the Mac would otherwise grow without end.
+    private static let trimAbove = 6000
+    private static let keptItems = 4000
 
     private func refreshUncommitted() async {
         let s = session
@@ -420,8 +451,8 @@ final class SessionViewModel {
         // Observable state is written only when it changed: every write re-renders the screen, and this runs every 1.5 s.
         if case .success(let p)? = p {
             var next = store
-            next.apply(p)
-            if next != store {
+            if next.apply(p) {
+                if next.items.count > Self.trimAbove { next.trim(keeping: Self.keptItems) }
                 store = next
                 TranscriptCache.shared.put(next, box: box, session: name, persist: !isMockBox)
             }
@@ -491,13 +522,21 @@ final class SessionViewModel {
         for id in pendingSentAt.keys where !store.pending.contains(where: { $0.id == id }) { pendingSentAt[id] = nil }
     }
 
+    /// Reads the pages of a hole left by a reset (the box read the record afresh: a pierd restart, ten idle minutes), then
+    /// merges them in one write: one redraw for the whole hole instead of one per page.
     private func fillGap() async {
-        var guardN = 0
-        while let before = store.gapBefore, guardN < TranscriptStore.maxGapPages {
-            guardN += 1
+        var pages: [TranscriptPage] = []
+        var ahead = store
+        while let before = ahead.gapBefore, pages.count < TranscriptStore.maxGapPages {
             guard let page = try? await client.transcriptBefore(session: name, before: before, limit: 300) else { break }
-            store.absorbHistory(page)
+            pages.append(page)
+            ahead.absorbHistory(page)
         }
+        guard !pages.isEmpty else { return }
+        // The store as it is now (a message may have gone out meanwhile), with the pages in the order they were read.
+        var next = store
+        for page in pages { next.absorbHistory(page) }
+        store = next
         TranscriptCache.shared.put(store, box: box, session: name, persist: !isMockBox)
     }
 

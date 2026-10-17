@@ -20,6 +20,8 @@ import UIKit
     private var dirty: Set<String> = []
     private var saving: Task<Void, Never>?
     private nonisolated static let keepOnDisk = 40
+    /// Items kept of each conversation, in memory and on disk.
+    private static let keptItems = 2000
     /// Files are written one after the other: a slow write never lands after a newer one.
     private nonisolated static let writer = DispatchQueue(label: "pier.transcript-cache", qos: .utility)
 
@@ -54,6 +56,8 @@ import UIKit
         guard store.source == "claude" || store.source == "codex" else { return }
         var s = store
         for p in s.pending { s.removePending(id: p.id) }
+        // A conversation opens on its newest items; scrolling up reads older ones from the box.
+        s.trim(keeping: Self.keptItems)
         let k = Self.key(box, session)
         remember(s, k)
         guard persist, Self.diskAllowed else { return }

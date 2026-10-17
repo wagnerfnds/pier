@@ -29,6 +29,90 @@ private func page(
         #expect(next.items.map { $0.off } == [1, 5, 100, 110, 120])
     }
 
+    @Test func historyMergesInOnePassAsItDidOneByOne() {
+        var rng = SeededGenerator(seed: 7)
+        for round in 0..<2000 {
+            // What is held: offsets that mostly grow, a few missing or repeated.
+            var held: [TranscriptItem] = []
+            var off: Int64 = 0
+            for i in 0..<Int.random(in: 0...40, using: &rng) {
+                off += Int64.random(in: 0...3, using: &rng)
+                let o: Int64? = Int.random(in: 0..<12, using: &rng) == 0 ? nil : off
+                held.append(TranscriptItem(kind: "text", id: "h\(i)", off: o, text: "held \(i)"))
+            }
+            // What comes: held items changed, new ones anywhere (older, newer, without an offset), some twice.
+            var incoming: [TranscriptItem] = []
+            for i in 0..<Int.random(in: 0...30, using: &rng) {
+                switch Int.random(in: 0..<6, using: &rng) {
+                case 0 where !held.isEmpty:
+                    let it = held.randomElement(using: &rng)!
+                    incoming.append(TranscriptItem(kind: "text", id: it.id, off: it.off, text: "changed \(i)"))
+                case 1 where !incoming.isEmpty:
+                    let it = incoming.randomElement(using: &rng)!
+                    incoming.append(TranscriptItem(kind: "text", id: it.id, off: it.off, text: "again \(i)"))
+                case 2:
+                    incoming.append(TranscriptItem(kind: "text", id: "n\(i)", off: nil, text: "no offset"))
+                default:
+                    incoming.append(TranscriptItem(kind: "text", id: "n\(i)", off: Int64.random(in: 0...(off + 5), using: &rng), text: "new"))
+                }
+            }
+            var s = TranscriptStore()
+            s.prepend(held)
+            let start = MergeReference.oneByOne([], held)
+            #expect(s.items == start, "round \(round): held")
+            s.prepend(incoming)
+            #expect(s.items == MergeReference.oneByOne(start, incoming), "round \(round): merged")
+        }
+    }
+
+    @Test func applySaysWhetherAnythingChanged() {
+        var s = TranscriptStore()
+        func applied(_ p: TranscriptPage) -> Bool { s.apply(p) }
+        #expect(applied(page([item("user", 10), item("tools", 20, done: false)], next: 2)))
+        // the same answer again, or an empty poll: nothing new
+        #expect(!applied(page([item("tools", 20, done: false)], next: 2)))
+        #expect(!applied(page([], next: 2)))
+        // the open tool group finished: changed in place
+        #expect(applied(page([item("tools", 20, done: true)], next: 2)))
+        // only the cursor moved
+        #expect(applied(page([], next: 3)))
+        // a pending prompt settled by its echo
+        s.addPendingUser("hello there, friend")
+        let echo = TranscriptItem(kind: "user", id: "cl@30.1", off: 30, text: "hello there, friend")
+        #expect(applied(page([echo], next: 4)))
+        #expect(s.pending.isEmpty)
+        // the box read the record afresh: the new gen is news, the same window after it is not
+        let window = [item("user", 10), item("tools", 20, done: true), echo]
+        #expect(applied(page(window, next: 4, gen: "g2", reset: true)))
+        #expect(!applied(page(window, next: 4, gen: "g2", reset: true)))
+    }
+
+    @Test func trimKeepsTheNewestAndOffersTheRestAgain() {
+        var s = TranscriptStore()
+        s.apply(page((1...10).map { item("text", Int64($0)) }, next: 10))
+        #expect(!s.hasMoreBefore)
+        let dropped = s.trim(keeping: 4)
+        #expect(dropped && s.items.map(\.off) == [7, 8, 9, 10] && s.hasMoreBefore && s.oldestOffset == 7)
+        let again = s.trim(keeping: 4)
+        #expect(!again)
+        // a hole after a reset goes with the older items it sat after...
+        var g = TranscriptStore()
+        g.apply(page([item("user", 1), item("text", 5)], next: 2))
+        g.apply(page([item("text", 100), item("text", 110), item("text", 120)], next: 3, gen: "g2", reset: true, start: 100))
+        #expect(g.gapBefore == 100)
+        g.trim(keeping: 3)
+        #expect(g.gapBefore == nil && g.hasMoreBefore && g.items.map(\.off) == [100, 110, 120])
+        // ...and stays while one of them is still held
+        var h = TranscriptStore()
+        h.apply(page([item("user", 1), item("text", 5)], next: 2))
+        h.apply(page([item("text", 100), item("text", 110)], next: 2, gen: "g2", reset: true, start: 100))
+        h.trim(keeping: 3)
+        #expect(h.gapBefore == 100 && h.items.map(\.off) == [5, 100, 110])
+        // and a trimmed store is still the same file on disk
+        let back = try? JSONDecoder().decode(TranscriptStore.self, from: JSONEncoder().encode(h))
+        #expect(back == h)
+    }
+
     @Test func openThenIncrementalUpsert() {
         var s = TranscriptStore()
         s.apply(page([item("user", 10), item("tools", 20, done: false)], next: 2))

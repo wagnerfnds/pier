@@ -12,8 +12,6 @@ struct ConversationView: View {
     @State private var detached = false
     @State private var scrolledUp = false
 
-    private var blocks: [ConversationBlock] { ConversationFold.blocks(vm.store.displayItems, live: vm.isRunning || vm.isWaiting) }
-
     /// What the lazy stack iterates: an id and where the block is. SwiftUI walks a ForEach's data again and again while
     /// it scrolls, and copying the blocks themselves (each holding whole transcript items) was a tenth of the main thread.
     private struct Row: Identifiable {
@@ -22,7 +20,7 @@ struct ConversationView: View {
     }
 
     var body: some View {
-        let blocks = self.blocks
+        let blocks = vm.blocks
         let rows = blocks.indices.map { Row(id: blocks[$0].id, index: $0) }
         ScrollViewReader { proxy in
             ScrollView {
@@ -52,7 +50,7 @@ struct ConversationView: View {
                     }
                     // Suggested replies for a finished turn (Inbox feature): only sent when the person taps one.
                     SessionNextSteps(vm: vm).id("next-steps")
-                    if vm.store.displayItems.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning, !vm.starting, !vm.showsStartingPrompt { emptyNote }
+                    if blocks.isEmpty, vm.outgoing.isEmpty, vm.loaded, !vm.isRunning, !vm.starting, !vm.showsStartingPrompt { emptyNote }
                     Color.clear.frame(height: 1).id("bottom")
                         .onAppear { bottomVisible = true; detached = false }
                         .onDisappear { bottomVisible = false }
@@ -92,7 +90,7 @@ struct ConversationView: View {
             // The draft's own follow lives in a view of its own: this body must not depend on the draft, or every
             // streamed update (each 0.6 s) would fold and diff the whole conversation again.
             .background { LegacyDraftFollow(vm: vm) { followLegacy(proxy) } }
-            .onChange(of: vm.store.displayItems.last?.id) { _, _ in followLegacy(proxy) }
+            .onChange(of: vm.store.pending.last?.id ?? vm.store.items.last?.id) { _, _ in followLegacy(proxy) }
             .onChange(of: vm.session.agentState) { _, _ in followLegacy(proxy) }
             .onChange(of: vm.reviewCard?.changes) { _, _ in followLegacy(proxy) }
             .onChange(of: vm.sendTick) { _, _ in detached = false; follow(proxy) }
@@ -125,7 +123,7 @@ struct ConversationView: View {
             .foregroundStyle(Theme.textDim)
             .onAppear { if scrolledUp { Task { await loadOlder(proxy) } } }
             .onChange(of: scrolledUp) { _, up in if up { Task { await loadOlder(proxy) } } }
-        } else if vm.loaded, vm.store.displayItems.count > 6 {
+        } else if vm.loaded, vm.store.items.count + vm.store.pending.count > 6 {
             HStack(spacing: 10) {
                 Rectangle().fill(Theme.stroke).frame(height: 1)
                 Text("Início da conversa").font(.caption2).foregroundStyle(Theme.textFaint).fixedSize()
@@ -136,7 +134,7 @@ struct ConversationView: View {
     }
 
     private func loadOlder(_ proxy: ScrollViewProxy) async {
-        let first = vm.store.displayItems.first?.id
+        let first = vm.store.items.first?.id ?? vm.store.pending.first?.id
         await vm.loadOlder()
         if let first { proxy.scrollTo(first, anchor: .top) }
     }

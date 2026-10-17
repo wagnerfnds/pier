@@ -112,7 +112,7 @@ struct SessionScreen: View {
             try? await Task.sleep(for: .seconds(5))
             let d = UserDefaults.standard
             if d.bool(forKey: "sessionExpandAll") {
-                for b in ConversationFold.blocks(vm.store.displayItems, live: false) {
+                for b in vm.blocks {
                     if case .fold(let id, let steps, _) = b {
                         vm.expanded.insert(id)
                         for st in steps { vm.expanded.insert(st.id); if let c = st.items, c.count == 1, let cid = c[0].id { vm.loadDetail(cid) } }
