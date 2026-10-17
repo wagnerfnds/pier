@@ -833,7 +833,10 @@ start, the worktree is removed again and nothing prepares it. Errors: 503 `tmux_
 * Claude Code starts with `--allow-dangerously-skip-permissions` where its `--help` lists the flag (asked once per
   binary and version; an older one would refuse to start on an option it does not know), and not when pierd runs as
   root, where Claude Code refuses it: bypass is among the modes Shift+Tab reaches (4.4), while the session still starts
-  in its default mode.
+  in its default mode. With the flag, Claude Code 2.1.30x asks at start to accept bypass mode and waits there, so
+  every session that gets it also gets `--settings '{"skipDangerousModePermissionPrompt":true}'`, a layer for that
+  process alone (the person's settings files are left as they are). A command that brings `--settings` of its own
+  gets no flag. A screen that shows the question anyway reads as waiting.
 * Known limit: the hash pierd writes for its Codex hooks follows Codex 0.160's way of computing it; a Codex that hashes
   hooks another way shows its "Hooks need review" screen again, until they are trusted there (`/hooks`).
 
@@ -967,10 +970,10 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
 * `GET /v1/sessions/{name}/controls` → `{agent, mode?, effort?, modes?, limit?}` (Claude Code modes `default,
   acceptEdits, plan, auto, bypassPermissions`). `POST .../mode {"mode":"plan"}` → `{"mode":"plan"}` cycles
   Shift-Tab until the mode matches (409 when the agent waits or the mode cannot be reached; event `session.mode`).
-  `bypassPermissions` is reachable in sessions pierd started with `--allow-dangerously-skip-permissions` (3.4), and its
-  warning does not stop the switch in an account pierd made (`skipDangerousModePermissionPrompt`, 2.10). In one that
-  has not accepted it yet (the built-in account), Claude Code asks "Yes, I accept" in its screen the first time: the
-  switch answers 409 there, pressing nothing, and the person answers it in the terminal once.
+  `bypassPermissions` is reachable in sessions pierd started with `--allow-dangerously-skip-permissions` (3.4), whose
+  warning is skipped for their process (3.4) and in an account pierd made (`skipDangerousModePermissionPrompt`, 2.10).
+  Where Claude Code still asks "Yes, I accept" in its screen (a session started some other way), the switch answers
+  409 there, pressing nothing, and the person answers it in the terminal once.
 
 ### 4.5 Held prompts (capability `queue`)
 
