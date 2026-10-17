@@ -93,9 +93,14 @@ func (b *Box) handleInfo(w http.ResponseWriter, r *http.Request) error {
 // GET/PUT …/locations/{name}/environment; tty: POST …/sessions/{name}/tty,
 // a terminal on a session (where the box can open a pseudo-terminal); tools:
 // GET /v1/tools and POST /v1/tools/install (Claude Code, Codex, the GitHub
-// CLI); logins: /v1/logins, the agents' and GitHub's sign-in from the app.
+// CLI); logins: /v1/logins, the agents' and GitHub's sign-in from the app;
+// mcp: GET /v1/mcp, PUT and DELETE /v1/mcp/{name}, the MCP servers pierd writes
+// into every agent account (where pierd keeps a state folder).
 func (b *Box) Capabilities() []string {
 	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env", "prepare", "tools", "logins"}
+	if b.StateDir != "" {
+		caps = append(caps, "mcp")
+	}
 	if b.Turns != nil {
 		caps = append(caps, "turns", "queue", "ask", "controls")
 	}

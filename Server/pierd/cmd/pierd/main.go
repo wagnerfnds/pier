@@ -366,6 +366,7 @@ func serve(b boxHome, args []string) error {
 	bx.Samples = &box.Sampler{}
 	go bx.Samples.Run(ctx)
 	go bx.SyncSkills()
+	go bx.SyncMCP()
 	go bx.StartShares(ctx)
 	go bx.EndStaleSignIns(ctx)
 	bx.Mount(s)

@@ -1,0 +1,7 @@
+Checking MCP server health…
+
+stub: http://127.0.0.1:38641/mcp (HTTP) - ✔ Connected
+broken: http://127.0.0.1:1/mcp (HTTP) - ✘ Failed to connect — ECONNREFUSED: ECONNREFUSED: Unable to connect. Is the computer able to access the url?
+noauth: http://127.0.0.1:38641/mcp (HTTP) - ✘ Failed to connect — Dynamic Client Registration rejected (HTTP 401):
+dashed: http://127.0.0.1:38641/mcp (HTTP) - ✔ Connected
+stdio-one: /bin/echo --flag arg two - ✘ Failed to connect — CONNECTION_CLOSED: Connection closed
