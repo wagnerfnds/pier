@@ -3,6 +3,7 @@ package box
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"pier/pierd/internal/events"
+	"pier/pierd/internal/relay"
 	"pier/pierd/internal/wire"
 )
 
@@ -20,13 +22,24 @@ import (
 type lockedPublisher struct {
 	mu        sync.Mutex
 	published map[string]int
+	// fail, when set, is what every Publish answers.
+	fail error
 }
 
 func (p *lockedPublisher) Publish(_ context.Context, name string, port int) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.fail != nil {
+		return "", p.fail
+	}
 	p.published[name] = port
 	return "https://p-" + name + ".example.test", nil
+}
+
+func (p *lockedPublisher) setFail(err error) {
+	p.mu.Lock()
+	p.fail = err
+	p.mu.Unlock()
 }
 
 func (p *lockedPublisher) Unpublish(name string) {
@@ -257,6 +270,49 @@ func TestPreviewsGetAStableLinkRenewedWhileTheWorktreeIsThere(t *testing.T) {
 	call(t, c.wc, "GET", "/v1/shares", "", nil, &list)
 	if len(list) != 0 {
 		t.Fatalf("shares = %+v", list)
+	}
+}
+
+// A relay that cannot be reached is asked again ten minutes later, and the
+// link is made then; one that serves no links is left alone for hours, and
+// says nothing.
+func TestPreviewLinkIsMadeOnceTheRelayAnswers(t *testing.T) {
+	pub := &lockedPublisher{published: map[string]int{}, fail: errors.New("the box is not connected to its relay right now")}
+	clock := &testClock{now: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
+	c, bx, port := previewBox(t, func(b *Box) { b.Publisher = pub; b.clock = clock.Now })
+	ch, stop := c.bus.Subscribe()
+	defer stop()
+	ctx := context.Background()
+	call(t, c.wc, "PUT", "/v1/locations/cal/worktrees/login/preview", "", Preview{Port: port}, nil)
+	if e := waitFor(t, ch, "share.failed"); e.Data["auto"] != true || e.Data["worktree"] != "login" {
+		t.Fatalf("share.failed = %+v", e.Data)
+	}
+	pub.setFail(nil)
+	bx.renewPreviewShares(ctx)
+	if p := bx.previewView("cal", "login"); p.Share != nil {
+		t.Fatal("the relay was asked again at once")
+	}
+	clock.add(11 * time.Minute)
+	bx.renewPreviewShares(ctx)
+	if p := bx.previewView("cal", "login"); p.Share == nil {
+		t.Fatal("no link once the relay answered")
+	}
+
+	// A relay without links: no word, and not asked again for hours.
+	call(t, c.wc, "DELETE", "/v1/shares/"+bx.previewView("cal", "login").Share.Name, "", nil, nil)
+	pub.setFail(relay.ErrNoShares)
+	call(t, c.wc, "PUT", "/v1/locations/cal/worktrees/login/preview", "", Preview{Port: port + 3}, nil)
+	waitFor(t, ch, "preview.changed")
+	pub.setFail(nil)
+	clock.add(time.Hour)
+	bx.renewPreviewShares(ctx)
+	if p := bx.previewView("cal", "login"); p.Share != nil {
+		t.Fatal("a relay without links was asked again within the hour")
+	}
+	clock.add(6 * time.Hour)
+	bx.renewPreviewShares(ctx)
+	if p := bx.previewView("cal", "login"); p.Share == nil {
+		t.Fatal("never asked again")
 	}
 }
 

@@ -90,8 +90,8 @@ type previewStore struct {
 	// path is "" without a state folder: kept in memory only.
 	path string
 	all  map[string]previewEntry
-	// failed is when making a worktree's link last failed: a relay without
-	// links is not asked again every minute.
+	// failed is, for a worktree whose link could not be made, when to try
+	// again: a relay is not asked every minute.
 	failed map[string]time.Time
 }
 
@@ -308,11 +308,13 @@ func (b *Box) autoShareFor(ctx context.Context, location string) bool {
 }
 
 // How long an automatic link lasts, when it is renewed, and how long a
-// relay that could not make one is left alone.
+// relay that could not make one is left alone: one that could not be
+// reached, and one that serves no links.
 const (
 	autoShareFor     = maxShareHours * time.Hour
 	autoShareRenew   = 24 * time.Hour
 	autoShareBackoff = 10 * time.Minute
+	autoShareNoRelay = 6 * time.Hour
 )
 
 // previewLocks keeps one sync of a worktree's link at a time.
@@ -378,7 +380,7 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 	sh.mu.Unlock()
 
 	ps.mu.Lock()
-	if at, failed := ps.failed[key]; failed && now.Sub(at) < autoShareBackoff {
+	if until, failed := ps.failed[key]; failed && now.Before(until) {
 		ps.mu.Unlock()
 		return
 	}
@@ -402,11 +404,32 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 	link, err := b.Publisher.Publish(ctx, name, e.Port)
 	if err != nil {
 		b.Publisher.Unpublish(name)
+		// The link to the old port is down too: not listed as if it were up.
+		sh.mu.Lock()
+		keep := sh.all[:0]
+		for _, old := range sh.all {
+			if old.Name != name {
+				keep = append(keep, old)
+			}
+		}
+		if len(keep) != len(sh.all) {
+			sh.all = keep
+			sh.save()
+		} else {
+			sh.all = keep
+		}
+		sh.mu.Unlock()
+		// A relay that serves no links is asked again much later than one
+		// that could not be reached (each ask can wait for its answer).
+		wait := autoShareBackoff
+		if errors.Is(err, relay.ErrNoShares) {
+			wait = autoShareNoRelay
+		}
 		ps.mu.Lock()
-		ps.failed[key] = now
+		ps.failed[key] = now.Add(wait)
 		ps.mu.Unlock()
 		if !errors.Is(err, relay.ErrNoShares) {
-			b.Events.Publish(eventf(b, "preview.share_failed", map[string]any{"location": location, "worktree": worktree, "error": err.Error()}))
+			b.Events.Publish(eventf(b, "share.failed", map[string]any{"location": location, "worktree": worktree, "error": err.Error(), "auto": true}))
 		}
 		return
 	}
