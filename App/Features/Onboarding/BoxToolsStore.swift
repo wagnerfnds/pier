@@ -45,11 +45,13 @@ final class BoxToolsStore {
     private func follow(box: String, model: AppModel) {
         guard polling[box] == nil else { return }
         polling[box] = Task { [weak self] in
+            // The box gives an install 30 minutes; a box out of reach that long is not waited for any more.
+            let deadline = Date().addingTimeInterval(35 * 60)
             while let self, !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 await self.load(box: box, model: model)
                 let list = self.tools[box] ?? []
-                if list.contains(where: \.installing) { continue }
+                if list.contains(where: \.installing), Date() < deadline { continue }
                 for t in list { self.asked.remove("\(box)/\(t.id)") }
                 break
             }
