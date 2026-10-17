@@ -162,15 +162,18 @@ enum Diagnostics {
         }
         if let coordination { throw coordination }
         if let copy { throw copy }
-        // The one made before stays until this one exists: the share button may still hold it.
-        removeArchives(except: out)
+        // The one made before stays too: a share sheet opened on it may still be sending it.
+        removeArchives(keeping: 2)
         return out
     }
 
-    private static func removeArchives(except kept: URL? = nil) {
+    /// Leaves the newest `keeping` archives (their names start with the date, so they sort by it).
+    private static func removeArchives(keeping: Int = 0) {
         let fm = FileManager.default
-        for url in (try? fm.contentsOfDirectory(at: fm.temporaryDirectory, includingPropertiesForKeys: nil)) ?? []
-        where url.lastPathComponent.hasPrefix("Pier-diagnostics-") && url.lastPathComponent != kept?.lastPathComponent {
+        let urls = ((try? fm.contentsOfDirectory(at: fm.temporaryDirectory, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("Pier-diagnostics-") }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+        for url in urls.dropFirst(keeping) {
             try? fm.removeItem(at: url)
         }
     }

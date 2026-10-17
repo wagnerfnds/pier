@@ -20,8 +20,8 @@ import UIKit
     private var dirty: Set<String> = []
     private var saving: Task<Void, Never>?
     private nonisolated static let keepOnDisk = 40
-    /// Items kept of each conversation, in memory and on disk.
-    private static let keptItems = 2000
+    /// Items of each conversation a screen opens on and the disk keeps.
+    private nonisolated static let keptItems = 2000
     /// Files are written one after the other: a slow write never lands after a newer one.
     private nonisolated static let writer = DispatchQueue(label: "pier.transcript-cache", qos: .utility)
 
@@ -31,8 +31,15 @@ import UIKit
         }
     }
 
-    /// What memory holds for the conversation (the disk is `load`).
-    func store(box: String, session: String) -> TranscriptStore? { stores[Self.key(box, session)] }
+    /// What memory holds for the conversation (the disk is `load`), its newest items.
+    func store(box: String, session: String) -> TranscriptStore? { stores[Self.key(box, session)].map(Self.trimmed) }
+
+    /// A conversation opens on its newest items; scrolling up reads older ones from the box.
+    nonisolated private static func trimmed(_ s: TranscriptStore) -> TranscriptStore {
+        var s = s
+        s.trim(keeping: keptItems)
+        return s
+    }
 
     /// The conversation's file, read and decoded off the main thread; nil without one.
     func load(box: String, session: String) async -> TranscriptStore? {
@@ -48,7 +55,7 @@ import UIKit
         NSLog("Pier: conversation %@ opened from disk (%ld items)", k, kept.items.count)
         #endif
         if stores[k] == nil { remember(kept, k) }
-        return stores[k]
+        return stores[k].map(Self.trimmed)
     }
 
     /// `persist`: false for a mock or demo box.
@@ -56,8 +63,8 @@ import UIKit
         guard store.source == "claude" || store.source == "codex" else { return }
         var s = store
         for p in s.pending { s.removePending(id: p.id) }
-        // A conversation opens on its newest items; scrolling up reads older ones from the box.
-        s.trim(keeping: Self.keptItems)
+        // Kept as the screen has it (the same storage, no copy): trimming here copied every item on the main thread at
+        // each change of a long conversation. It is trimmed when a screen opens on it and when it is written.
         let k = Self.key(box, session)
         remember(s, k)
         guard persist, Self.diskAllowed else { return }
@@ -97,7 +104,7 @@ import UIKit
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             for case (let url?, let store) in batch {
-                if let data = try? encoder.encode(store) { try? data.write(to: url, options: .atomic) }
+                if let data = try? encoder.encode(Self.trimmed(store)) { try? data.write(to: url, options: .atomic) }
             }
             let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
             let dated = files.map { ($0, (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }

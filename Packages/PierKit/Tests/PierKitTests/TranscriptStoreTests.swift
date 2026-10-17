@@ -87,6 +87,26 @@ private func page(
         #expect(!applied(page(window, next: 4, gen: "g2", reset: true)))
     }
 
+    /// The revision moves with what is drawn (items, pending prompts), not with the cursor, and is no part of the file
+    /// or of equality.
+    @Test func revisionFollowsWhatIsDrawn() throws {
+        var s = TranscriptStore()
+        s.apply(page([item("user", 10)], next: 1))
+        let r1 = s.revision
+        s.apply(page([], next: 2))
+        #expect(s.revision == r1)
+        s.apply(page([item("text", 20)], next: 3))
+        #expect(s.revision > r1)
+        let r2 = s.revision
+        let p = s.addPendingUser("on its way")
+        #expect(s.revision > r2)
+        let r3 = s.revision
+        s.removePending(id: p.id)
+        #expect(s.revision > r3)
+        let back = try JSONDecoder().decode(TranscriptStore.self, from: JSONEncoder().encode(s))
+        #expect(back == s && back.revision == 0)
+    }
+
     @Test func trimKeepsTheNewestAndOffersTheRestAgain() {
         var s = TranscriptStore()
         s.apply(page((1...10).map { item("text", Int64($0)) }, next: 10))

@@ -25,9 +25,7 @@ final class SessionViewModel {
     @ObservationIgnored weak var model: AppModel?
 
     // Conversation
-    /// What the conversation holds. Every change bumps `storeStamp`, which keys the fold below.
-    var store = TranscriptStore() { didSet { storeStamp &+= 1 } }
-    @ObservationIgnored private var storeStamp = 0
+    var store = TranscriptStore()
     var draft: Draft?
     var loaded = false
     var loadError: String?
@@ -245,22 +243,32 @@ final class SessionViewModel {
     /// a long conversation each time held the main thread.
     var blocks: [ConversationBlock] { folded.blocks }
 
-    private struct Folded {
-        let stamp: Int
+    /// What the rows were folded from: the store's revision (it moves when items or pending prompts change, not when a
+    /// poll only moves the cursor), plus what tells one store from another (one read from disk, a reset).
+    private struct FoldKey: Equatable {
+        let revision: Int
+        let count: Int
+        let pending: Int
+        let first: String?
+        let last: String?
         let live: Bool
+    }
+    private struct Folded {
+        let key: FoldKey
         let blocks: [ConversationBlock]
         let lastTurn: TurnChanges?
     }
     @ObservationIgnored private var foldCache: Folded?
 
     private var folded: Folded {
-        let live = isRunning || isWaiting
         // Read through the observable property, so whoever draws these rows follows the record's changes.
         let store = self.store
-        if let f = foldCache, f.stamp == storeStamp, f.live == live { return f }
+        let key = FoldKey(revision: store.revision, count: store.items.count, pending: store.pending.count,
+                          first: store.items.first?.id, last: store.items.last?.id, live: isRunning || isWaiting)
+        if let f = foldCache, f.key == key { return f }
         let items = store.displayItems
         let f = Perf.interval("session.fold") {
-            Folded(stamp: storeStamp, live: live, blocks: ConversationFold.blocks(items, live: live), lastTurn: TurnChanges.lastTurn(items))
+            Folded(key: key, blocks: ConversationFold.blocks(items, live: key.live), lastTurn: TurnChanges.lastTurn(items))
         }
         foldCache = f
         return f
@@ -389,6 +397,7 @@ final class SessionViewModel {
 
     private func linkAnswered() {
         link.succeeded()
+        slowPolls = 0
         if linkTrouble { linkTrouble = false }
     }
 
@@ -398,14 +407,19 @@ final class SessionViewModel {
     /// its scrollback) and the event stream.
     private func noteFailure(_ errors: [Error]) async {
         if errors.allSatisfy({ ($0 as? PierError).map { if case .timeout = $0 { true } else { false } } ?? false }) {
+            slowPolls += 1
             let client = client
-            if case .success = await Self.attempt(.seconds(3), { try await client.info() }) {
+            // Answering a quick question while the polls keep running out of time, three in a row: the connection is
+            // dialed again anyway (the conversation would otherwise stay as it was with nothing said).
+            if slowPolls < 3, case .success = await Self.attempt(.seconds(3), { try await client.info() }) {
                 linkAnswered()
                 return
             }
         }
+        slowPolls = 0
         await noteLinkFailure()
     }
+    @ObservationIgnored private var slowPolls = 0
 
     /// A request failed on the connection: say so, and after a second one drop the connection so the next request dials
     /// again (address and relay, whichever answers) instead of waiting for the PING watchdog.
@@ -735,8 +749,10 @@ final class SessionViewModel {
     /// A title written by Haiku on the box from the session's first message (`AITitler`), saved on the box.
     func generateTitle() async {
         guard !titling else { return }
-        let first = store.items.first { $0.kind == "user" && !($0.text ?? "").isEmpty }?.text
-        guard let prompt = first ?? session.title, !prompt.isEmpty, let place = session.execPlace else {
+        // The record's first prompt, when the conversation still holds its start; else the session's own title.
+        let first = store.hasMoreBefore ? nil : store.items.first { $0.kind == "user" && !($0.text ?? "").isEmpty }?.text
+        guard let prompt = first ?? session.title ?? store.items.first(where: { $0.kind == "user" })?.text, !prompt.isEmpty,
+              let place = session.execPlace else {
             actionError = S("Não há uma mensagem para resumir em um título.")
             return
         }

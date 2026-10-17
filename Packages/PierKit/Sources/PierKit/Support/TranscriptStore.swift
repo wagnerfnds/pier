@@ -39,7 +39,21 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
     /// Gap filling stops at 10 pages.
     public static let maxGapPages = 10
 
+    /// Moves whenever what is drawn changes (items or pending prompts), not when only the cursor does: a screen redoes
+    /// its rows from the items by it, and most polls move only `next`. Not kept on disk, and no part of equality.
+    public private(set) var revision = 0
+
     public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case items, next, gen, file, source, reason, signals, crew, artifacts, last, hasMoreBefore, pending, gap
+    }
+
+    public static func == (a: TranscriptStore, b: TranscriptStore) -> Bool {
+        a.items == b.items && a.next == b.next && a.gen == b.gen && a.file == b.file && a.source == b.source
+            && a.reason == b.reason && a.signals == b.signals && a.crew == b.crew && a.artifacts == b.artifacts
+            && a.last == b.last && a.hasMoreBefore == b.hasMoreBefore && a.pending == b.pending && a.gap == b.gap
+    }
 
     public var since: Int { next }
     /// Items to draw: the record plus not-yet-echoed prompts.
@@ -52,7 +66,11 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
     public var openQuestion: TranscriptItem? { items.last(where: { $0.kind == "question" && $0.done != true && $0.answers == nil }) }
 
     /// Forget everything (another session, or the box was switched).
-    public mutating func reset() { self = TranscriptStore() }
+    public mutating func reset() {
+        let r = revision
+        self = TranscriptStore()
+        revision = r &+ 1
+    }
 
     /// Merge one answer of `transcript(since:gen:)`. True when it changed anything: most polls bring nothing new, and a
     /// caller that keeps the store in observable state writes it only then (comparing two whole stores cost a pass over
@@ -93,6 +111,7 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
             if wasEmpty { hasMoreBefore = p.truncated ?? false }
         }
         if settlePending(by: p.items) { changed = true }
+        if changed { revision &+= 1 }
         next = p.next ?? next
         if let g = p.gen { gen = g }
         if let f = p.file { file = f }
@@ -121,6 +140,7 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
         guard n >= 0, items.count > n else { return false }
         items.removeFirst(items.count - n)
         hasMoreBefore = true
+        revision &+= 1
         // A hole after a reset sits between the older items held and the fresh window: once those older items are gone
         // there is no hole to fill, only more history before.
         if let g = gap, let first = items.first?.off, first > g.after { gap = nil }
@@ -128,12 +148,12 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
     }
 
     /// Spec helper: items from a `before` page, oldest first. Merges them by offset (a plain prepend while scrolling up).
-    public mutating func prepend(_ older: [TranscriptItem]) { merge(older) }
+    public mutating func prepend(_ older: [TranscriptItem]) { if merge(older) { revision &+= 1 } }
 
     /// Merge a `transcriptBefore` page (scroll-up or gap fill). Returns the next `before` to request while a gap is still open.
     @discardableResult
     public mutating func absorbHistory(_ page: TranscriptPage) -> Int64? {
-        merge(page.items)
+        if merge(page.items) { revision &+= 1 }
         if gap == nil {
             hasMoreBefore = page.more ?? false
             return nil
@@ -156,10 +176,15 @@ public struct TranscriptStore: Sendable, Equatable, Codable {
     public mutating func addPendingUser(_ text: String, id: String = "pending-\(UUID().uuidString)") -> TranscriptItem {
         let item = TranscriptItem(kind: "user", id: id, text: text, pending: true)
         pending.append(item)
+        revision &+= 1
         return item
     }
 
-    public mutating func removePending(id: String) { pending.removeAll { $0.id == id } }
+    public mutating func removePending(id: String) {
+        let count = pending.count
+        pending.removeAll { $0.id == id }
+        if pending.count != count { revision &+= 1 }
+    }
 
     // MARK: merging
 

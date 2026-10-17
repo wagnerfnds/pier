@@ -529,14 +529,14 @@ final class LocalPrefs {
 /// bytes are the ones written last is skipped.
 private final class PrefsWriter: @unchecked Sendable {
     private let queue = DispatchQueue(label: "pier.prefs", qos: .utility)
-    /// Only touched on `queue`.
-    private var lastBytes: Foundation.Data?
+    /// The bytes written last, per file (the demo and a mock run keep files of their own). Only touched on `queue`.
+    private var lastBytes: [URL: Foundation.Data] = [:]
 
     func write(_ prefs: LocalPrefs.Data, to url: URL) {
         queue.async {
-            guard let bytes = try? JSONEncoder().encode(prefs), bytes != self.lastBytes else { return }
+            guard let bytes = try? JSONEncoder().encode(prefs), bytes != self.lastBytes[url] else { return }
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            if (try? bytes.write(to: url, options: .atomic)) != nil { self.lastBytes = bytes }
+            if (try? bytes.write(to: url, options: .atomic)) != nil { self.lastBytes[url] = bytes }
         }
     }
 
