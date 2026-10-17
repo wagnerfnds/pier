@@ -16358,6 +16358,16 @@
           }
         }
       }
+    },
+    "Alterado à mão fora do Pier" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changed by hand outside Pier"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

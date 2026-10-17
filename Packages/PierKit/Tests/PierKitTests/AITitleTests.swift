@@ -33,7 +33,7 @@ import Testing
     @Test func commandEmbedsThePromptAndFindsTheCLI() {
         let c = AITitle.command(prompt: "Responda apenas com o resultado de 2+2; it's `rm -rf` $(x)")
         #expect(c.hasPrefix(": \(AITitle.marker);"))
-        #expect(c.contains("--model haiku --strict-mcp-config"))
+        #expect(c.contains("-p --model haiku $SM") && c.contains(AIDraft.strictMCPProbe))
         #expect(c.contains("exit 3"))
         #expect(c.contains("$HOME/.local/bin/claude"))
         #expect(!c.contains("rm -rf` $(x)"))   // the prompt only travels base64-encoded
@@ -49,17 +49,20 @@ import Testing
     }
 
     /// Runs the real shell command against a stand-in `claude` (never the real one): it must reach it with the prompt on
-    /// stdin, from `$HOME`, without `PIER_*` variables.
-    @Test func commandRunsAgainstAStandInCLI() throws {
+    /// stdin, from `$HOME`, without `PIER_*` variables, and with `--strict-mcp-config` only when that `claude` knows it.
+    @Test(arguments: [true, false]) func commandRunsAgainstAStandInCLI(knowsStrictMCP: Bool) throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("aititle-\(UUID().uuidString)")
         let bin = dir.appendingPathComponent("bin"), home = dir.appendingPathComponent("home")
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
+        let help = knowsStrictMCP ? "  --strict-mcp-config  Only use MCP servers from --mcp-config" : "  --mcp-config <configs...>  Load MCP servers"
+        let args = knowsStrictMCP ? "-p --model haiku --strict-mcp-config" : "-p --model haiku"
         let script = """
         #!/bin/sh
+        [ "$1" = "--help" ] && { echo "Usage: claude [options]"; echo "\(help)"; exit 0; }
         input=$(cat)
-        case "$*" in *"-p --model haiku --strict-mcp-config"*) ;; *) echo "bad args: $*"; exit 9;; esac
+        [ "$*" = "\(args)" ] || { echo "bad args: $*"; exit 9; }
         [ -n "$PIER_SESSION$PIER_WORKTREE_PATH" ] && { echo "leaked $PIER_SESSION$PIER_WORKTREE_PATH"; exit 8; }
         [ "$(pwd -P)" = "$(cd "$HOME" && pwd -P)" ] || { echo "not in home: $(pwd)"; exit 7; }
         case "$input" in *"Corrigir o login"*) echo '"Corrigir login no Safari."';; *) echo "no prompt"; exit 6;; esac

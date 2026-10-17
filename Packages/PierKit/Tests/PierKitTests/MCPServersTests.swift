@@ -43,6 +43,11 @@ import Testing
         let slow = MCPServer(name: "d", status: ["claude": MCPAgentStatus(state: "unknown", issue: "claude mcp list did not finish within 20s"), "codex": MCPAgentStatus(state: "connected")])
         #expect(MCPServers.health(slow) == .unknown)
         #expect(MCPServers.kind(MCPAgentStatus(state: "needs_auth")) == .failed && MCPServers.kind(MCPAgentStatus(state: "pending")) == .unknown)
+        // pierd's entry changed by hand: pierd no longer manages it there, which the row says.
+        let changed = MCPServer(name: "d", status: ["claude": MCPAgentStatus(state: "changed", issue: "changed by hand since pierd wrote it"),
+                                                    "codex": MCPAgentStatus(state: "connected")])
+        #expect(MCPServers.kind(changed.status["claude"]!) == .changed)
+        #expect(MCPServers.health(changed) == .failing(agent: "claude", issue: "changed by hand since pierd wrote it"))
     }
 
     @Test func rules() {
@@ -66,7 +71,7 @@ import Testing
         let t = MockTransport { method, path, _ in
             switch (method, path) {
             case (.get, "/v1/mcp"): return (200, try Fixture.data("mcp.json"))
-            case (.get, "/v1/mcp?status=1"): return (200, try Fixture.data("mcp_status.json"))
+            case (.get, "/v1/mcp?status=1"), (.get, "/v1/mcp?status=deep"): return (200, try Fixture.data("mcp_status.json"))
             case (.put, _): return (200, try Fixture.data("mcp_server.json"))
             default: return (200, Data(#"{"removed":"crm"}"#.utf8))
             }
@@ -74,6 +79,7 @@ import Testing
         let a = BoxAPI(transport: t, eventPolicy: EventStreamPolicy(jitter: 0))
         #expect(try await a.mcpServers().count == 3)
         #expect(try await a.mcpServers(status: true).count == 4)
+        #expect(try await a.mcpServers(status: true, deep: true).count == 4)
         // A new server with its token; then saved again as it is (the box keeps the token); then the token removed.
         _ = try await a.setMCPServer(name: "crm", MCPServerUpdate(url: "https://mcp.example.com/mcp", headers: ["X-Team": "green"], token: "tok"))
         let crm = try Fixture.decode("mcp.json", as: MCPServerList.self).servers[0]
@@ -85,10 +91,11 @@ import Testing
         _ = try await a.setMCPServer(name: "crm", cleared)
         try await a.removeMCPServer(name: "crm")
         #expect(t.requests.map { "\($0.method) \($0.path)" } == [
-            "GET /v1/mcp", "GET /v1/mcp?status=1", "PUT /v1/mcp/crm", "PUT /v1/mcp/crm", "PUT /v1/mcp/crm", "DELETE /v1/mcp/crm",
+            "GET /v1/mcp", "GET /v1/mcp?status=1", "GET /v1/mcp?status=deep", "PUT /v1/mcp/crm", "PUT /v1/mcp/crm", "PUT /v1/mcp/crm",
+            "DELETE /v1/mcp/crm",
         ])
-        #expect(t.requests[2].body == #"{"agents":["claude","codex"],"enabled":true,"headers":{"X-Team":"green"},"token":"tok","transport":"http","url":"https://mcp.example.com/mcp"}"#)
-        #expect(t.requests[3].body == #"{"agents":["claude","codex"],"enabled":false,"headers":{"X-Team":"green"},"transport":"http","url":"https://mcp.example.com/mcp"}"#)
-        #expect(t.requests[4].body?.contains(#""token":"""#) == true)
+        #expect(t.requests[3].body == #"{"agents":["claude","codex"],"enabled":true,"headers":{"X-Team":"green"},"token":"tok","transport":"http","url":"https://mcp.example.com/mcp"}"#)
+        #expect(t.requests[4].body == #"{"agents":["claude","codex"],"enabled":false,"headers":{"X-Team":"green"},"transport":"http","url":"https://mcp.example.com/mcp"}"#)
+        #expect(t.requests[5].body?.contains(#""token":"""#) == true)
     }
 }

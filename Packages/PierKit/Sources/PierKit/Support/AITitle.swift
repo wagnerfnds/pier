@@ -32,6 +32,7 @@ public enum AITitle {
         for c in "$HOME/.local/bin/claude" "$HOME/.claude/local/claude" /usr/local/bin/claude /opt/homebrew/bin/claude "$HOME/.npm-global/bin/claude"; do \
         [ -z "$CL" ] && [ -x "$c" ] && CL="$c"; done; \
         [ -z "$CL" ] && { echo "claude CLI not found on the box" >&2; exit \(noCLIExit); }; \
+        \(AIDraft.strictMCPProbe)\
         for v in $(env | sed -n -e 's/^\\(PIER_[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset "$v"; done; \
         cd "$HOME" 2>/dev/null; \
         printf %s '\(GitActions.b64(full))' | base64 -d | PIER_HOOKS_QUIET=1 "$CL" \(AIDraft.claudeArgs) 2>&1

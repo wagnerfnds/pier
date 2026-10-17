@@ -3,7 +3,8 @@ import PierKit
 
 /// The box's MCP servers (`/v1/mcp`): pierd writes each one into every Claude Code and Codex account on the box, through
 /// the agents' own CLIs, so any agent started there can use it. Testar asks the box how each agent's default account sees
-/// them (Claude Code's own list; a handshake with the token for Codex). A token goes to the box and never comes back.
+/// them: whether its configuration has pierd's entry, and the box's own handshake with each http server, with what that
+/// agent sends (nothing of the account's starts). A token goes to the box and never comes back.
 struct MCPServersScreen: View {
     let box: String
 
@@ -126,6 +127,7 @@ struct MCPServersScreen: View {
         case .off: ("Desligado", Theme.textFaint)
         case .missing: ("Ainda não está nesta conta", Theme.orange)
         case .taken: ("Já existe um servidor seu com este nome", Theme.orange)
+        case .changed: ("Alterado à mão fora do Pier", Theme.orange)
         case .unavailable: ("Não está instalado na box", Theme.textFaint)
         case .unknown: ("Sem resposta", Theme.orange)
         }
@@ -135,7 +137,7 @@ struct MCPServersScreen: View {
                 Text(st.account ?? (agent == "claude" ? "Claude Code" : "Codex")).font(.caption).foregroundStyle(Theme.textDim)
                 Text(text).font(.caption.weight(.semibold)).foregroundStyle(color)
             }
-            if let issue = st.issue, kind != .connected, kind != .taken {
+            if let issue = st.issue, kind != .connected, kind != .taken, kind != .changed {
                 Text(issue).font(.caption2).foregroundStyle(Theme.textDim).lineLimit(3).padding(.leading, 20)
             }
         }
@@ -168,10 +170,10 @@ struct MCPServersScreen: View {
         var u = MCPServerUpdate(s)
         u.enabled = on
         do {
+            // No test here: the switch is often flipped a few times in a row; Testar or the next save checks it.
             let saved = try await api.setMCPServer(name: s.name, u)
             upsert(saved)
             error = nil
-            if on { await test() }
         } catch { self.error = ComposeErrorText.message(error) }
     }
 

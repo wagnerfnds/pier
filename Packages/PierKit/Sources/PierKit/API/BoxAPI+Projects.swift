@@ -155,10 +155,12 @@ extension BoxAPI {
 // MCP servers for every agent account of the box (capability `mcp`, docs/API.md §2.13).
 
 extension BoxAPI {
-    /// The box's MCP servers. With `status`, how each agent's default account sees them: the box asks Claude Code's list
-    /// (which connects to every server it has) and shakes hands for Codex, so it can take up to about 20 seconds.
-    public func mcpServers(status: Bool = false) async throws -> [MCPServer] {
-        let list: MCPServerList = try await get(Self.url("/v1/mcp", [("status", status ? "1" : nil)]))
+    /// The box's MCP servers. With `status`, how each agent's default account sees them: whether its configuration has
+    /// pierd's entry, and the box's own handshake with each http server (nothing of the account's starts). `deep` asks
+    /// Claude Code's own list instead, which starts every server the account has and can take about 20 seconds: only
+    /// for an explicit check.
+    public func mcpServers(status: Bool = false, deep: Bool = false) async throws -> [MCPServer] {
+        let list: MCPServerList = try await get(Self.url("/v1/mcp", [("status", deep ? "deep" : status ? "1" : nil)]))
         return list.servers
     }
 

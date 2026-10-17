@@ -135,6 +135,7 @@ public enum TalkRouter {
         for c in "$HOME/.local/bin/claude" "$HOME/.claude/local/claude" /usr/local/bin/claude /opt/homebrew/bin/claude "$HOME/.npm-global/bin/claude"; do \
         [ -z "$CL" ] && [ -x "$c" ] && CL="$c"; done; \
         [ -z "$CL" ] && { echo "claude CLI not found on the box" >&2; exit \(noCLIExit); }; \
+        \(AIDraft.strictMCPProbe)\
         printf %s '\(GitActions.b64(prompt))' | base64 -d | PIER_HOOKS_QUIET=1 "$CL" \(AIDraft.claudeArgs) 2>&1
         """
     }

@@ -65,9 +65,10 @@ public struct MCPServer: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// How one agent's default account sees a server. `state`: connected, failed, needs_auth, configured (Codex with a
-/// stdio server: its list cannot tell more), disabled, missing, taken (a server of that name the person added by hand),
-/// unavailable (the agent's CLI is not on the box), pending, unknown. `issue` is the agent's (or pierd's) own words.
+/// How one agent's default account sees a server. `state`: connected, failed, needs_auth, configured (a stdio server,
+/// which only the deep check starts), disabled, missing, taken (a server of that name the person added by hand), changed
+/// (pierd's entry, changed by hand since), unavailable (the agent's CLI is not on the box), pending, unknown. `issue` is
+/// the agent's (or pierd's) own words.
 public struct MCPAgentStatus: Codable, Sendable, Hashable {
     public let state: String
     public let issue: String?

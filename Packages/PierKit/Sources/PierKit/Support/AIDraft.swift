@@ -10,9 +10,14 @@ public enum AIDraft {
     }
 
     /// What the small-model helpers (this one, `AITitle`, `NextSteps`, `TalkRouter`) run `claude` with: a one-shot
-    /// answer from Haiku that starts none of the box's MCP servers (`--strict-mcp-config` without `--mcp-config`).
-    /// Without it, every title or suggestion would start each server the account has (docs/API.md §2.13).
-    public static let claudeArgs = "-p --model haiku --strict-mcp-config"
+    /// answer from Haiku that starts none of the box's MCP servers (`$SM`, set by `strictMCPProbe`, is
+    /// `--strict-mcp-config` without `--mcp-config`). Without it, every title or suggestion would start each server the
+    /// account has (docs/API.md §2.13).
+    public static let claudeArgs = "-p --model haiku $SM"
+
+    /// Shell, once `CL` is found: sets `SM` to `--strict-mcp-config` only when that Claude Code knows the flag (one from
+    /// before it would refuse the whole run).
+    public static let strictMCPProbe = #"SM=; "$CL" --help 2>/dev/null | grep -q -- --strict-mcp-config && SM=--strict-mcp-config; "#
 
     /// Exit code when no `claude` CLI is found on the box.
     public static let noCLIExit: Int32 = 3
@@ -48,6 +53,7 @@ public enum AIDraft {
         for c in "$HOME/.local/bin/claude" "$HOME/.claude/local/claude" /usr/local/bin/claude /opt/homebrew/bin/claude "$HOME/.npm-global/bin/claude"; do \
         [ -z "$CL" ] && [ -x "$c" ] && CL="$c"; done; \
         [ -z "$CL" ] && { echo "claude CLI not found on the box" >&2; exit \(noCLIExit); }; \
+        \(AIDraft.strictMCPProbe)\
         MB=$(git merge-base HEAD origin/\(b) 2>/dev/null || git merge-base HEAD \(b) 2>/dev/null || echo HEAD); \
         { printf %s '\(GitActions.b64(prompt))' | base64 -d; \
         printf '\\n\\n## Recent commits on the base\\n'; git log -8 --pretty='- %s' "$MB" 2>/dev/null; \

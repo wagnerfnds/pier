@@ -57,6 +57,8 @@ public enum MCPServers {
         case missing
         /// The account has a server of that name the person added by hand; pierd leaves it alone.
         case taken
+        /// pierd's entry, changed by hand since: the person's now, pierd leaves it alone.
+        case changed
         /// The agent's CLI is not on the box.
         case unavailable
         case unknown
@@ -70,6 +72,7 @@ public enum MCPServers {
         case "disabled": .off
         case "missing": .missing
         case "taken": .taken
+        case "changed": .changed
         case "unavailable": .unavailable
         default: .unknown
         }
@@ -98,7 +101,7 @@ public enum MCPServers {
         for agent in s.agents {
             guard let st = s.status[agent] else { continue }
             switch kind(st) {
-            case .failed, .missing, .taken: return .failing(agent: agent, issue: st.issue)
+            case .failed, .missing, .taken, .changed: return .failing(agent: agent, issue: st.issue)
             case .unknown: unknown = true
             case .configured: configured = true
             case .connected: connected = true
