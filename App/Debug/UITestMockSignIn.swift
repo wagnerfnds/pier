@@ -91,17 +91,19 @@ struct MockSignIns {
         }
     }
 
-    /// pierd's lines about the GitHub CLI and the sign-ins this mock follows, for `GET /v1/doctor`.
+    /// pierd's lines about the GitHub CLI and the sign-ins this mock follows, for `GET /v1/doctor`: a missing GitHub CLI
+    /// does not hide Codex's sign-in.
     func doctorChecks() -> [JSON] {
-        guard installed("gh") else {
-            return [["area": "Worktrees and sessions", "name": "gh", "status": "warn", "tool": "gh",
-                     "detail": "not installed; pull requests and the GitHub list need it, and the Pier app can install it", "fix": "pierd tools install gh"]]
-        }
-        var out: [JSON] = [["area": "Worktrees and sessions", "name": "gh", "status": "ok", "detail": "/home/ubuntu/.local/bin/gh", "tool": "gh"]]
-        if signedOut.contains("gh") {
+        var out: [JSON] = []
+        if !installed("gh") {
+            out.append(["area": "Worktrees and sessions", "name": "gh", "status": "warn", "tool": "gh",
+                        "detail": "not installed; pull requests and the GitHub list need it, and the Pier app can install it", "fix": "pierd tools install gh"])
+        } else if signedOut.contains("gh") {
+            out.append(["area": "Worktrees and sessions", "name": "gh", "status": "ok", "detail": "/home/ubuntu/.local/bin/gh", "tool": "gh"])
             out.append(["area": "Agents", "name": "GitHub sign-in", "status": "warn", "tool": "gh", "fix": "gh auth login --web --git-protocol https",
                         "detail": "gh is not signed in on this box: pull requests, the GitHub list and private repositories need it"])
         } else {
+            out.append(["area": "Worktrees and sessions", "name": "gh", "status": "ok", "detail": "/home/ubuntu/.local/bin/gh", "tool": "gh"])
             out.append(["area": "Agents", "name": "GitHub sign-in", "status": "ok", "detail": "signed in", "tool": "gh"])
         }
         if MockSignIns.enabled {
