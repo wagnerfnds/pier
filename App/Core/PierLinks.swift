@@ -12,7 +12,11 @@ enum PierLinks {
 
 /// This device's own names and addresses, for `LocalHost.isThisDevice` (a pairing link from pierd on this Mac).
 enum ThisDevice {
+    #if os(macOS)
+    static var names: [String] { [LocalHostName.value] }   // the native Mac: no DNS wait
+    #else
     static var names: [String] { [ProcessInfo.processInfo.hostName] }
+    #endif
 
     static var addresses: [String] {
         var out: [String] = []

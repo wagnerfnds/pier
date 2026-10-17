@@ -291,7 +291,11 @@ final class AppModel {
     func clientName() -> String {
         #if targetEnvironment(macCatalyst) || os(macOS)
         // UIDevice says just "Mac" here: the host name tells the person's Macs apart ("mac-de-octocats-macbook-pro").
+        #if os(macOS)
+        let host = LocalHostName.value.replacingOccurrences(of: ".local", with: "")   // the native Mac: no DNS wait
+        #else
         let host = ProcessInfo.processInfo.hostName.replacingOccurrences(of: ".local", with: "")
+        #endif
         return PierName.fromHostname(host.isEmpty ? "mac" : "mac-de-\(host)", fallback: "mac")
         #elseif targetEnvironment(simulator)
         return PierName.fromHostname("simulador-ios", fallback: "iphone")
