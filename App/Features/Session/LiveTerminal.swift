@@ -87,7 +87,7 @@ final class LiveTerminal {
     private(set) var phase: Phase = .connecting
     /// What runs in front, read from the screen (the tab's name); nil at a prompt.
     private(set) var running: String?
-    /// The screen's text, read every two seconds while it shows: what VoiceOver reads of the terminal.
+    /// The screen's last lines, read every two seconds while it shows and VoiceOver runs: what VoiceOver reads of it.
     private(set) var screenText = ""
 
     /// Ghostty's state for the view (configuration, focus, keys).
@@ -224,17 +224,29 @@ final class LiveTerminal {
     /// once after a key, so a line's answer is read as soon as it is drawn.
     func watchRunning() async {
         while !Task.isCancelled {
-            if let text = session.readViewportText(), text != lastScreen || pipe.isTyping != lastTyping {
+            // Off the main thread (the read is thread-safe): it walks the screen row by row through the engine.
+            let session = session
+            let read = await Task.detached(priority: .utility) { session.readViewportText() }.value
+            if let text = read, text != lastScreen || pipe.isTyping != lastTyping {
                 lastTyping = pipe.isTyping
                 lastScreen = text
-                screenText = text.split(separator: "\n", omittingEmptySubsequences: false)
-                    .map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                // Only while VoiceOver runs: the whole screen as the terminal's value, rewritten every two seconds, was
+                // read by everything that walks the app's accessibility tree (window managers, text expanders) and on the
+                // Mac each walk goes through the main thread.
+                let spoken = UIAccessibility.isVoiceOverRunning ? Self.spoken(text) : ""
+                if spoken != screenText { screenText = spoken }
                 let command = WorktreeTerminals.runningCommand(in: text, typing: pipe.isTyping)
                 if command != running { running = command }
             }
             await pipe.keyOrTimeout(.seconds(2))
         }
+    }
+
+    /// The screen's last lines, trimmed, as VoiceOver reads them.
+    private static func spoken(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false).suffix(40)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Tries a refused or ended terminal again (the banner's Tentar de novo).
@@ -325,6 +337,8 @@ struct LiveTerminalView: View {
                 .accessibilityIdentifier("live-terminal")
             if showsKeys, visible, !keyboardUp { LiveKeysBar(terminal: terminal) }
         }
+        // A terminal kept mounted under another tab is no part of what is on screen.
+        .accessibilityHidden(!visible)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         // The stream lives while the terminal shows and the app is in front (on the Mac, a window behind another

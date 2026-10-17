@@ -30,7 +30,8 @@ final class SessionTerminals {
     /// The live terminals shown last (the latest at the end): they stay mounted (hidden) when another tab is picked, so
     /// picking one again shows it at once, still streaming. A few only: each holds one of the box's terminals.
     private(set) var shown: [String] = []
-    private static let kept = 4
+    /// Fewer on the Mac, where a window stays open all day and every terminal kept streams into its own surface.
+    private static let kept = Platform.isMac ? 3 : 4
     /// Every live terminal shown here, for letting go of those the box no longer has.
     @ObservationIgnored private var seen: Set<String> = []
     @ObservationIgnored private var feeds: [String: TerminalFeed] = [:]
@@ -57,7 +58,7 @@ final class SessionTerminals {
         if recent.last != key {
             recent.removeAll { $0 == key }
             recent.append(key)
-            while recent.count > 24 { registry[recent.removeFirst()] = nil }
+            while recent.count > 24 { evict(recent.removeFirst()) }
         }
         if let t = registry[key] {
             if t.model == nil { t.model = vm.model }
@@ -66,6 +67,14 @@ final class SessionTerminals {
         let t = SessionTerminals(vm: vm)
         registry[key] = t
         return t
+    }
+
+    /// A session's tabs let go, and with them the live terminals no other session's tabs show: each kept its surface and
+    /// its scrollback for the rest of the app's run.
+    private static func evict(_ key: String) {
+        guard let gone = registry.removeValue(forKey: key) else { return }
+        let still = registry.values.filter { $0.box == gone.box }.reduce(into: Set<String>()) { $0.formUnion($1.seen) }
+        LiveTerminal.forget(box: gone.box, keeping: still, among: Array(gone.seen))
     }
 
     #if DEBUG
