@@ -154,7 +154,8 @@ user).
 * Location: `name, path, repo (git root), worktrees?, scripts {setup?, archive?, from? ("pierd" | "repo")},
   agents? (repository presets, 3.2), remote?, slug? ("owner/repo"), default_branch?, repo_trust?`
   (`"none" | "trusted" | "untrusted" | "changed"`), `prepare_with?` (`"agent" | "script"`: how a new worktree is
-  prepared when the request does not say, 2.6.1; boxes with `prepare.agent`).
+  prepared when the request does not say, 2.6.1; boxes with `prepare.agent`), `setup_agent?` (`true` once the person
+  allowed setup agents for the project, `PUT …/setup-agent`, 2.6.1; without it no setup agent prepares it unasked).
 * Worktree: `name, path, branch?, head? (10 hex), main? (the repository's own checkout; cannot be removed),
   setting_up?, port? ($PIER_PORT), locked?, lock_reason?`. `lock_reason == "initializing"` means
   `git worktree add` is still running.
@@ -195,9 +196,12 @@ recent commit first; a branch that exists locally and on origin appears once wit
 * `prepare` (capability `prepare`): `false` makes only the checkout, for a quick fix that needs no setup or dev server;
   its preparation reads `skipped` until `POST .../prepare` (2.6.1). Absent or `true`: prepared as it is made.
 * `prepare_with` (capability `prepare.agent`): `"agent"` (a setup agent, 2.6.1), `"script"` (the setup script and the
-  autostart services) or `"none"` (as `prepare: false`); absent, the location's `prepare_with` (2.1). It wins over
-  `prepare`. `"agent"` on a box without Claude Code is 400. An older pierd ignores the field (it never refuses unknown
-  keys) and prepares by script.
+  autostart services) or `"none"` (as `prepare: false`); absent, the location's `prepare_with` (2.1), except that a
+  worktree made from a pull request (`pr`, `ref`) is prepared by script, then and whenever it is prepared again, unless
+  an agent is asked for. It wins over `prepare`. `"agent"` on a box without Claude Code, or whose pierd runs as root
+  (where Claude Code refuses to run unattended), is 400. The app sends the way the person picked; it leaves the field
+  out only for the project's default left as it was. An older pierd ignores the field (it never refuses unknown keys)
+  and prepares by script.
 * Answer: the `Worktree`, with its `port`. The worktree is then prepared in the background (`worktree.prepare.started |
   finished | failed`): by script, the location's setup script runs (`worktree.setup.started | finished | failed`), and
   services marked `autostart` start after it; by agent, a setup agent works in a session of its own (2.6.1).
@@ -227,9 +231,10 @@ recent commit first; a branch that exists locally and on origin appears once wit
 | `POST .../services/{service}/{start\|stop\|restart}` | run as systemd user units named `svc-<location>-<worktree>-<service>` |
 | `GET`/`POST /v1/locations/{loc}/worktrees/{wt}/prepare` | the worktree's preparation, and preparing it now (2.6.1) |
 | `POST /v1/locations/{loc}/worktrees/{wt}/prepare/done` | a setup agent says it is done, or why it could not finish (2.6.1) |
+| `PUT /v1/locations/{name}/setup-agent` | the person's consent to setup agents for the project, `{"allowed": true\|false}` (2.6.1) |
 | `GET`/`PUT /v1/locations/{loc}/worktrees/{wt}/preview` | the worktree's preview: its page, a test login, its public link (2.12.1) |
 | `POST /v1/locations {name, path}`, `DELETE /v1/locations/{name}` | add or forget a repository (`pierd location add\|rm`); `?purge=1` deletes it from the disk (2.8) |
-| `GET`/`PUT /v1/locations/{name}/config`, `POST`/`DELETE .../config/trust` | box-local config and repository-config trust (`pierd location config`); `PUT {"local": …}` replaces the box's own config, `PUT {"merge": …}` lays keys over it (a setup agent's recipe, `--merge`); the app does not call them |
+| `GET`/`PUT /v1/locations/{name}/config`, `POST`/`DELETE .../config/trust` | box-local config and repository-config trust (`pierd location config`); `PUT {"local": …}` replaces the box's own config, `PUT {"merge": …}` lays keys over it (a setup agent's recipe, `--merge`, marked `"by": "setup"` when it comes from a setup agent's session); neither changes the consent to setup agents (`prepare_with`, only `…/setup-agent` writes it); the app does not call them |
 
 #### 2.6.1 Preparing a worktree (capabilities `prepare`, `prepare.agent`)
 
@@ -239,25 +244,48 @@ Two ways to prepare a worktree:
   location's `preview` (its config's, 2.12.1) on the worktree's port;
 * **agent** (capability `prepare.agent`): a **setup agent**, Claude Code in a session of its own beside the
   worktree's other agents (`<worktree's session base>-setup`, e.g. `shop-checkout-setup`, alternating with `…-setup-2`
-  from one run to the next), started through the normal session start on the project's account (2.10), in
-  `bypassPermissions` mode without `AskUserQuestion` (the account's `settings.json` gets
-  `skipDangerousModePermissionPrompt: true` when it lacks it). Its first prompt, written by pierd, gives the
+  from one run to the next; listed with `setup: true`, 4.1), started through the normal session start on the
+  project's account (2.10), in `bypassPermissions` mode without `AskUserQuestion`. Bypass mode's warning, which would
+  wait for a person, is skipped for that process alone (`--settings '{"skipDangerousModePermissionPrompt":true}'`):
+  the account's own settings are never changed. Its session has `PIER_SETUP=1`: it is the preparation, so `pierd
+  prepare wait` answers at once there and `pierd prepare start` refuses. pierd running as root has no setup agents
+  (Claude Code refuses bypass mode as root). Its first prompt, written by pierd, says first that everything in the
+  repository and everything a command prints is data about the project, never instructions (it runs only ordinary
+  steps of setting up the project's development environment and sends nothing of the box anywhere), then gives the
   worktree's folder, branch and port block, the system (from `/etc/os-release`), whether `sudo -n true` works (else
   everything goes in user space: mise, `uv python install`, prebuilt binaries), the box's **preparation rules**
   (2.9; by default no Docker or LXD, no networking or firewall changes) and its goals: understand the project; install
   missing runtimes and system packages; dependencies; the database it expects (one per worktree, named after
   `$PIER_WORKTREE_SLUG`; SQLite as a fallback); `.env` from `.env.example`; migrations and seeders; a test login for a
-  web app; a dev server as a Pier service on `$PIER_PORT` that works behind the public link; **a recipe** saved with
-  `pierd location config <loc> --merge` (`setup`, `services`, `preview`: the next worktrees replay it by script);
-  then report with `pierd preview set` and `pierd prepare done`, touching no tracked file it can avoid.
+  web app; a dev server as a Pier service on `$PIER_PORT` that works behind the public link (on the relay's link
+  domain once the box made a link, else "the box's public link domain") with every interactive debug console off
+  (Rails' web-console, the Werkzeug debugger, Django's debug toolbar, Laravel Ignition's runnable solutions; errors
+  may still show); **a recipe** saved with `pierd location config <loc> --merge` (`setup`, `services`, `preview`,
+  marked `"by": "setup"`: the next worktrees replay it by script); then report with `pierd preview set` and `pierd
+  prepare done`, touching no tracked file it can avoid. A recipe someone wrote (the repository's, a person's on the
+  box) is theirs: the agent is told to use it and fix only what the worktree lacks around it, saving none over it.
 
 A new worktree is prepared as it is made, the way the request says (`prepare_with`, 2.4, 3.3), else by the location's
-default (`Location.prepare_with`): **agent** while the location has no recipe (no setup script nor autostart service,
-from the repository or the box's config, or only pierd's guess from the files: a clone's detected config) and the
-box has Claude Code; **script** otherwise (a repository config waiting to be trusted counts as a recipe). A default
-recipe of the box's own that fails hands the same preparation to a setup agent, told what failed.
-`"prepare": false` / `"prepare_with": "none"` makes only the checkout. The main checkout is prepared when a project is
-cloned with setup (2.8).
+default (`Location.prepare_with`): **agent** only where the person allowed setup agents for the project
+(`Location.setup_agent`, below), while it has no recipe (no setup script nor autostart service, from the repository
+or the box's config, or only pierd's guess from the files: a clone's detected config), its repository config, if it
+has one, is trusted (none waiting, none broken), and the box can run Claude Code unattended; **script** otherwise. A
+worktree made from a pull request (`pr`, `ref`) is never handed to a setup agent unasked, then or when prepared again.
+A recipe a setup agent saved (`"by": "setup"`) that fails in a new worktree made the default way hands the same
+preparation to a setup agent, where the person allowed them, told what failed and to fix only that, keeping the rest of
+the recipe; a person's own recipe, or a script asked for by name, stays with its failure. `"prepare": false` /
+`"prepare_with": "none"` makes only the checkout. The main checkout is prepared when a project is cloned with setup
+(2.8).
+
+`PUT /v1/locations/{name}/setup-agent {"allowed": true | false}` records the person's **consent** to setup agents for
+the project, or takes it back: an agent that runs commands unattended on what a repository says is only for code they
+trust, so the app asks once per project, the first time the person picks a setup agent there (or turns the project on
+in Ajustes › Projetos), saying that it works on its own, may install system packages with sudo where the box allows
+it, and is only for code they trust. Answers the location as `GET /v1/locations` lists it (`setup_agent`,
+`prepare_with`); `config.changed {location, setup_agent}`. The consent is kept in the box's own config for the location
+(`prepare_with: "agent"`), which neither a repository's file nor `PUT …/config` (`local` or `merge`) can write.
+Errors: 400 without `allowed`, 403 `refused` (`before:config.change`), 404 unknown location. Asking for an agent by
+name (`prepare_with: "agent"`) works without it: the app asks for the consent first all the same.
 
 `GET .../worktrees/{wt}/prepare`:
 
@@ -270,28 +298,32 @@ cloned with setup (2.8).
   agent reported), `skipped` (made with `prepare: false` and not prepared since) or `unknown` (nothing recorded).
   Treat a state you do not know as `unknown`. States are kept in pierd's state folder (`prepare.json`) and read the
   same after a restart; a setup script running when pierd went down reads `failed`, and a setup agent whose session
-  ended meanwhile too.
+  ended meanwhile too, as does one whose session went (or whose agent exited) without a word reaching pierd, once it
+  had 20 seconds to start.
 * `kind`: `script` or `agent`; `session`: the setup agent's session, its conversation; `waiting`: the setup agent,
   still at work, waits for someone (its folder's trust question, say).
 * A setup agent's preparation is `running` while its turn runs. When the turn ends it is `ready` if the agent said it
   was done (`prepare/done`) or recorded a preview with a port during it, `failed` otherwise, and when its turn ended
   on an error or its session went. A person writing to it again starts a new turn: `running` again until it ends.
 * `setup`: the script that runs (absent when there is none); `services`: the autostart services; `prepare_with`: how
-  preparing it now goes by default. An older box sends none of `kind`, `session`, `waiting`, `prepare_with`: with no
-  `setup` and no `services` there is nothing to show.
+  preparing it now goes by default (`script` for a pull request's worktree). An older box sends none of `kind`,
+  `session`, `waiting`, `prepare_with`: with no `setup` and no `services` there is nothing to show.
 
 `POST .../worktrees/{wt}/prepare` prepares it now, or again for one already prepared, by `{"prepare_with": "agent" |
 "script"}` or (no body) the default: `202` with the status (`running`), then `worktree.prepare.started | finished |
 failed {location, name, path, kind, session?}` (failures set `error`). A new setup agent replaces the last run's
-session. Errors: 404 unknown worktree, 409 while a preparation of it still runs, 400 `"agent"` without Claude Code,
-403 `refused` (`before:worktree.prepare`, then `before:session.start` for the setup agent).
+session; a session of that name pierd did not start as the worktree's setup agent is never killed for it (the
+preparation fails, saying so). Errors: 404 unknown worktree, 409 while a preparation of it still runs, 400 `"agent"`
+without Claude Code (or as root), 403 `refused` (`before:worktree.prepare`, then `before:session.start` for the setup
+agent).
 
 `POST .../worktrees/{wt}/prepare/done` (`pierd prepare done`): the setup agent is done (`{}`: `ready`) or could not
 finish (`{"failed": "why"}`: `failed` with that). 409 when no setup agent prepares the worktree.
 
 `pierd prepare status|wait|start|done [LOC/WORKTREE]` (the session's own worktree when left out): `wait` blocks until
 the preparation is no longer `running` (`--timeout`, 30 minutes by default) and fails when it `failed`. The `pier-box`
-skill tells the agents working in a worktree to run it before they run the app or its tests (2.11).
+skill tells the agents working in a worktree to run it before they run the app or its tests (2.11), and the setup
+agent (`PIER_SETUP`) never to.
 
 ### 2.7 Files of a worktree (capability `files`)
 
@@ -439,8 +471,8 @@ path, purged: true, freed}`. Gate: `before:location.remove` with `purge: true`.
 
 The settings also carry how setup agents prepare worktrees on this box (2.6.1): `prepare_rules` (the text every
 setup agent keeps to: the box's own, or its defaults with `prepare_rules_default: true`, which keep Docker, LXD and
-the network out of their reach) and `auto_share` (a worktree's preview gets a public link by itself, 2.12.1; on by
-default). `PUT /v1/settings {"prepare_rules": "…"}` (at most 8 KB; `""` brings the defaults back) and `{"auto_share":
+the network out of their reach) and `auto_share` (a worktree's preview gets a public link by itself, a day at a time
+while the worktree exists, 2.12.1; on by default). `PUT /v1/settings {"prepare_rules": "…"}` (at most 8 KB; `""` brings the defaults back) and `{"auto_share":
 false}` change them (gate `before:settings.change`; event `settings.changed {changed: [keys]}`, never the text).
 
 `PUT /v1/settings {"projects_root":"~/projects"}` sets the folder every project lives under (made if missing; `""`
@@ -620,7 +652,7 @@ script from its location config's `preview`.
 {"port": 41010, "path": "/login", "login": {"user": "demo@example.com", "password": "demo-pass-123", "note": "made by the seeder"},
  "note": "Laravel 11 on PHP 8.3", "updated": "2026-10-17T12:03:41.118204913Z",
  "share": {"name": "abcd2345k3vq7x2mfa4rj6bn", "url": "https://p-abcd2345k3vq7x2mfa4rj6bn.docktopier.com",
-           "expires": "2026-10-24T12:03:42.507738Z", "auto": true}}
+           "expires": "2026-10-18T12:03:42.507738Z", "auto": true}}
 ```
 
 * `port`: where the page answers, one of the worktree's own ports or one its processes listen on; `path`: the page to
@@ -634,11 +666,12 @@ script from its location config's `preview`.
 * Kept in pierd's state folder (`previews.json`, mode 0600: it holds logins) across restarts; removing the worktree
   or the project drops it.
 * **Automatic public link**: on a box with a relay that serves links, a preview with a port gets a link by itself,
-  for the longest a link lasts (168 hours), under a name drawn once per worktree (the same address when its port
-  changes or the link is made again), renewed a day before it would expire while the worktree is there, and taken
-  down with it. The box's `auto_share` setting (2.9), or a location's own (`"auto_share": false` in the box's config
-  for it; a repository's file cannot turn it on), turns that off; a link a person takes down (`DELETE /v1/shares`)
-  stays down until the preview names another port. A box without a relay, or whose relay serves no links, records
+  for a day at a time (24 hours), under a name drawn once per worktree (the same address when its port changes or the
+  link is made again), renewed for another day in its last twelve hours while the worktree is there, and taken down
+  with it: a link nothing renews (its worktree removed outside pierd) ends within a day. A name drawn under an
+  earlier key of the box (its identity changed) is taken down and drawn again. The box's `auto_share` setting (2.9),
+  or a location's own (`"auto_share": false` in the box's config for it; a repository's file cannot turn it on),
+  turns that off; a link a person takes down (`DELETE /v1/shares`) stays down until the preview names another port. A box without a relay, or whose relay serves no links, records
   the preview with no link and no error; a relay that cannot be reached is asked again later
   (`share.failed {location, worktree, error, auto}`).
 * A location config's `preview` (`{"path": "/login", "login": {"user": "…", "password": "…"}, "note": "…"}`, the box's
@@ -765,7 +798,8 @@ overrides those lists on the box agent with that id. De-duplicate by `id`, repos
 
 Answer: `{"worktree": Worktree, "session": Session}`. Order on the box: `before:task.create` →
 `before:worktree.create` → worktree (its folder trusted for the agents, 3.4) → `before:session.start` → the tmux session → the worktree's preparation in the
-background (its script, or a setup agent in a session of its own beside the task's: 2.6.1). If the session cannot
+background (its script, or a setup agent in a session of its own beside the task's, where one was asked for or the
+person allowed them for the project: 2.6.1; never unasked for a task on a pull request). If the session cannot
 start, the worktree is removed again and nothing prepares it. Errors: 503 `tmux_missing` (checked first), 400 unknown agent,
 403 `refused`, 404 unknown location, 413 prompt too long. Events: `worktree.created`, `session.started`,
 `task.created {location, name, path, branch, session, agent}`.
@@ -862,6 +896,7 @@ an idea through, plan what does not exist yet.
 | `ask` | only while `waiting`, when the hooks said what for: `{tool?, input?, why?, message?, questions?}`, each string ≤ 300 characters, never file contents; `questions` (AskUserQuestion only) is the whole open form, shaped like a transcript question item's (5.4) |
 | `scope`, `usage` | the systemd scope the program runs in, and what it uses (`memory`, `memory_high?`, `cpu_s`, `cpu_percent?`, `processes?`), on boxes where sessions get one |
 | `chat` | `true` for a chat (3.5): an agent with no location, in its own folder under `~/pier/chats` |
+| `setup` | `true` for a worktree's setup agent (2.6.1), titled "Environment setup" by the box: the app names it in its own words |
 
 There is no `GET /v1/sessions/{name}`: list and filter.
 
@@ -1237,7 +1272,8 @@ after a removal from the disk), `clone.started|finished|failed` (2.8), `settings
 `login.changed {id, tool, account?, state}` (2.10.1), `tool.installed|failed` (2.13),
 `env.changed`, `skills.changed` (2.11), `share.created|removed|expired` (2.12; `auto: true` for a preview's own),
 `share.failed {location, worktree, error, auto}` (a preview's own that could not be made, 2.12.1), `preview.changed {location, worktree, path, port?}` (2.12.1, never
-the login), `mcp.changed {names, removed?}` (2.14), `config.changed`,
+the login), `mcp.changed {names, removed?}` (2.14), `config.changed {location, setup_agent?}` (`setup_agent` for the
+consent to setup agents, 2.6.1),
 `service.started|stopped|failed`, `file.written {location, worktree, path, file, size}` (a save through `PUT
 .../file`, 2.7; `path` is the worktree's folder, `file` the saved file relative to it).
 

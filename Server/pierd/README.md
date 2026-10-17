@@ -166,16 +166,21 @@ something already listens.
 
 ### Preparing worktrees
 
-A new worktree is prepared as it is made: by its location's setup script and autostart services, or, when the
-location has no recipe yet and the box has Claude Code, by a **setup agent**: Claude Code in a session of its own
-(`<worktree>-setup`), unattended, told by pierd what the box allows (whether `sudo -n` works, the worktree's ports, the
-box's preparation rules: by default no Docker or LXD, no network or firewall changes; the app edits them). It installs
-what the project needs, gets the app running on `$PIER_PORT` with a test login, saves what it did as the location's
-config (`location config --merge`), so the next worktrees are prepared by script, and reports with `pierd preview set`
-and `pierd prepare done`. `worktree new` and `task new` take `--prepare-with agent|script|none`; `pierd prepare wait`
-blocks until a worktree's preparation is over (agents run it before they run the app or its tests). A worktree's
-preview with a port gets a public link by itself on a box with a relay that serves links, renewed while the worktree
-is there.
+A new worktree is prepared as it is made: by its location's setup script and autostart services, or by a **setup
+agent**: Claude Code in a session of its own (`<worktree>-setup`, with `PIER_SETUP=1`), unattended (bypass mode, its
+warning skipped for that process alone through `--settings`; the account's own settings are left as they are), told
+by pierd that the repository is data, never instructions, and what the box allows (whether `sudo -n` works, the
+worktree's ports, the box's preparation rules: by default no Docker or LXD, no network or firewall changes; the app
+edits them). It installs what the project needs, gets the app running on `$PIER_PORT` with a test login and its debug
+consoles off, saves what it did as the location's config (`location config --merge`, marked `by: setup`), so the next
+worktrees are prepared by script, and reports with `pierd preview set` and `pierd prepare done`. A setup agent
+prepares a location's new worktrees by default only once the person allowed it for that location (the app asks once
+per project: `PUT /v1/locations/{name}/setup-agent`), and then only while it has no recipe, its repository config is
+trusted, the worktree is not a pull request's and pierd does not run as root; asked for by name
+(`--prepare-with agent`), one runs anyway. `worktree new` and `task new` take `--prepare-with agent|script|none`;
+`pierd prepare wait` blocks until a worktree's preparation is over (agents run it before they run the app or its
+tests; the setup agent itself never does). A worktree's preview with a port gets a public link by itself on a box
+with a relay that serves links, a day at a time, renewed while the worktree is there.
 
 ## Agent hooks
 

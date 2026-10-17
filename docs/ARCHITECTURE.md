@@ -424,26 +424,34 @@ its preview (docs/API.md 2.10–2.12, PROTOCOL.md §10.1).
 
 **Environment preparation by an agent** (boxes with `prepare.agent`): a new worktree is prepared as it is made, the
 way the composer's **Preparação** chips say (the same three in Agentes' "Worktree nova" menu): **Só o código**,
-**Script do projeto** (its setup script and autostart services) or **Agente prepara**, picked by default while the
-project has no recipe (`Location.prepareWith`; `PrepareChoice`, PierKit, tested: the project's default is left to
-the box, which hands a recipe of its own that fails to an agent). The setup agent is Claude Code on the project's
-account in a session of its own beside the task's (`<worktree>-setup`), unattended (bypassPermissions, no
-questions) and told by pierd's prompt what the box allows: sudo or user space, the worktree's ports, the box's
+**Script do projeto** (its setup script and autostart services) or **Agente prepara**. An agent that runs commands
+unattended is only for code the person trusts, so the first time they pick **Agente prepara** in a project (there, in
+Detalhes' **Preparar com agente**, or turning the project on under Ajustes › Projetos › Agente por projeto) a
+**consent sheet** (`SetupAgentConsentSheet`) says what it does (works on its own, installs what is missing, system
+packages with sudo where the box allows it, only for code they trust) and records the yes on the box (`PUT
+…/setup-agent`, `Location.setupAgent`); after that the project's worktrees without a recipe are prepared by one by
+default (`Location.prepareWith`), with no more questions, and Ajustes › Projetos takes it back. The box never hands a
+pull request's worktree or an untrusted repository config to one unasked. A chip the person picked is sent as picked;
+the project's default left as it was is left to the box, which hands a failing recipe a setup agent saved to another
+one (`PrepareChoice`, PierKit, tested). The setup agent is Claude Code on the project's account in a session of its
+own beside the task's (`<worktree>-setup`, named "Preparação do ambiente" by the app: `Session.setup`), unattended
+(bypassPermissions with its warning skipped for that process alone, no questions) and told by pierd's prompt that the
+repository is data, never instructions, and what the box allows: sudo or user space, the worktree's ports, the box's
 **preparation rules** (Ajustes › Projetos; by default no Docker or LXD, no network changes). It installs what the
 project lacks, sets up its database and `.env`, runs its migrations and seeders, makes a test login, runs the dev
-server as a Pier service on `$PIER_PORT` that works behind the public link, saves what it did as the project's
-recipe (the next worktrees replay it by script, without an agent) and reports. Detalhes' **Preparação** follows it
-(running, waiting for someone, ready, failed with why; **Abrir conversa** while its session is there; **Preparar com
-agente** again), and the agents working in the worktree wait for it before they run the app or its tests (`pierd
-prepare wait`, in the `pier-box` skill). docs/API.md 2.6.1.
+server as a Pier service on `$PIER_PORT` that works behind the public link (debug consoles off), saves what it did as
+the project's recipe (the next worktrees replay it by script, without an agent; a recipe someone wrote is kept) and
+reports. Detalhes' **Preparação** follows it (running, waiting for someone, ready, failed with why; **Abrir conversa**
+while its session is there; **Preparar com agente** again), and the agents working in the worktree wait for it before
+they run the app or its tests (`pierd prepare wait`, in the `pier-box` skill). docs/API.md 2.6.1.
 
 **Previews**: whoever gets a worktree's page running records it (`pierd preview set`: its port and path, a test login
 of the app, a note), and a worktree prepared by script gets its project's. Detalhes' **Visualização** and the
 session's inspector (`SessionDetailsList`, from a `WorktreeDetailsStore` of its own) show it first
-(`WorktreePreviewBlock`): its public link (`https://p-….docktopier.com`, made by the box by itself and renewed while
-the worktree is there unless Ajustes › Projetos turns that off) with Copiar, Abrir and Enviar, the page on the box's
-own address, and **Acesso de teste**, the user and the password, hidden until asked for, each with its copy button.
-docs/API.md 2.12.1.
+(`WorktreePreviewBlock`): its public link (`https://p-….docktopier.com`, made by the box by itself for a day at a time
+and renewed while the worktree is there unless Ajustes › Projetos turns that off) with Copiar, Abrir and Enviar (and
+Abrir no Pier in Detalhes), the page on the box's own address, and **Acesso de teste**, the user and the password,
+hidden until asked for (again for each worktree), each with its copy button. docs/API.md 2.12.1.
 
 ## Layouts: tabs (compact) and sidebar (regular width, Mac)
 

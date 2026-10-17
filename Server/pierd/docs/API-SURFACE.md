@@ -49,7 +49,8 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `GET`/`POST /v1/shares`, `DELETE /v1/shares/{name}` | `shares.go` (through `relay.Listener.Publish`) | App `publicLinks()`… : WorktreeDetails; `publicLinks()`: PreviewBrowser (the page it opens) |
 | `GET /v1/github/repos[?owner=]` | `github.go` `listGitHubRepos` (the box's gh) | App `gitHubRepos()`: GitHubReposScreen |
 | `GET /v1/locations/{name}/branches` | `helpers.go` `listBranches` | App `branches()`: ComposeModel, WorktreeParts |
-| `GET`/`PUT /v1/locations/{name}/config` (`local` replaces, `merge` lays over) | `repoconfig.go` `getConfig`/`putConfig` | `pierd location config [--set FILE \| --merge FILE\|-]` (a setup agent saves its recipe with `--merge`) |
+| `GET`/`PUT /v1/locations/{name}/config` (`local` replaces, `merge` lays over) | `repoconfig.go` `getConfig`/`putConfig` | `pierd location config [--set FILE \| --merge FILE\|-]` (a setup agent saves its recipe with `--merge`, marked `by: setup` from its session) |
+| `PUT /v1/locations/{name}/setup-agent` (`allowed`; gate `before:config.change`; `config.changed {location, setup_agent}`) | `setupagent.go` `putSetupAgent` (`Locations.SetPrepareWith`) | App `setSetupAgent()`: SetupAgentConsentSheet (from Compose, Agentes' Worktree nova and Detalhes' Preparar com agente), BoxProjectsSettings (Agente por projeto) |
 | `POST`/`DELETE /v1/locations/{name}/config/trust` | `repotrust.go` | `pierd location config --trust HASH` / `--untrust` |
 | `POST /v1/locations/{name}/worktrees` (`prepare`, `prepare_with`) | `api.go` `addWorktree` (prepared by its setup script and autostart services, or by a setup agent: `setupagent.go`) | App `createWorktree()`: ComposeModel, PullRequestStore, WorktreeParts; `pierd worktree new [--prepare-with]` |
 | `DELETE /v1/locations/{name}/worktrees/{worktree}` (`force`, `delete_branch`; 202 while the archive script runs) | `api.go` `removeWorktree` | App `removeWorktree()`: EndSessionSheet, Housekeeper (Faxina), WorktreeParts; `pierd worktree rm` |
@@ -120,7 +121,7 @@ Event types pierd publishes, and what the app does with them:
 | `worktree.created`, `worktree.removed`, `worktree.{setup,archive}.{started,finished,failed}` | locations refresh; ReviewScreen reloads; local notification on `*.failed` |
 | `worktree.prepare.{started,finished,failed}` (`kind`, `session` for a setup agent) | WorktreeDetails reads the preparation again; no notification (a setup that failed already sent `worktree.setup.failed`; a setup agent is a session like any other, followed by its own events); setupagent.go settles a setup agent's preparation from its session's `agent.*` and `session.stopped` events (a bus observer) |
 | `preview.changed`, `share.*` (`auto` for a preview's own link, `share.failed`) | WorktreeDetails and the session inspector's Visualização read the preview again |
-| `location.added`, `location.removed`, `config.changed` | locations refresh |
+| `location.added`, `location.removed`, `config.changed` (`setup_agent` for the consent to setup agents) | locations refresh |
 | `account.*` | HomeStore reads the limits again |
 | `login.changed` | SignInSheet reads its sign-in again at once (it also polls every 1.5 s) |
 | `tool.installed`, `tool.failed` | none: BoxToolsStore polls `GET /v1/tools` while an install it asked for runs |

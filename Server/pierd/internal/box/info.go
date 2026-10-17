@@ -97,7 +97,8 @@ func (b *Box) handleInfo(w http.ResponseWriter, r *http.Request) error {
 // mcp: GET /v1/mcp, PUT and DELETE /v1/mcp/{name}, the MCP servers pierd writes
 // into every agent account (where pierd keeps a state folder); prepare.agent:
 // prepare_with on new worktrees, tasks and …/prepare, with a setup agent
-// (setupagent.go); preview: GET/PUT …/worktrees/{w}/preview.
+// (setupagent.go), and PUT …/locations/{name}/setup-agent, the person's
+// consent to them per project; preview: GET/PUT …/worktrees/{w}/preview.
 func (b *Box) Capabilities() []string {
 	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env", "prepare", "tools", "logins"}
 	if b.StateDir != "" {
