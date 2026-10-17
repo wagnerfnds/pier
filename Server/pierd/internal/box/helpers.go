@@ -210,11 +210,12 @@ const maxEditableFile = 2 << 20
 var errDangling = httpError{http.StatusForbidden, "that path is a link to something that isn't there"}
 
 // createAgentSession starts a session for the agent preset agent ("" for
-// a plain command), with its worktree's environment. An agent that asks
+// a plain command), with its worktree's environment and the variables in
+// extra (KEY=value). An agent that asks
 // whether to trust its folder (Claude Code, Codex) is told first, in the
 // account it starts on: a task's worktree, a project, a chat's own folder.
-func (b *Box) createAgentSession(ctx context.Context, name, location, dir, command, agent string) (Session, error) {
-	env := b.sessionEnv(ctx, dir)
+func (b *Box) createAgentSession(ctx context.Context, name, location, dir, command, agent string, extra ...string) (Session, error) {
+	env := append(b.sessionEnv(ctx, dir), extra...)
 	if a := agentFor(Session{Preset: agent, Command: command}); a == "claude" || a == "codex" {
 		b.pretrust(dir, env, a)
 	}

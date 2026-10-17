@@ -64,6 +64,14 @@ func (c RepoConfig) validate() error {
 			return err
 		}
 	}
+	switch c.PrepareWith {
+	case "", "agent", "script":
+	default:
+		return fmt.Errorf("prepare_with is agent or script")
+	}
+	if c.By != "" && c.By != "setup" {
+		return fmt.Errorf("by is setup, or left out")
+	}
 	return hooks.Validate(c.Hooks)
 }
 
@@ -97,9 +105,11 @@ func merge(repo, local RepoConfig) RepoConfig {
 	if local.Preview != nil {
 		out.Preview = local.Preview
 	}
-	// Whether previews go public, and whether pierd guessed the config, are
-	// the box's to say, never a repository's.
+	// Whether previews go public, whether setup agents may prepare it, who
+	// wrote the recipe and whether pierd guessed it are the box's to say,
+	// never a repository's.
 	out.AutoShare, out.Detected = local.AutoShare, local.Detected
+	out.PrepareWith, out.By = local.PrepareWith, local.By
 	return out
 }
 
@@ -121,9 +131,23 @@ func layOver(base, over RepoConfig) RepoConfig {
 	if over.AutoShare == nil {
 		out.AutoShare = base.AutoShare
 	}
-	// Someone wrote it now: it is no longer only pierd's guess.
-	out.Detected = false
+	// The person's consent to setup agents is SetPrepareWith's alone: a
+	// recipe saved over the config (a setup agent's) never gives it.
+	out.PrepareWith = base.PrepareWith
+	// The recipe is whoever wrote it last: no longer only pierd's guess,
+	// and a setup agent's only while a setup agent wrote it.
+	if over.recipe() {
+		out.Detected = false
+	} else {
+		out.Detected, out.By = base.Detected, base.By
+	}
 	return out
+}
+
+// recipe says c holds what prepares a worktree: a setup script, services,
+// variables or a preview.
+func (c RepoConfig) recipe() bool {
+	return c.Setup != "" || len(c.Services) > 0 || len(c.Env) > 0 || c.Preview != nil
 }
 
 func mergeBy[T any](base, over []T, key func(T) string) []T {
@@ -202,7 +226,8 @@ func (l *Locations) saved(name string) (savedLocation, error) {
 	return savedLocation{}, ErrUnknownLocation
 }
 
-// SetLocalConfig replaces this box's own config for a location.
+// SetLocalConfig replaces this box's own config for a location, all but the
+// person's consent to setup agents, which only SetPrepareWith changes.
 func (l *Locations) SetLocalConfig(name string, c RepoConfig) error {
 	if err := c.validate(); err != nil {
 		return err
@@ -211,11 +236,36 @@ func (l *Locations) SetLocalConfig(name string, c RepoConfig) error {
 		for i := range all {
 			if all[i].Name == name {
 				cc := c
+				cc.PrepareWith = ""
+				if all[i].Config != nil {
+					cc.PrepareWith = all[i].Config.PrepareWith
+				}
 				all[i].Config = &cc
 				// The config now holds the scripts.
 				all[i].Setup, all[i].Archive = "", ""
 				return all, nil
 			}
+		}
+		return nil, ErrUnknownLocation
+	})
+}
+
+// SetPrepareWith records the person's consent to setup agents for a
+// location ("agent"), or takes it back (""), leaving the rest of the box's
+// config for it as it is.
+func (l *Locations) SetPrepareWith(name, with string) error {
+	return l.update(func(all []savedLocation) ([]savedLocation, error) {
+		for i := range all {
+			if all[i].Name != name {
+				continue
+			}
+			c := RepoConfig{}
+			if all[i].Config != nil {
+				c = *all[i].Config
+			}
+			c.PrepareWith = with
+			all[i].Config = &c
+			return all, nil
 		}
 		return nil, ErrUnknownLocation
 	})

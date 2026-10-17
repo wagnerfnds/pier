@@ -298,6 +298,28 @@ func (b *Box) previewView(location, worktree string) Preview {
 	return p
 }
 
+// shareDomain is the domain the box's relay publishes links on, as a link it
+// made says ("example.com" for https://p-….example.com); "" before it made
+// any, or without a relay.
+func (b *Box) shareDomain() string {
+	if b.Publisher == nil {
+		return ""
+	}
+	sh := b.shareStore()
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	for _, s := range sh.all {
+		u, err := url.Parse(s.URL)
+		if err != nil {
+			continue
+		}
+		if _, domain, ok := strings.Cut(u.Hostname(), "."); ok && strings.Contains(domain, ".") {
+			return domain
+		}
+	}
+	return ""
+}
+
 // autoShareFor says whether location's previews get public links by
 // themselves: its own config's say, else the box's.
 func (b *Box) autoShareFor(ctx context.Context, location string) bool {
@@ -307,17 +329,19 @@ func (b *Box) autoShareFor(ctx context.Context, location string) bool {
 	return b.Locations.Settings().autoShare()
 }
 
-// How long an automatic link lasts, when it is renewed, and how long a
-// relay that could not make one is left alone: one that could not be
-// reached, and one that serves no links.
+// How long an automatic link lasts at a time (a link someone forgot about
+// ends within a day of its worktree going quiet), when it is renewed, and
+// how long a relay that could not make one is left alone: one that could not
+// be reached, and one that serves no links.
 const (
-	autoShareFor     = maxShareHours * time.Hour
-	autoShareRenew   = 24 * time.Hour
+	autoShareFor     = defaultShareHours * time.Hour
+	autoShareRenew   = 12 * time.Hour
 	autoShareBackoff = 10 * time.Minute
 	autoShareNoRelay = 6 * time.Hour
 )
 
-// previewLocks keeps one sync of a worktree's link at a time.
+// previewLocks keeps one sync of a worktree's link at a time, and its
+// forgetting apart from them.
 var previewLocks sync.Map // *Box + key → *sync.Mutex
 
 type previewLockKey struct {
@@ -325,18 +349,22 @@ type previewLockKey struct {
 	key string
 }
 
+func (b *Box) previewLock(key string) *sync.Mutex {
+	m, _ := previewLocks.LoadOrStore(previewLockKey{b, key}, &sync.Mutex{})
+	return m.(*sync.Mutex)
+}
+
 // syncPreviewShare makes the worktree's public link match its preview: made
 // for its port (or moved to a new one) when the preview has a port and links
-// are on, renewed when it expires within a day, taken down when they are
-// off. A box without a relay, or whose relay serves no links, gets none and
-// no error.
+// are on, renewed for another day in its last twelve hours, taken down when
+// they are off. A box without a relay, or whose relay serves no links, gets
+// none and no error.
 func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 	if b.Publisher == nil {
 		return
 	}
 	key := prepKey(location, worktree)
-	m, _ := previewLocks.LoadOrStore(previewLockKey{b, key}, &sync.Mutex{})
-	mu := m.(*sync.Mutex)
+	mu := b.previewLock(key)
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -348,6 +376,7 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 	on := e.Port > 0 && !e.ShareStopped && b.autoShareFor(ctx, location)
 	sh := b.shareStore()
 	now := b.now().UTC()
+	prefix := b.Publisher.SharePrefix()
 
 	sh.mu.Lock()
 	idx := -1
@@ -356,6 +385,10 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 			idx = i
 		}
 	}
+	// A name drawn under another key's prefix (the box's identity changed)
+	// is one the relay no longer serves: that link is made again, under a
+	// new name.
+	current := idx >= 0 && strings.HasPrefix(e.ShareName, prefix)
 	switch {
 	case !on && idx >= 0:
 		// Links are off now: the one made for the preview goes.
@@ -369,7 +402,7 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 	case !on:
 		sh.mu.Unlock()
 		return
-	case idx >= 0 && sh.all[idx].Port == e.Port:
+	case current && sh.all[idx].Port == e.Port:
 		if sh.all[idx].Expires.Sub(now) < autoShareRenew {
 			sh.all[idx].Expires = now.Add(autoShareFor)
 			sh.save()
@@ -385,10 +418,12 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 		return
 	}
 	name := e.ShareName
-	if name == "" || !strings.HasPrefix(name, b.Publisher.SharePrefix()) {
+	stale := ""
+	if name == "" || !strings.HasPrefix(name, prefix) {
 		// Drawn once and kept with the preview: the link's address stays
-		// the same whenever it is made again.
-		name = newShareName(b.Publisher.SharePrefix())
+		// the same whenever it is made again, until the box's key changes.
+		stale = name
+		name = newShareName(prefix)
 		if cur, ok := ps.all[key]; ok {
 			cur.ShareName = name
 			ps.all[key] = cur
@@ -396,9 +431,15 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 		}
 	}
 	ps.mu.Unlock()
+	if stale != "" {
+		b.Publisher.Unpublish(stale)
+		if b.dropShare(stale) {
+			b.Events.Publish(eventf(b, "share.removed", map[string]any{"name": stale, "location": location, "worktree": worktree}))
+		}
+	}
 
 	// Moved to another port: published again under the same name.
-	if idx >= 0 {
+	if current {
 		b.Publisher.Unpublish(name)
 	}
 	link, err := b.Publisher.Publish(ctx, name, e.Port)
@@ -433,6 +474,17 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 		}
 		return
 	}
+	// Published while nothing could change the preview (its lock is held, and
+	// forgetting a worktree takes it too), but checked again all the same:
+	// a link for a preview that is gone or moved on is taken down at once.
+	ps.mu.Lock()
+	cur, still := ps.all[key]
+	still = still && cur.ShareName == name && cur.Port == e.Port && !cur.ShareStopped
+	ps.mu.Unlock()
+	if !still {
+		b.Publisher.Unpublish(name)
+		return
+	}
 	s := Share{Name: name, URL: link, Location: location, Worktree: worktree, Port: e.Port, Created: now, Expires: now.Add(autoShareFor), Auto: true}
 	sh.mu.Lock()
 	keep := sh.all[:0]
@@ -448,9 +500,9 @@ func (b *Box) syncPreviewShare(ctx context.Context, location, worktree string) {
 }
 
 // renewPreviewShares keeps every preview's link alive while its worktree is
-// there (StartShares runs it every minute): renewed a day before it would
-// expire, made again when it went missing (a relay that was down), taken
-// down when links were turned off.
+// there (StartShares runs it every minute): renewed for another day in its
+// last twelve hours, made again when it went missing (a relay that was
+// down), taken down when links were turned off.
 func (b *Box) renewPreviewShares(ctx context.Context) {
 	if b.Publisher == nil {
 		return
@@ -516,23 +568,30 @@ func (b *Box) previewShareRemoved(name string) {
 
 // forgetWorktree drops what pierd keeps about a worktree that went away
 // (worktree "": every worktree of the location): its preview, its public
-// links, how its preparation went.
+// links, how its preparation went. Each preview goes under its sync's lock,
+// so a link being made for it is done (and then taken down here) or never
+// made.
 func (b *Box) forgetWorktree(location, worktree string) {
-	b.dropShares(location, worktree)
 	ps := b.previews()
 	ps.mu.Lock()
-	changed := false
+	var keys []string
 	for k := range ps.all {
 		l, w, _ := strings.Cut(k, "/")
 		if l == location && (worktree == "" || w == worktree) {
-			delete(ps.all, k)
-			delete(ps.failed, k)
-			changed = true
+			keys = append(keys, k)
 		}
 	}
-	if changed {
-		ps.save()
-	}
 	ps.mu.Unlock()
+	for _, k := range keys {
+		mu := b.previewLock(k)
+		mu.Lock()
+		ps.mu.Lock()
+		delete(ps.all, k)
+		delete(ps.failed, k)
+		ps.save()
+		ps.mu.Unlock()
+		mu.Unlock()
+	}
+	b.dropShares(location, worktree)
 	b.preps().forget(location, worktree, func(session string) { b.setupSessions.Delete(session) })
 }

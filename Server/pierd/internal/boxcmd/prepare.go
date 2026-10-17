@@ -186,6 +186,10 @@ func prepareCmd(ctx context.Context, c *box.Client, action string, args []string
 		if err != nil {
 			return err
 		}
+		if ownPreparation(loc, wt) {
+			fmt.Fprintln(out, "You are this worktree's preparation (PIER_SETUP): there is nothing to wait for.")
+			return nil
+		}
 		st, err := waitPrepared(ctx, c, loc, wt, *timeout)
 		if err != nil {
 			return err
@@ -207,6 +211,9 @@ func prepareCmd(ctx context.Context, c *box.Client, action string, args []string
 		loc, wt, err := worktreeRef(pos, usage)
 		if err != nil {
 			return err
+		}
+		if ownPreparation(loc, wt) {
+			return errors.New("you are this worktree's preparation (PIER_SETUP): another one would replace you")
 		}
 		st, err := c.Prepare(ctx, loc, wt, *with)
 		if err != nil {
@@ -237,6 +244,12 @@ func prepareCmd(ctx context.Context, c *box.Client, action string, args []string
 		return show(out, *asJSON, st, func() { printPrepare(out, st) })
 	}
 	return usageErr("prepare status|wait|start|done [LOC/WORKTREE] …")
+}
+
+// ownPreparation says this shell is loc/wt's setup agent (pierd marks its
+// session with PIER_SETUP=1): its preparation is the one running.
+func ownPreparation(loc, wt string) bool {
+	return os.Getenv("PIER_SETUP") == "1" && os.Getenv("PIER_LOCATION") == loc && os.Getenv("PIER_WORKTREE_NAME") == wt
 }
 
 // waitPrepared reads a worktree's preparation until it is no longer

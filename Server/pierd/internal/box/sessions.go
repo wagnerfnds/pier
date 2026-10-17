@@ -62,6 +62,9 @@ type Session struct {
 	// Chat says it is a conversation that belongs to no project: an agent
 	// with no location, in a folder of its own under ~/pier/chats.
 	Chat bool `json:"chat,omitempty"`
+	// Setup says it is a worktree's setup agent (setupagent.go), which the
+	// apps name in their own words.
+	Setup bool `json:"setup,omitempty"`
 
 	// commandFile is where the session's command is kept, when it is;
 	// panePID the process its pane runs.

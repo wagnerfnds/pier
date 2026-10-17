@@ -206,6 +206,7 @@ func (b *Box) Mount(s *wire.Server) {
 	route("GET /v1/locations/{name}/worktrees/{worktree}/prepare", b.getPrepare)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/prepare", b.postPrepare)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/prepare/done", b.prepareDone)
+	route("PUT /v1/locations/{name}/setup-agent", b.putSetupAgent)
 	route("GET /v1/locations/{name}/worktrees/{worktree}/preview", b.getPreview)
 	route("PUT /v1/locations/{name}/worktrees/{worktree}/preview", b.putPreview)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/services/{service}/{action}", b.serviceAction)
@@ -342,12 +343,10 @@ func (b *Box) listLocations(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	// How a new worktree of each project would be prepared: the app's
-	// default choice.
+	// How a new worktree of each project would be prepared (the app's
+	// default choice), and whether the person allowed setup agents there.
 	for i := range all {
-		if all[i].Repo {
-			all[i].PrepareWith = b.defaultPrepareWith(r.Context(), all[i])
-		}
+		b.describePreparation(r.Context(), &all[i])
 	}
 	writeJSON(w, all)
 	return nil
@@ -424,7 +423,10 @@ func (b *Box) addWorktree(w http.ResponseWriter, r *http.Request) error {
 // task calls it once its agent started, so a task that fails leaves no
 // setup agent behind.
 func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest) (wt Worktree, prepare func(), err error) {
-	how, err := b.prepareWithFor(r.Context(), loc, req.PrepareWith, req.Prepare)
+	// A pull request's code (pr, ref) is never handed to a setup agent
+	// unasked, now or when it is prepared again.
+	checkout := req.PR > 0 || req.Ref != ""
+	how, err := b.prepareWithFor(r.Context(), loc, req.PrepareWith, req.Prepare, checkout)
 	if err != nil {
 		return Worktree{}, nil, err
 	}
@@ -453,13 +455,16 @@ func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest)
 	if port, err := b.Locations.Ports.For(wt.Path); err == nil && port > 0 {
 		wt.Port = port
 	}
+	key := prepKey(loc.Name, wt.Name)
+	if checkout {
+		b.preps().markCheckout(key)
+	}
 	if how == "none" {
 		b.setPrepare(loc.Name, wt.Name, "skipped", nil)
 		return wt, func() {}, nil
 	}
 	// Claimed now, so a read right after the answer sees it running.
 	started := false
-	key := prepKey(loc.Name, wt.Name)
 	var name, previous string
 	if how == "agent" {
 		name, previous, started = b.preps().startAgent(key, setupSessionName(loc, wt))
@@ -467,8 +472,10 @@ func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest)
 		started = b.preps().start(key, "script", "")
 	}
 	from, gateFrom := origin(r), gateOrigin(r)
-	// A default recipe of the box's own that fails goes on with an agent.
-	fallback := req.PrepareWith == "" && (req.Prepare == nil || *req.Prepare)
+	// A recipe a setup agent saved that fails goes on with an agent, where
+	// the location allows them (agentFallback), unless a script was asked
+	// for by name.
+	fallback := how == "script" && req.PrepareWith == ""
 	return wt, func() {
 		if !started {
 			return

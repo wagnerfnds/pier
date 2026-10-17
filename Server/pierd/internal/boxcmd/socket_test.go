@@ -29,6 +29,11 @@ func socketBox(t *testing.T) *box.Client {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
+	// The agents' settings that pierd trusts a new folder in are a scratch
+	// home's, never those of the machine running the test.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("CODEX_HOME", "")
 	dir := t.TempDir()
 	id, err := identity.LoadOrCreate(filepath.Join(dir, "identity.pem"))
 	if err != nil {
@@ -136,6 +141,35 @@ func TestPreviewAndPrepareThroughTheLocalSocket(t *testing.T) {
 	}
 	if out := runOK(t, c, "location", "config", "cal"); !strings.Contains(out, "preview   /admin (test login admin@example.com)") {
 		t.Fatalf("location config = %s", out)
+	}
+	if cfg.Local.By != "" {
+		t.Fatalf("a person's recipe is marked %q", cfg.Local.By)
+	}
+
+	// In a setup agent's session (PIER_SETUP): the recipe it saves is marked
+	// as a setup agent's, and saving one never gives the consent to setup
+	// agents; it is the preparation, so it never waits for one or starts
+	// another.
+	t.Setenv("PIER_SETUP", "1")
+	stdin = strings.NewReader(`{"setup": "composer install && php artisan migrate", "prepare_with": "agent"}`)
+	cfg = box.Config{}
+	json.Unmarshal([]byte(runOK(t, c, "location", "config", "cal", "--merge", "-", "--json")), &cfg)
+	if cfg.Local.By != "setup" || cfg.Local.PrepareWith != "" {
+		t.Fatalf("a setup agent's recipe = %+v", cfg.Local)
+	}
+	if out := runOK(t, c, "prepare", "wait"); !strings.Contains(out, "nothing to wait for") {
+		t.Fatalf("a setup agent waiting for itself = %s", out)
+	}
+	if err := Run(context.Background(), c, []string{"prepare", "start", "--with", "script"}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "replace you") {
+		t.Fatalf("a setup agent starting another preparation = %v", err)
+	}
+	// Anywhere else, "by" is not the sender's to claim.
+	t.Setenv("PIER_SETUP", "")
+	stdin = strings.NewReader(`{"setup": "make setup", "by": "setup"}`)
+	cfg = box.Config{}
+	json.Unmarshal([]byte(runOK(t, c, "location", "config", "cal", "--merge", "-", "--json")), &cfg)
+	if cfg.Local.By != "" || cfg.Local.Setup != "make setup" {
+		t.Fatalf("a recipe claimed for a setup agent = %+v", cfg.Local)
 	}
 
 	// Outside a worktree, a command needs to be told which.

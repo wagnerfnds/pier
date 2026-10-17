@@ -424,6 +424,7 @@ func (b *Box) enrich(ctx context.Context, all []Session) []Session {
 		}
 		s.Agent = agentFor(*s)
 		s.Chat = s.Location == "" && isChatDir(s.Dir)
+		s.Setup = b.isSetupSession(ctx, *s)
 		if s.Agent == "" {
 			continue
 		}

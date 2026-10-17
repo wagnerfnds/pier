@@ -24,6 +24,8 @@ type lockedPublisher struct {
 	published map[string]int
 	// fail, when set, is what every Publish answers.
 	fail error
+	// prefix is the box's key's, "abcd2345" unless set.
+	prefix string
 }
 
 func (p *lockedPublisher) Publish(_ context.Context, name string, port int) (string, error) {
@@ -48,7 +50,34 @@ func (p *lockedPublisher) Unpublish(name string) {
 	delete(p.published, name)
 }
 
-func (p *lockedPublisher) SharePrefix() string { return "abcd2345" }
+func (p *lockedPublisher) SharePrefix() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.prefix == "" {
+		return "abcd2345"
+	}
+	return p.prefix
+}
+
+func (p *lockedPublisher) setPrefix(prefix string) {
+	p.mu.Lock()
+	p.prefix = prefix
+	p.mu.Unlock()
+}
+
+// blockingPublisher holds every Publish until release is closed, saying
+// which name it holds on entered.
+type blockingPublisher struct {
+	*lockedPublisher
+	entered chan string
+	release chan struct{}
+}
+
+func (p *blockingPublisher) Publish(ctx context.Context, name string, port int) (string, error) {
+	p.entered <- name
+	<-p.release
+	return p.lockedPublisher.Publish(ctx, name, port)
+}
 
 func (p *lockedPublisher) port(name string) (int, bool) {
 	p.mu.Lock()
@@ -161,8 +190,8 @@ func TestPreviewIsKeptPrivatelyAndGoesWithItsWorktree(t *testing.T) {
 
 // A preview with a port gets a public link by itself: named once for the
 // worktree (the same address when its port changes or it is made again),
-// for the longest a link lasts, renewed a day before it would expire, taken
-// down when links are turned off, and gone with the worktree.
+// for a day at a time, renewed in its last twelve hours, taken down when
+// links are turned off, and gone with the worktree.
 func TestPreviewsGetAStableLinkRenewedWhileTheWorktreeIsThere(t *testing.T) {
 	pub := &lockedPublisher{published: map[string]int{}}
 	clock := &testClock{now: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
@@ -185,7 +214,7 @@ func TestPreviewsGetAStableLinkRenewedWhileTheWorktreeIsThere(t *testing.T) {
 		t.Fatalf("the preview's link = %+v", p.Share)
 	}
 	name := p.Share.Name
-	if !p.Share.Expires.Equal(clock.Now().Add(maxShareHours * time.Hour)) {
+	if !p.Share.Expires.Equal(clock.Now().Add(24 * time.Hour)) {
 		t.Errorf("it lasts until %v", p.Share.Expires)
 	}
 	if got, ok := pub.port(name); !ok || got != port {
@@ -202,16 +231,17 @@ func TestPreviewsGetAStableLinkRenewedWhileTheWorktreeIsThere(t *testing.T) {
 		t.Fatalf("the link points at %d", got)
 	}
 
-	// Six days on, nothing to do; half a day more and it is renewed.
+	// Eleven hours on, nothing to do; two more (its last twelve) and it is
+	// renewed for another day.
 	expires := view().Share.Expires
-	clock.add(6 * 24 * time.Hour)
+	clock.add(11 * time.Hour)
 	bx.renewPreviewShares(ctx)
 	if p := view(); !p.Share.Expires.Equal(expires) {
 		t.Fatalf("renewed too early: %v", p.Share.Expires)
 	}
-	clock.add(12 * time.Hour)
+	clock.add(2 * time.Hour)
 	bx.renewPreviewShares(ctx)
-	if p := view(); p.Share == nil || !p.Share.Expires.Equal(clock.Now().Add(maxShareHours*time.Hour)) || p.Share.Name != name {
+	if p := view(); p.Share == nil || !p.Share.Expires.Equal(clock.Now().Add(24*time.Hour)) || p.Share.Name != name {
 		t.Fatalf("not renewed: %+v", p.Share)
 	}
 
@@ -313,6 +343,79 @@ func TestPreviewLinkIsMadeOnceTheRelayAnswers(t *testing.T) {
 	bx.renewPreviewShares(ctx)
 	if p := bx.previewView("cal", "login"); p.Share == nil {
 		t.Fatal("never asked again")
+	}
+}
+
+// A worktree removed while its link is being made takes that link along:
+// none is left published for a preview that is gone.
+func TestALinkBeingMadeGoesWithItsWorktree(t *testing.T) {
+	pub := &blockingPublisher{lockedPublisher: &lockedPublisher{published: map[string]int{}}, entered: make(chan string, 1), release: make(chan struct{})}
+	c, _, port := previewBox(t, func(b *Box) { b.Publisher = pub })
+	call(t, c.wc, "PUT", "/v1/locations/cal/worktrees/login/preview", "", Preview{Port: port}, nil)
+	var name string
+	select {
+	case name = <-pub.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no link was asked for")
+	}
+	removed := make(chan int, 1)
+	go func() {
+		resp, err := c.wc.DoWithHeader(context.Background(), "DELETE", "/v1/locations/cal/worktrees/login", nil, nil)
+		if err != nil {
+			removed <- 0
+			return
+		}
+		resp.Body.Close()
+		removed <- resp.StatusCode
+	}()
+	// The removal may finish first (it waits for the link, here) or not:
+	// either way, the link must not outlive it.
+	select {
+	case code := <-removed:
+		removed <- code
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(pub.release)
+	if code := <-removed; code != 200 {
+		t.Fatalf("remove = %d", code)
+	}
+	if _, ok := pub.port(name); ok {
+		t.Fatal("the link outlived its worktree on the relay")
+	}
+	var list []Share
+	call(t, c.wc, "GET", "/v1/shares", "", nil, &list)
+	if len(list) != 0 {
+		t.Fatalf("shares = %+v", list)
+	}
+}
+
+// A link named under the box's earlier key (its identity changed since) is
+// one the relay no longer serves: it is taken down and made again under the
+// new key's prefix.
+func TestPreviewLinkFollowsTheBoxsNewKey(t *testing.T) {
+	pub := &lockedPublisher{published: map[string]int{}}
+	c, bx, port := previewBox(t, func(b *Box) { b.Publisher = pub })
+	ch, stop := c.bus.Subscribe()
+	defer stop()
+	call(t, c.wc, "PUT", "/v1/locations/cal/worktrees/login/preview", "", Preview{Port: port}, nil)
+	waitFor(t, ch, "share.created")
+	old := bx.previewView("cal", "login").Share.Name
+	pub.setPrefix("efgh6789")
+	bx.renewPreviewShares(context.Background())
+	if e := waitFor(t, ch, "share.removed"); e.Data["name"] != old {
+		t.Fatalf("share.removed = %+v", e.Data)
+	}
+	p := bx.previewView("cal", "login")
+	if p.Share == nil || !strings.HasPrefix(p.Share.Name, "efgh6789") {
+		t.Fatalf("the link = %+v", p.Share)
+	}
+	if _, ok := pub.port(old); ok {
+		t.Fatal("the old name is still published")
+	}
+	var list []Share
+	call(t, c.wc, "GET", "/v1/shares", "", nil, &list)
+	if len(list) != 1 || list[0].Name != p.Share.Name {
+		t.Fatalf("shares = %+v", list)
 	}
 }
 

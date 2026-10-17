@@ -53,9 +53,11 @@ type Location struct {
 	// agent; an agent missing uses the box's default.
 	Accounts map[string]string `json:"accounts,omitempty"`
 	// PrepareWith is how a new worktree is prepared when the request does
-	// not say (setupagent.go): "agent" or "script". Only GET /v1/locations
-	// fills it in.
+	// not say (setupagent.go): "agent" or "script". SetupAgent says the
+	// person allowed setup agents here (PUT …/setup-agent), without which
+	// none prepares it by default. Only GET /v1/locations fills them in.
 	PrepareWith string `json:"prepare_with,omitempty"`
+	SetupAgent  bool   `json:"setup_agent,omitempty"`
 }
 
 type Worktree struct {

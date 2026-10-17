@@ -32,6 +32,12 @@ func locationConfig(ctx context.Context, c *box.Client, args []string, out io.Wr
 		if rerr != nil {
 			return rerr
 		}
+		// A recipe saved from a setup agent's session is marked as its: one
+		// that fails later goes back to a setup agent, never a person's.
+		over.By = ""
+		if os.Getenv("PIER_SETUP") == "1" {
+			over.By = "setup"
+		}
 		cfg, err = c.MergeLocationConfig(ctx, pos[0], over)
 	case *set != "":
 		var local box.RepoConfig

@@ -218,6 +218,26 @@ func (b *Box) addShare(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// dropShare forgets the link called name, already taken down; false when it
+// was not listed.
+func (b *Box) dropShare(name string) bool {
+	st := b.shareStore()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	keep := st.all[:0]
+	for _, sh := range st.all {
+		if sh.Name != name {
+			keep = append(keep, sh)
+		}
+	}
+	if len(keep) == len(st.all) {
+		return false
+	}
+	st.all = keep
+	st.save()
+	return true
+}
+
 // dropShares takes down the links of a location (worktree "": all of its
 // worktrees) that is going away.
 func (b *Box) dropShares(location, worktree string) {

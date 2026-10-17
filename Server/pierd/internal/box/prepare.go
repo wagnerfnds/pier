@@ -3,6 +3,7 @@ package box
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -68,6 +69,9 @@ type prepRecord struct {
 	// Last is the last setup agent's session, kept through runs of any
 	// kind: the next one takes the other name (startAgent).
 	Last string `json:"last_session,omitempty"`
+	// Checkout marks a worktree made from a pull request (pr, ref): its
+	// code is nobody's to vet, so no setup agent prepares it unasked.
+	Checkout bool `json:"checkout,omitempty"`
 }
 
 type prepStates struct {
@@ -140,6 +144,50 @@ func (s *prepStates) update(key string, change func(r *prepRecord)) prepRecord {
 	return r
 }
 
+// finishIfPresent records how key's preparation ended, if pierd still keeps
+// it: a worktree forgotten meanwhile (removed) is not brought back.
+func (s *prepStates) finishIfPresent(key, state string, err error) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.all[key]
+	if !ok {
+		return false
+	}
+	now := time.Now()
+	r.State, r.Since, r.Error = state, &now, ""
+	if err != nil {
+		r.Error = err.Error()
+	}
+	s.all[key] = r
+	s.save()
+	return true
+}
+
+// markCheckout records that key's worktree was made from a pull request.
+func (s *prepStates) markCheckout(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.all[key]
+	r.Checkout = true
+	if r.State == "" {
+		r.State = "unknown"
+	}
+	s.all[key] = r
+	s.save()
+}
+
+// named says some worktree's setup agent ran or runs in session name.
+func (s *prepStates) named(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range s.all {
+		if name != "" && (r.Session == name || r.Last == name) {
+			return true
+		}
+	}
+	return false
+}
+
 // start marks key running, prepared as kind (by session, for an agent),
 // unless it already is; false means it was.
 func (s *prepStates) start(key, kind, session string) bool {
@@ -149,11 +197,12 @@ func (s *prepStates) start(key, kind, session string) bool {
 		return false
 	}
 	now := time.Now()
-	last := s.all[key].Last
+	old := s.all[key]
+	last := old.Last
 	if session != "" {
 		last = session
 	}
-	s.all[key] = prepRecord{State: "running", Since: &now, Kind: kind, Session: session, Last: last}
+	s.all[key] = prepRecord{State: "running", Since: &now, Kind: kind, Session: session, Last: last, Checkout: old.Checkout}
 	s.save()
 	return true
 }
@@ -173,13 +222,16 @@ func (s *prepStates) startAgent(key, base string) (name, previous string, ok boo
 }
 
 // handToAgent turns key's running script preparation into a setup agent's
-// (prepareByScript's fallback), with startAgent's names.
-func (s *prepStates) handToAgent(key, base string) (name, previous string) {
+// (prepareByScript's fallback), with startAgent's names; false when pierd no
+// longer keeps it (the worktree went away).
+func (s *prepStates) handToAgent(key, base string) (name, previous string, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, had := s.all[key]
-	name, previous, _ = s.agentRunLocked(key, r, had, base)
-	return name, previous
+	if !had {
+		return "", "", false
+	}
+	return s.agentRunLocked(key, r, had, base)
 }
 
 func (s *prepStates) agentRunLocked(key string, r prepRecord, had bool, base string) (name, previous string, ok bool) {
@@ -194,7 +246,7 @@ func (s *prepStates) agentRunLocked(key string, r prepRecord, had bool, base str
 		name = base + "-2"
 	}
 	now := time.Now()
-	s.all[key] = prepRecord{State: "running", Since: &now, Kind: "agent", Session: name, Last: name}
+	s.all[key] = prepRecord{State: "running", Since: &now, Kind: "agent", Session: name, Last: name, Checkout: r.Checkout}
 	s.save()
 	return name, previous, true
 }
@@ -264,15 +316,36 @@ func (b *Box) prepareData(loc Location, wt Worktree) map[string]any {
 }
 
 // finishPrepare records how a preparation ended and says so
-// (worktree.prepare.finished, or .failed with err).
+// (worktree.prepare.finished, or .failed with err); nothing for a worktree
+// that went away meanwhile.
 func (b *Box) finishPrepare(from string, loc Location, wt Worktree, err error) {
+	key := prepKey(loc.Name, wt.Name)
 	if err != nil {
-		b.setPrepare(loc.Name, wt.Name, "failed", err)
-		b.Events.Publish(events.Event{Type: "worktree.prepare.failed", Box: b.Name, Origin: from, Error: err.Error(), Data: b.prepareData(loc, wt)})
+		if b.preps().finishIfPresent(key, "failed", err) {
+			b.Events.Publish(events.Event{Type: "worktree.prepare.failed", Box: b.Name, Origin: from, Error: err.Error(), Data: b.prepareData(loc, wt)})
+		}
 		return
 	}
-	b.setPrepare(loc.Name, wt.Name, "ready", nil)
-	b.Events.Publish(events.Event{Type: "worktree.prepare.finished", Box: b.Name, Origin: from, Data: b.prepareData(loc, wt)})
+	if b.preps().finishIfPresent(key, "ready", nil) {
+		b.Events.Publish(events.Event{Type: "worktree.prepare.finished", Box: b.Name, Origin: from, Data: b.prepareData(loc, wt)})
+	}
+}
+
+// agentFallback says a failed run of loc's setup script goes on with a setup
+// agent: a setup agent saved that recipe (a person's own is only ever run),
+// the person allowed setup agents for the location, the worktree is not a
+// pull request's, the repository's config is trusted and the box can run
+// one.
+func (b *Box) agentFallback(ctx context.Context, loc Location, wt Worktree) bool {
+	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && r.Checkout {
+		return false
+	}
+	cfg, err := b.Locations.Config(ctx, loc.Name)
+	if err != nil || cfg.Local.PrepareWith != "agent" || cfg.Local.By != "setup" || cfg.Local.Setup == "" || !repoVetted(cfg) {
+		return false
+	}
+	_, ok := setupAgentPreset(&loc)
+	return ok
 }
 
 // prepareWorktree runs the setup script, then the autostart services, and
@@ -283,10 +356,10 @@ func (b *Box) prepareWorktree(from string, loc Location, wt Worktree) error {
 	return b.prepareByScript(from, DefaultOrigin, loc, wt, false)
 }
 
-// prepareByScript is prepareWorktree; with fallback, a recipe of the box's
-// own that fails hands the worktree to a setup agent, told what failed,
-// rather than leaving it half made (a recipe a setup agent saved may not
-// fit every branch).
+// prepareByScript is prepareWorktree; with fallback, a recipe a setup agent
+// saved that fails hands the worktree to a setup agent, told what failed,
+// rather than leaving it half made (it may not fit every branch), where
+// agentFallback allows it.
 func (b *Box) prepareByScript(from, gateFrom string, loc Location, wt Worktree, fallback bool) error {
 	b.Events.Publish(events.Event{Type: "worktree.prepare.started", Box: b.Name, Origin: from, Data: b.prepareData(loc, wt)})
 	var err error
@@ -300,10 +373,9 @@ func (b *Box) prepareByScript(from, gateFrom string, loc Location, wt Worktree, 
 		b.finishPrepare(from, loc, wt, nil)
 		return nil
 	}
-	if fallback && loc.Scripts.From == "box" {
-		if _, ok := setupAgentPreset(&loc); ok {
-			// The same preparation goes on, by an agent now.
-			name, previous := b.preps().handToAgent(prepKey(loc.Name, wt.Name), setupSessionName(loc, wt))
+	if fallback && b.agentFallback(context.Background(), loc, wt) {
+		// The same preparation goes on, by an agent now.
+		if name, previous, ok := b.preps().handToAgent(prepKey(loc.Name, wt.Name), setupSessionName(loc, wt)); ok {
 			b.Events.Publish(events.Event{Type: "worktree.prepare.started", Box: b.Name, Origin: from, Data: b.prepareData(loc, wt)})
 			b.runSetupAgent(from, gateFrom, loc, wt, name, previous, err.Error())
 			return err
@@ -313,10 +385,30 @@ func (b *Box) prepareByScript(from, gateFrom string, loc Location, wt Worktree, 
 	return err
 }
 
+// setupGrace is how long a setup agent's run may be without its session:
+// the one it starts in comes a moment after the run is claimed. Tests
+// shorten it.
+var setupGrace = 20 * time.Second
+
+// settleVanished ends a setup agent's run whose session is gone or its
+// agent exited without a word reaching pierd (a session killed from outside,
+// a box that rebooted): it would read running forever otherwise.
+func (b *Box) settleVanished(ctx context.Context, key string) {
+	r, ok := b.preps().get(key)
+	if !ok || r.Kind != "agent" || r.State != "running" || r.Since == nil || time.Since(*r.Since) < setupGrace || b.Sessions == nil {
+		return
+	}
+	sess, err := b.Sessions.Get(ctx, r.Session)
+	if errors.Is(err, ErrUnknownSession) || err == nil && sess.Exited {
+		b.setupTurnEnded(DefaultOrigin, key, r.Session, false, true)
+	}
+}
+
 // prepareStatus is the recorded state with what preparing would run.
 func (b *Box) prepareStatus(ctx context.Context, loc Location, wt Worktree) PrepareStatus {
 	st := PrepareStatus{State: "unknown"}
-	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok {
+	b.settleVanished(ctx, prepKey(loc.Name, wt.Name))
+	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && r.State != "unknown" {
 		st = PrepareStatus{State: r.State, Since: r.Since, Error: r.Error, Kind: r.Kind, Session: r.Session}
 		if r.Kind == "agent" && r.State == "running" && b.Turns != nil {
 			if ss, ok := b.Turns.State(r.Session); ok && ss.State == "waiting" {
@@ -334,6 +426,9 @@ func (b *Box) prepareStatus(ctx context.Context, loc Location, wt Worktree) Prep
 		}
 	}
 	st.PrepareWith = b.defaultPrepareWith(ctx, loc)
+	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && r.Checkout {
+		st.PrepareWith = "script"
+	}
 	return st
 }
 
@@ -366,7 +461,9 @@ func (b *Box) postPrepare(w http.ResponseWriter, r *http.Request) error {
 	if req.PrepareWith == "none" {
 		return badRequest("prepare_with is agent or script here")
 	}
-	how, err := b.prepareWithFor(r.Context(), loc, req.PrepareWith, nil)
+	// A pull request's worktree is never handed to a setup agent unasked.
+	rec, _ := b.preps().get(prepKey(loc.Name, wt.Name))
+	how, err := b.prepareWithFor(r.Context(), loc, req.PrepareWith, nil, rec.Checkout)
 	if err != nil {
 		return err
 	}
