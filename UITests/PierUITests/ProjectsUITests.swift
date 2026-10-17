@@ -2,7 +2,8 @@ import XCTest
 
 /// Projects coming and going, against the mock box (compact width, an iPhone simulator): the GitHub account's
 /// repositories downloaded with a tap, a repository cloned by its link, a project removed from the disk (with its
-/// unsaved work in the way first), and a worktree's details (its preview link and services). Skipped on regular width.
+/// unsaved work in the way first), and a worktree's details (its preview with the public link and test login, its
+/// services). Skipped on regular width.
 final class ProjectsUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -94,10 +95,40 @@ final class ProjectsUITests: XCTestCase {
         XCTAssertTrue(element("service-dev").waitForExistence(timeout: 10), "the worktree's services did not load")
         XCTAssertTrue(text("HOST=0.0.0.0 npm run dev").exists, "the service's command is not shown")
         XCTAssertTrue(text("rodando").exists)
-        XCTAssertTrue(text("Portas").exists, "no ports in Ambiente")
         shot("worktree-details")
         app.buttons["Parar dev"].tap()
         XCTAssertTrue(text("parado").waitForExistence(timeout: 10), "stopping the service did not show")
+        // Ambiente is the last section, below the preparation and the preview.
+        let ports = text("Portas")
+        for _ in 0..<4 where !ports.exists { app.swipeUp() }
+        XCTAssertTrue(ports.exists, "no ports in Ambiente")
+    }
+
+    /// What a setup agent left in the mock's main checkout of sandbox: the public link first, then the test login
+    /// with its password hidden until asked for.
+    func testWorktreeDetailsShowPublicLinkAndTestLogin() throws {
+        try launch()
+        let project = app.staticTexts["sandbox"].firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 10))
+        if element("projects-worktree-sandbox/subtract").exists { element("projects-disclosure-sandbox").tap() }
+        XCTAssertTrue(element("projects-worktree-sandbox/subtract").waitForNonExistence(timeout: 5))
+        project.tap()
+        let details = app.buttons["Detalhes: serviços e visualização"].firstMatch
+        XCTAssertTrue(details.waitForExistence(timeout: 10), "the project offers no Detalhes for its main checkout")
+        details.tap()
+        let link = element("preview-public-link")
+        XCTAssertTrue(link.waitForExistence(timeout: 10), "the preview's public link is not shown")
+        // The public address, at the page the setup agent recorded.
+        XCTAssertTrue(link.label.hasPrefix("https://p-") && link.label.hasSuffix(".docktopier.com/login"), "not the preview's public link: \(link.label)")
+        XCTAssertTrue(element("preview-copy-link").exists, "no Copiar beside the public link")
+        XCTAssertEqual(element("preview-login-user").label, "demo@example.com", "the test login's user is not shown")
+        let password = element("preview-login-password")
+        XCTAssertEqual(password.label, "Senha escondida", "the password shows before it is asked for")
+        XCTAssertFalse(text("demo-pass-123").exists, "the password is on screen before it is asked for")
+        shot("worktree-preview")
+        element("preview-reveal-password").tap()
+        let shown = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "demo-pass-123"), object: password)
+        XCTAssertEqual(XCTWaiter.wait(for: [shown], timeout: 5), .completed, "Mostrar senha did not show it")
     }
 
     func testProjectsFolderSpacesAndEnvironment() throws {
@@ -113,12 +144,16 @@ final class ProjectsUITests: XCTestCase {
         field.typeText("~/code")
         element("projects-root-save").tap()
         XCTAssertTrue(element("space-clientes").waitForExistence(timeout: 10), "the spaces did not show once the folder was set")
-        XCTAssertTrue(text("Docker 27.3.1").exists, "Docker's state is not shown")
         element("space-add").tap()
         app.textFields["nome"].typeText("pessoal")
         app.buttons["Criar"].tap()
         XCTAssertTrue(element("space-pessoal").waitForExistence(timeout: 10), "the new space is not listed")
         shot("projects-folder")
+        // Below the spaces: the projects setup agents may prepare, the box's preparation, and Docker's state.
+        XCTAssertTrue(element("setup-agent-sandbox").waitForExistence(timeout: 5), "sandbox's setup agent consent is not listed")
+        let docker = text("Docker 27.3.1")
+        for _ in 0..<4 where !docker.exists { app.swipeUp() }
+        XCTAssertTrue(docker.exists, "Docker's state is not shown")
         app.navigationBars.buttons.firstMatch.tap()
 
         // A project's environment: PHP 8.4 and MySQL 8.0.
@@ -189,6 +224,18 @@ final class ProjectsUITests: XCTestCase {
         XCTAssertTrue(text("Variáveis salvas").waitForExistence(timeout: 10), "saving did not confirm")
         XCTAssertTrue(element("skill-pier-box").exists, "no skills")
         shot("variables")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        // Previews get no public link by themselves: the setup agent's page in sandbox is published by hand below.
+        let folder = element("settings-projects-devbox")
+        for _ in 0..<4 where !folder.isHittable { app.swipeDown() }
+        folder.tap()
+        let autoShare = element("auto-share-toggle")
+        for _ in 0..<4 where !(autoShare.exists && autoShare.isHittable) { app.swipeUp() }
+        XCTAssertTrue(autoShare.waitForExistence(timeout: 10), "no automatic public link switch")
+        autoShare.switches.firstMatch.tap()
+        let off = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '0'"), object: autoShare)
+        XCTAssertEqual(XCTWaiter.wait(for: [off], timeout: 5), .completed, "the automatic public link did not turn off")
         app.navigationBars.buttons.firstMatch.tap()
 
         // A worktree's dev server gets a public link; the project picks the new account.
