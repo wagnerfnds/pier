@@ -68,6 +68,7 @@ struct DashboardView: View {
             _ = await (a, b)
         }
         .pierBackground()
+        .tracksOnScreen()
         .navigationTitle("Início")
         .toolbar {
             // Personalizar, Falar, then Nova tarefa at the edge: the main action where the thumb and the eye expect it.

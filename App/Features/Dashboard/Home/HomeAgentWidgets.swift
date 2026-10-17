@@ -7,6 +7,7 @@ import PierKit
 struct HomeSessionRow: View {
     @Environment(AppModel.self) private var model
     @Environment(LocalPrefs.self) private var prefs
+    @Environment(\.isOnScreen) private var onScreen
     let item: BoxSession
     let state: DashState
     var detail: String? = nil
@@ -34,7 +35,8 @@ struct HomeSessionRow: View {
                 }
                 Spacer(minLength: 6)
                 if let trailing { trailing } else {
-                    TimelineView(.periodic(from: .now, by: state == .working ? 1 : 30)) { ctx in
+                    // A working agent's clock ticks every second while the Home is in front, every 30 under a session.
+                    TimelineView(.periodic(from: .now, by: state == .working && onScreen ? 1 : 30)) { ctx in
                         Text(Fmt.elapsed(since: item.session.stateSince ?? item.session.created, now: ctx.date))
                             .font(.caption.monospacedDigit()).foregroundStyle(Theme.textFaint)
                     }
