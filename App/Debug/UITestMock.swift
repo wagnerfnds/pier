@@ -635,6 +635,9 @@ final class MockBox: PierTransport, @unchecked Sendable {
     /// then the record has the block while the screen still shows it for 2 s (the overlap), then the turn ends.
     private func streamLabReply(_ name: String, reply: String) {
         setState(name, "running")
+        #if DEBUG
+        ChatHistoryDiagnostics.recordMockStream("started")
+        #endif
         let words = reply.split(separator: " ", omittingEmptySubsequences: false)
         Task.detached { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))   // the agent reads before it writes
@@ -647,11 +650,17 @@ final class MockBox: PierTransport, @unchecked Sendable {
             }
             guard let self else { return }
             self.lock.withLock { self.transcripts[name, default: []].append(self.item("text", text: reply)) }
+            #if DEBUG
+            ChatHistoryDiagnostics.recordMockStream("record-appended")
+            #endif
             try? await Task.sleep(for: .seconds(2))
             self.lock.withLock {
                 self.chatLab.draft = nil
                 self.setState(name, "finished")
             }
+            #if DEBUG
+            ChatHistoryDiagnostics.recordMockStream("draft-cleared")
+            #endif
         }
     }
 
@@ -675,6 +684,14 @@ final class MockBox: PierTransport, @unchecked Sendable {
                                         "reason": "No claude conversation for /home/ubuntu/code/\(name) yet in ~/.claude/projects."]))
             }
             let all = transcripts[name] ?? []
+            #if DEBUG
+            if name == MockChatLab.name, let before = query["before"].flatMap(Int.init), before > 0 {
+                ChatHistoryDiagnostics.didRequestHistory()
+            }
+            #endif
+            if name == MockChatLab.name, let page = MockChatLab.page(items: all, query: query) {
+                return (200, Self.json(page))
+            }
             // --- Agents board: `before=0` is "the tail" (the board's last reply of a finished turn), as on pierd. ---
             if query["before"] == "0" { return (200, Self.json(["source": "claude", "items": Array(all.suffix(40)), "more": all.count > 40, "next": 0])) }
             // --- end agents board ---

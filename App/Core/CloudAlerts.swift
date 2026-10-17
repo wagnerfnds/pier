@@ -31,7 +31,7 @@ import os
     private var database: CKDatabase { container.privateCloudDatabase }
 
     var enabled: Bool {
-        get { UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true }
+        get { !Shared.isLocalTest && (UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true) }
         set { UserDefaults.standard.set(newValue, forKey: Self.enabledKey) }
     }
 
@@ -112,6 +112,7 @@ import os
     /// The subscriptions in the person's private database, every device's (the phone's shows up from the Mac), in the
     /// log (`-cloudAlertsDiagnose 1`).
     func diagnose() async {
+        guard !Shared.isLocalTest else { return }
         do {
             let subs = try await database.allSubscriptions()
             log.info("subscriptions: \(subs.map(\.subscriptionID).joined(separator: ", "), privacy: .public)")
@@ -123,6 +124,7 @@ import os
     /// Saves a test alert the person's iPhone and iPad should ring for (`-cloudAlertsTest 1`), as a waiting agent with two
     /// choices; deleted with the rest after an hour.
     func sendTest() async {
+        guard !Shared.isLocalTest else { return }
         let id = CKRecord.ID(recordName: "alert-test-\(Int(Date().timeIntervalSince1970))")
         let r = CKRecord(recordType: CloudAlertPayload.recordType, recordID: id)
         r["title"] = "Pier · teste"
@@ -140,6 +142,7 @@ import os
     /// Saves an alert with every field and deletes it (`-cloudAlertsSeed 1`): CloudKit's development environment then
     /// knows the record type and all its fields, the schema to deploy to production. A device already subscribed gets it.
     func seedSchema() async {
+        guard !Shared.isLocalTest else { return }
         let r = CKRecord(recordType: CloudAlertPayload.recordType, recordID: CKRecord.ID(recordName: "alert-schema-seed"))
         r["title"] = "Pier"
         r["body"] = "schema"
@@ -161,6 +164,7 @@ import os
     /// Tried again on each foreground until it works: no iCloud account yet, or no Mac has saved an alert yet (CloudKit
     /// knows no PierAlert records then, in the development environment).
     func subscribeIfNeeded() async {
+        guard !Shared.isLocalTest else { return }
         guard !subscribing, !UserDefaults.standard.bool(forKey: Self.subscribedKey) else { return }
         subscribing = true
         defer { subscribing = false }

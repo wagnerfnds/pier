@@ -106,7 +106,7 @@ final class LocalPrefs {
     /// The prefs are the app's own file (not a test's).
     @ObservationIgnored private let ownFile: Bool
     /// The person's own prefs (not a test's, a mock run's or the demo's, which never reach iCloud) follow iCloud.
-    private var syncs: Bool { ownFile && !UITestMock.enabled && !DemoMode.isOn }
+    private var syncs: Bool { ownFile && !Shared.isLocalTest && !UITestMock.enabled && !DemoMode.isOn }
     /// The organisation as last read from or written to iCloud.
     @ObservationIgnored private var lastSynced: SyncedOrganization?
 
@@ -120,7 +120,7 @@ final class LocalPrefs {
         composeDraft = data.composeDraft
         // The widgets' copy follows these prefs from the start, whatever changed it meanwhile.
         if url == nil { mirrorForWidgets() }
-        if ownFile && !UITestMock.enabled {
+        if ownFile && !Shared.isLocalTest && !UITestMock.enabled {
             NotificationCenter.default.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
                                                    object: NSUbiquitousKeyValueStore.default, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.pullOrganization() }

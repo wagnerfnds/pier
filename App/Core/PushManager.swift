@@ -47,6 +47,7 @@ final class PushManager {
     // MARK: lifecycle
 
     func begin() {
+        guard !Shared.isLocalTest else { return }
         UIApplication.shared.registerForRemoteNotifications()
         observer?.cancel()
         observer = Task { [weak self] in
@@ -62,6 +63,7 @@ final class PushManager {
 
     /// Foreground: refresh the OS token (cheap, Apple recommends calling it on every launch) and re-register everywhere.
     func foreground() {
+        guard !Shared.isLocalTest else { return }
         UIApplication.shared.registerForRemoteNotifications()
         for c in clients.values { Task { await c.reset() } }
         retryDelay = 30
@@ -91,6 +93,7 @@ final class PushManager {
     }
 
     func scheduleRegister(delay: Duration = .milliseconds(800)) {
+        guard !Shared.isLocalTest else { return }
         registerTask?.cancel()
         registerTask = Task { [weak self] in
             if delay > .zero { try? await Task.sleep(for: delay) }
@@ -102,6 +105,7 @@ final class PushManager {
     // MARK: registration
 
     private func client(for conn: BoxConnection) -> PushClient? {
+        guard !Shared.isLocalTest else { return nil }
         // The demo's box is in memory: nothing to register with.
         guard !conn.isDemo else { return nil }
         let key = conn.name
@@ -113,6 +117,7 @@ final class PushManager {
     }
 
     func registerAll() async {
+        guard !Shared.isLocalTest else { return }
         guard let model else { return }
         await Self.pullWidgetToken()
         let state = PushStateStore.load()

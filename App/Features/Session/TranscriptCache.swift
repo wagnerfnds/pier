@@ -109,8 +109,12 @@ import UIKit
         #endif
         return !UITestMock.enabled
     }
-    private nonisolated static let folder: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-        .appendingPathComponent("Transcripts", isDirectory: true)
+    private nonisolated static let folder: URL? = {
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        // The unprovisioned test app has no sandbox container; give its cache an explicit namespace too.
+        let base = Shared.isLocalTest ? caches.appendingPathComponent(Shared.appBundleID, isDirectory: true) : caches
+        return base.appendingPathComponent("Transcripts", isDirectory: true)
+    }()
 
     /// The file of a conversation: named by a hash of box and session (a box's name can hold anything).
     private nonisolated static func file(_ key: String) -> URL? {

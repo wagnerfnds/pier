@@ -25,7 +25,16 @@ final class SessionViewModel {
     @ObservationIgnored weak var model: AppModel?
 
     // Conversation
-    var store = TranscriptStore()
+    var store = TranscriptStore() {
+        didSet {
+            // A command/tool can be replaced at the same cursor. Observe rendered content, including pending
+            // prompts, without comparing the transcript from a SwiftUI body or reacting to metadata-only polls.
+            if oldValue.items != store.items || oldValue.pending != store.pending {
+                conversationContentRevision &+= 1
+            }
+        }
+    }
+    private(set) var conversationContentRevision = 0
     var draft: Draft?
     var loaded = false
     var loadError: String?

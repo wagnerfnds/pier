@@ -3,6 +3,7 @@
 xcuserdata/
 DerivedData/
 build/
+.pier-local-test.json
 
 # SwiftPM
 .build/
