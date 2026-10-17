@@ -13,20 +13,32 @@ import (
 	"pier/pierd/internal/box"
 )
 
-// Commands for skills, previews, a repository's config, and worktree
-// services.
+// Commands for a repository's config and worktree services.
 
 func locationConfig(ctx context.Context, c *box.Client, args []string, out io.Writer) error {
 	fs, asJSON := flags(args)
 	trustHash := fs.String("trust", "", "run the repository's config, if it still has this hash")
 	untrust := fs.Bool("untrust", false, "stop running the repository's config")
 	set := fs.String("set", "", "replace this box's own config for the location with this JSON file")
+	mergeFile := fs.String("merge", "", "lay this JSON file (- reads it from stdin) over this box's own config for the location")
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 || (*trustHash != "" && *untrust) {
-		return usageErr("location config NAME [--json] [--set FILE] [--trust HASH|--untrust]")
+	if err != nil || len(pos) != 1 || (*trustHash != "" && *untrust) || (*set != "" && *mergeFile != "") {
+		return usageErr("location config NAME [--json] [--set FILE] [--merge FILE|-] [--trust HASH|--untrust]")
 	}
 	var cfg box.Config
 	switch {
+	case *mergeFile != "":
+		over, rerr := readMerge(*mergeFile)
+		if rerr != nil {
+			return rerr
+		}
+		// A recipe saved from a setup agent's session is marked as its: one
+		// that fails later goes back to a setup agent, never a person's.
+		over.By = ""
+		if os.Getenv("PIER_SETUP") == "1" {
+			over.By = "setup"
+		}
+		cfg, err = c.MergeLocationConfig(ctx, pos[0], over)
 	case *set != "":
 		var local box.RepoConfig
 		b, rerr := os.ReadFile(*set)
@@ -65,7 +77,7 @@ func locationConfig(ctx context.Context, c *box.Client, args []string, out io.Wr
 		}
 		fmt.Fprintf(out, "%s (from %s, plus this box's own config)\n", pos[0], from)
 		fmt.Fprintf(out, "  setup     %s\n  archive   %s\n  ports     %d per worktree\n", orNone(e.Setup), orNone(e.Archive), max(e.Ports, 1))
-		printRepoConfig(out, box.RepoConfig{Env: e.Env, Services: e.Services, Hooks: e.Hooks, Agents: e.Agents})
+		printRepoConfig(out, box.RepoConfig{Env: e.Env, Services: e.Services, Hooks: e.Hooks, Agents: e.Agents, Preview: e.Preview, AutoShare: e.AutoShare})
 	})
 }
 
@@ -98,6 +110,16 @@ func printRepoConfig(out io.Writer, e box.RepoConfig) {
 	}
 	for _, a := range e.Agents {
 		fmt.Fprintf(out, "  agent     %s: %s\n", a.ID, a.Command)
+	}
+	if p := e.Preview; p != nil {
+		line := p.Path
+		if p.Login != nil {
+			line += " (test login " + p.Login.User + ")"
+		}
+		fmt.Fprintf(out, "  preview   %s\n", strings.TrimSpace(line))
+	}
+	if e.AutoShare != nil {
+		fmt.Fprintf(out, "  links     public links for previews %s\n", map[bool]string{true: "on", false: "off"}[*e.AutoShare])
 	}
 }
 

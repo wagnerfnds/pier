@@ -392,10 +392,18 @@ struct SessionDetailsList: View {
     var leaving: () -> Void = {}
     @Environment(Router.self) private var router
     @Environment(LocalPrefs.self) private var prefs
+    @Environment(AppModel.self) private var model
+    /// The session's worktree's preview and dev servers (Visualização), followed while the details show.
+    @State private var place: WorktreeDetailsStore?
 
     private var session: Session { vm.session }
     private var bs: BoxSession { BoxSession(box: vm.box, session: session) }
     private var signals: Signals? { vm.store.signals }
+    /// Where the session works, when it is a worktree ("box/location/worktree").
+    private var placeKey: String? {
+        guard let (loc, wt) = reviewTarget, !session.chat else { return nil }
+        return "\(vm.box)/\(loc)/\(wt)"
+    }
 
     var body: some View {
         List {
@@ -440,6 +448,9 @@ struct SessionDetailsList: View {
                 if (session.queued ?? 0) > 0 { row("clock", "Na fila", "\(session.queued ?? 0)") }
             }
             .listRowBackground(Theme.card)
+            // The worktree's page, its public link and the app's test login, as in its Detalhes; another session's starts
+            // anew (a password shown here stays with this worktree).
+            if let place { SessionPreviewSection(store: place).id(placeKey) }
             if let todos = signals?.todos, !todos.isEmpty {
                 Section {
                     ForEach(Array(todos.enumerated()), id: \.offset) { _, t in
@@ -495,6 +506,12 @@ struct SessionDetailsList: View {
         }
         .listStyle(.insetGrouped)
         .pierBackground()
+        .task(id: placeKey) {
+            guard let (loc, wt) = reviewTarget, placeKey != nil, model.connection(for: vm.box)?.info?.has("preview") == true else { place = nil; return }
+            let store = WorktreeDetailsStore(box: vm.box, location: loc, worktree: wt)
+            place = store
+            await SessionPreviewSection.follow(store, model: model)
+        }
     }
 
     /// A label and its value on one line; a long name or path (`mono`) goes under its label, whole width, so it reads in

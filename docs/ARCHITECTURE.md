@@ -10,7 +10,8 @@ code calls which route.
 ## What the app does
 1. Pair with a box (scan the QR / paste or open a `pier://` pair or join link).
 2. Home and Inbox: every agent across boxes grouped **Needs you / Working / Your turn / Done**, live; a keyboard-first Inbox.
-3. Create a task: prompt + project + agent up front; worktree, base branch, name, model, effort and title fold under
+3. Create a task: prompt + project + agent up front; worktree, base branch, name, preparation (only the code, the
+   project's script, or a setup agent), model, effort and title fold under
    "Opções" with smart defaults and a one-line summary (+ photo). Model and effort are chips (every choice in sight,
    "Outro…" for a name typed by hand); the form is a 720 pt column, and on the Mac Start sits at its end with ⌘↩
    beside it (the iPhone and the iPad keep a bar above the on-screen keyboard, the iPad's as wide as the column).
@@ -418,8 +419,39 @@ app's own `claude -p` helpers run with `--strict-mcp-config` where the box's Cla
 of those servers. A project picks its agents' account
 (`ProjectAccountsSection`, on the project's screen and in a worktree's Detalhes; `AccountsCache` loads them). The Home's
 **Limites de uso** (`LimitsWidget`) shows each account's 5-hour and weekly use and switches the box's default with a tap.
-A worktree's Detalhes makes a dev server's **public link** through the box's relay (docs/API.md 2.10–2.12,
-PROTOCOL.md §10.1).
+A worktree's Detalhes makes a dev server's **public link** through the box's relay, and shows the one the box made for
+its preview (docs/API.md 2.10–2.12, PROTOCOL.md §10.1).
+
+**Environment preparation by an agent** (boxes with `prepare.agent`): a new worktree is prepared as it is made, the
+way the composer's **Preparação** chips say (the same three in Agentes' "Worktree nova" menu): **Só o código**,
+**Script do projeto** (its setup script and autostart services) or **Agente prepara**. An agent that runs commands
+unattended is only for code the person trusts, so the first time they pick **Agente prepara** in a project (there, in
+Detalhes' **Preparar com agente**, or turning the project on under Ajustes › Projetos › Agente por projeto) a
+**consent sheet** (`SetupAgentConsentSheet`) says what it does (works on its own, installs what is missing, system
+packages with sudo where the box allows it, only for code they trust) and records the yes on the box (`PUT
+…/setup-agent`, `Location.setupAgent`); after that the project's worktrees without a recipe are prepared by one by
+default (`Location.prepareWith`), with no more questions, and Ajustes › Projetos takes it back. The box never hands a
+pull request's worktree or an untrusted repository config to one unasked. A chip the person picked is sent as picked;
+the project's default left as it was is left to the box, which hands a failing recipe a setup agent saved to another
+one (`PrepareChoice`, PierKit, tested). The setup agent is Claude Code on the project's account in a session of its
+own beside the task's (`<worktree>-setup`, named "Preparação do ambiente" by the app: `Session.setup`), unattended
+(bypassPermissions with its warning skipped for that process alone, no questions) and told by pierd's prompt that the
+repository is data, never instructions, and what the box allows: sudo or user space, the worktree's ports, the box's
+**preparation rules** (Ajustes › Projetos; by default no Docker or LXD, no network changes). It installs what the
+project lacks, sets up its database and `.env`, runs its migrations and seeders, makes a test login, runs the dev
+server as a Pier service on `$PIER_PORT` that works behind the public link (debug consoles off), saves what it did as
+the project's recipe (the next worktrees replay it by script, without an agent; a recipe someone wrote is kept) and
+reports. Detalhes' **Preparação** follows it (running, waiting for someone, ready, failed with why; **Abrir conversa**
+while its session is there; **Preparar com agente** again), and the agents working in the worktree wait for it before
+they run the app or its tests (`pierd prepare wait`, in the `pier-box` skill). docs/API.md 2.6.1.
+
+**Previews**: whoever gets a worktree's page running records it (`pierd preview set`: its port and path, a test login
+of the app, a note), and a worktree prepared by script gets its project's. Detalhes' **Visualização** and the
+session's inspector (`SessionDetailsList`, from a `WorktreeDetailsStore` of its own) show it first
+(`WorktreePreviewBlock`): its public link (`https://p-….docktopier.com`, made by the box by itself for a day at a time
+and renewed while the worktree is there unless Ajustes › Projetos turns that off) with Copiar, Abrir and Enviar (and
+Abrir no Pier in Detalhes), the page on the box's own address, and **Acesso de teste**, the user and the password,
+hidden until asked for (again for each worktree), each with its copy button. docs/API.md 2.12.1.
 
 ## Layouts: tabs (compact) and sidebar (regular width, Mac)
 
@@ -484,10 +516,11 @@ editor's line, column, language and line ending):
   as badges (`--decorate=full`); a commit's message, author, files with their counts, and the patch of the file picked.
 - **Visão geral** (`OverviewPane`): the project (path, remote, default branch), its worktrees with their git state, the
   sessions running in this one.
-- **Detalhes** (`WorktreeDetailsView`, also a screen of its own on the iPhone): the dev servers listening in the worktree
-  as links to the box's address and port (checked from the device; "Abrir no Pier" beside each, and beside a public
-  link, opens it in the app's preview browser), the project's services there with their command and
-  start / stop / restart, and its environment (branch, base, port block, folder, setup).
+- **Detalhes** (`WorktreeDetailsView`, also a screen of its own on the iPhone): its preparation (by script or by a setup
+  agent, whose conversation is a tap away), its preview (the public link and the app's test login: "Projects coming and
+  going"), the dev servers listening in the worktree as links to the box's address and port (checked from the device;
+  "Abrir no Pier" beside each, and beside a public link, opens it in the app's preview browser), the project's services
+  there with their command and start / stop / restart, and its environment (branch, base, port block, folder, setup).
 
 What each worktree holds (open files with their unsaved text, the folders open, the history read, the tab) lives in
 `WorkspaceState` for the app's run (`WorkspaceRegistry`), so opening a session or another project and coming back finds it

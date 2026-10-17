@@ -162,20 +162,30 @@ struct StartPane: View {
                 let here = worktree.main == true ? S("Checkout principal") : S("Nesta worktree")
                 if !compose.isNew { Label(here, systemImage: "checkmark") } else { Text(here) }
             }
-            if compose.isNew, compose.canSkipPrepare {
-                Divider()
-                Toggle(isOn: $compose.prepare) { Label("Preparar ambiente", systemImage: "hammer") }
+            if compose.isNew, !compose.prepareModes.isEmpty {
+                Section(S("Preparação")) {
+                    ForEach(compose.prepareModes, id: \.self) { m in
+                        Button { compose.pickPrepare(m) } label: {
+                            if compose.prepareMode == m { Label(PrepareText.choice(m), systemImage: "checkmark") } else { Text(PrepareText.choice(m)) }
+                        }
+                    }
+                }
             }
         } label: {
             chip {
                 Image(systemName: compose.isNew ? "plus.square.on.square" : "arrow.triangle.branch")
                     .font(.system(size: Density.small, weight: .semibold)).foregroundStyle(Theme.textDim)
                 Text(compose.isNew ? S("Worktree nova") : worktree.main == true ? S("Checkout principal") : S("Nesta worktree"))
-                if compose.isNew, compose.canSkipPrepare, !compose.prepare { Text("sem ambiente").foregroundStyle(Theme.textFaint) }
+                if compose.isNew, !compose.prepareModes.isEmpty, compose.prepareMode == .none { Text("sem ambiente").foregroundStyle(Theme.textFaint) }
+                if compose.isNew, compose.prepareModes.contains(.agent), compose.prepareMode == .agent { Text("com agente").foregroundStyle(Theme.textFaint) }
             }
         }
         .plainMenu()
         .accessibilityIdentifier("start-target")
+        // A setup agent picked for a project that has not allowed them: asked once, here.
+        .sheet(isPresented: $compose.askingConsent) {
+            SetupAgentConsentSheet(box: compose.box, location: compose.location ?? "") { compose.consentGiven() }.environment(model)
+        }
     }
 
     private func chip<C: View>(@ViewBuilder _ content: () -> C) -> some View {

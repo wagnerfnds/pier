@@ -99,9 +99,17 @@ public struct Location: Codable, Sendable, Hashable, Identifiable {
     public let isolated: Bool
     /// The agent accounts it chose, by agent (`PUT …/accounts`); an agent missing uses the box's default.
     public let accounts: [String: String]?
+    /// How a new worktree is prepared when the request does not say: a setup agent when the person allowed them here
+    /// (`setupAgent`) and the project has no recipe yet, else its script. nil from a box without setup agents.
+    public let prepareWith: PrepareMode?
+    /// The person allowed setup agents to prepare the project's new worktrees (`PUT …/setup-agent`, asked once per
+    /// project); until then the box prepares them by script unless an agent is asked for.
+    public let setupAgent: Bool
 
-    public init(name: String, path: String = "", repo: Bool = false, worktrees: [Worktree]? = nil, remote: String? = nil, slug: String? = nil, defaultBranch: String? = nil, repoTrust: String? = nil, check: String? = nil, checkFrom: String? = nil, agents: [AgentPreset]? = nil, scripts: Scripts? = nil, space: String? = nil, outsideRoot: Bool = false, isolated: Bool = false, accounts: [String: String]? = nil) {
+    public init(name: String, path: String = "", repo: Bool = false, worktrees: [Worktree]? = nil, remote: String? = nil, slug: String? = nil, defaultBranch: String? = nil, repoTrust: String? = nil, check: String? = nil, checkFrom: String? = nil, agents: [AgentPreset]? = nil, scripts: Scripts? = nil, space: String? = nil, outsideRoot: Bool = false, isolated: Bool = false, accounts: [String: String]? = nil, prepareWith: PrepareMode? = nil, setupAgent: Bool = false) {
         self.accounts = accounts
+        self.prepareWith = prepareWith
+        self.setupAgent = setupAgent
         self.space = space
         self.outsideRoot = outsideRoot
         self.isolated = isolated
@@ -136,6 +144,8 @@ public struct Location: Codable, Sendable, Hashable, Identifiable {
         case outsideRoot = "outside_root"
         case isolated
         case accounts
+        case prepareWith = "prepare_with"
+        case setupAgent = "setup_agent"
     }
 
     public init(from decoder: Decoder) throws {
@@ -156,6 +166,8 @@ public struct Location: Codable, Sendable, Hashable, Identifiable {
         self.outsideRoot = try c.decodeIfPresent(Bool.self, forKey: .outsideRoot) ?? false
         self.isolated = try c.decodeIfPresent(Bool.self, forKey: .isolated) ?? false
         self.accounts = try c.decodeIfPresent([String: String].self, forKey: .accounts)
+        self.prepareWith = try? c.decodeIfPresent(PrepareMode.self, forKey: .prepareWith)
+        self.setupAgent = try c.decodeIfPresent(Bool.self, forKey: .setupAgent) ?? false
     }
 
     public var id: String { name }
@@ -344,14 +356,18 @@ public struct WorktreeRequest: Codable, Sendable, Hashable {
     /// false leaves the setup script and the autostart services for later (`prepare(location:worktree:)`, capability
     /// `prepare`); nil prepares the worktree as it is made.
     public var prepare: Bool?
+    /// How it is prepared (capability `prepare.agent`): a setup agent, the setup script, or not at all; nil is the
+    /// project's default (`Location.prepareWith`). Sent only when set: an older box never sees it.
+    public var prepareWith: PrepareMode?
 
-    public init(name: String, branch: String? = nil, base: String? = nil, pr: Int? = nil, ref: String? = nil, prepare: Bool? = nil) {
+    public init(name: String, branch: String? = nil, base: String? = nil, pr: Int? = nil, ref: String? = nil, prepare: Bool? = nil, prepareWith: PrepareMode? = nil) {
         self.name = name
         self.branch = branch
         self.base = base
         self.pr = pr
         self.ref = ref
         self.prepare = prepare
+        self.prepareWith = prepareWith
     }
 
     enum CodingKeys: String, CodingKey {
@@ -361,6 +377,7 @@ public struct WorktreeRequest: Codable, Sendable, Hashable {
         case pr
         case ref
         case prepare
+        case prepareWith = "prepare_with"
     }
 
     public init(from decoder: Decoder) throws {
@@ -371,35 +388,64 @@ public struct WorktreeRequest: Codable, Sendable, Hashable {
         self.pr = try c.decodeIfPresent(Int.self, forKey: .pr)
         self.ref = try c.decodeIfPresent(String.self, forKey: .ref)
         self.prepare = try c.decodeIfPresent(Bool.self, forKey: .prepare)
+        self.prepareWith = try? c.decodeIfPresent(PrepareMode.self, forKey: .prepareWith)
     }
 }
 
-/// How a worktree's preparation stands (`GET …/worktrees/{wt}/prepare`, docs/API.md §2.5): its setup script, then the
-/// services that start on their own.
+/// How a new worktree is prepared (docs/API.md §2.6.1): a setup agent works out what the project needs and saves it as
+/// the project's recipe; the setup script replays the recipe; none makes only the checkout.
+public enum PrepareMode: String, Codable, Sendable, CaseIterable {
+    case none, script, agent
+}
+
+/// How a worktree's preparation stands (`GET …/worktrees/{wt}/prepare`, docs/API.md §2.6.1): its setup script and the
+/// services that start on their own, or a setup agent in a session of its own.
 public struct PrepareStatus: Codable, Sendable, Hashable {
     public enum State: String, Codable, Sendable { case running, ready, failed, skipped, unknown }
 
     public let state: State
     public let since: Date?
     public let error: String?
+    /// "agent" or "script": how it is (or was) prepared; nil from an older box (a script) or before any preparation.
+    public let kind: String?
+    /// The setup agent's session (kind "agent"): its conversation.
+    public let session: String?
+    /// The setup agent, still at work, waits for someone.
+    public let waiting: Bool
     /// The setup script that runs; nil or empty when there is none.
     public let setup: String?
     /// The services that start on their own.
     public let services: [String]
+    /// How preparing it now goes by default ("agent" or "script"); nil from a box without setup agents.
+    public let prepareWith: PrepareMode?
 
-    public init(state: State, since: Date? = nil, error: String? = nil, setup: String? = nil, services: [String] = []) {
-        self.state = state; self.since = since; self.error = error; self.setup = setup; self.services = services
+    public init(state: State, since: Date? = nil, error: String? = nil, kind: String? = nil, session: String? = nil, waiting: Bool = false,
+                setup: String? = nil, services: [String] = [], prepareWith: PrepareMode? = nil) {
+        self.state = state; self.since = since; self.error = error; self.kind = kind; self.session = session; self.waiting = waiting
+        self.setup = setup; self.services = services; self.prepareWith = prepareWith
     }
+
+    enum CodingKeys: String, CodingKey { case state, since, error, kind, session, waiting, setup, services, prepareWith = "prepare_with" }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         state = (try? c.decode(State.self, forKey: .state)) ?? .unknown
         since = try c.decodeIfPresent(Date.self, forKey: .since)
         error = try c.decodeIfPresent(String.self, forKey: .error)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        session = try c.decodeIfPresent(String.self, forKey: .session)
+        waiting = try c.decodeIfPresent(Bool.self, forKey: .waiting) ?? false
         setup = try c.decodeIfPresent(String.self, forKey: .setup)
         services = try c.decodeIfPresent([String].self, forKey: .services) ?? []
+        // A way a later box adds reads as none given: the box decides.
+        prepareWith = try? c.decodeIfPresent(PrepareMode.self, forKey: .prepareWith)
     }
 
-    /// Something to run: a setup script or a service that starts on its own. Without either, preparing does nothing.
+    /// Something to run: a setup script or a service that starts on its own. Without either, preparing by script does
+    /// nothing.
     public var hasWork: Bool { !(setup ?? "").isEmpty || !services.isEmpty }
+    /// A setup agent prepares it (or did).
+    public var byAgent: Bool { kind == "agent" }
+    /// Worth showing: something to run, a setup agent's work, or a box that can hand it to one.
+    public var hasAnything: Bool { hasWork || byAgent || prepareWith == .agent }
 }

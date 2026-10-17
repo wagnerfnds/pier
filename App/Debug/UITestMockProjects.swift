@@ -50,6 +50,22 @@ struct MockProjects {
     /// Worktrees' preparation by "location/worktree": skipped (made with prepare: false; sandbox/subtract starts so),
     /// or prepared at a time (it reads "running" for 2 s).
     private var prepared: [String: Date?] = ["sandbox/subtract": nil]
+    /// Setup agents' runs by "location/worktree": their session, and when they began (one works for `agentWork`, then
+    /// records a preview with a test login). The main checkout of sandbox was prepared by one an hour ago.
+    private var agentRuns: [String: (session: String, at: Date)] = ["sandbox/sandbox": ("sandbox-setup", Date().addingTimeInterval(-3600))]
+    static let agentWork: TimeInterval = 4
+    /// The projects whose person allowed setup agents (`PUT …/setup-agent`): sandbox, where one already ran.
+    private var setupAllowed: Set<String> = ["sandbox"]
+    /// Previews recorded with PUT (a run that ended records its own).
+    private var previews: [String: JSON] = [:]
+    /// The box's preparation rules (nil: its defaults) and whether previews get public links by themselves.
+    private var prepareRules: String?
+    private var autoShare = true
+    static let defaultRules = """
+    - Never install Docker or LXD, and never change networking or firewall rules (iptables, nftables, ufw, netplan, bridges, routes).
+    - Do not stop, remove or downgrade what other projects or people on this box use: install what is missing beside it.
+    - Do not print secrets you did not create (tokens, keys, other people's passwords).
+    """
 
     private static let cloning: TimeInterval = 1.2
     private static let settingUp: TimeInterval = 2.8
@@ -76,6 +92,8 @@ struct MockProjects {
         }
         for i in all.indices {
             let name = (all[i]["name"] as? String) ?? ""
+            all[i]["prepare_with"] = prepareWith(name, all[i])
+            if setupAllowed.contains(name) { all[i]["setup_agent"] = true }
             if environments[name] != nil { all[i]["isolated"] = true }
             if let a = projectAccounts[name], !a.isEmpty { all[i]["accounts"] = a }
             if let root, let path = all[i]["path"] as? String, path.hasPrefix(root + "/") {
@@ -103,9 +121,33 @@ struct MockProjects {
         switch (method, p.count, p[1]) {
         case (.get, 2, "settings"): return (200, settingsJSON(fixture))
         case (.put, 2, "settings"):
-            let r = ((req["projects_root"] as? String) ?? "").trimmingCharacters(in: .whitespaces)
-            root = r.isEmpty ? nil : r.replacingOccurrences(of: "~", with: "/home/ubuntu")
+            if let r = req["projects_root"] as? String {
+                let t = r.trimmingCharacters(in: .whitespaces)
+                root = t.isEmpty ? nil : t.replacingOccurrences(of: "~", with: "/home/ubuntu")
+            }
+            if let r = req["prepare_rules"] as? String {
+                let t = r.trimmingCharacters(in: .whitespacesAndNewlines)
+                prepareRules = t.isEmpty ? nil : t
+            }
+            // Off: the previews' own links go (previewJSON); on: they come back.
+            if let on = req["auto_share"] as? Bool { autoShare = on }
             return (200, settingsJSON(fixture))
+        case (.put, 4, "locations") where p[3] == "setup-agent":
+            // The person's consent to setup agents for a project, answered with the project as the list has it.
+            guard let allowed = req["allowed"] as? Bool else { return (400, Self.json(["error": "say allowed: true or false", "code": "bad_request"])) }
+            if allowed { setupAllowed.insert(p[2]) } else { setupAllowed.remove(p[2]) }
+            let all = ((try? JSONSerialization.jsonObject(with: locations(fixture))) as? [JSON]) ?? []
+            guard let loc = all.first(where: { $0["name"] as? String == p[2] }) else {
+                return (404, Self.json(["error": "unknown location", "code": "not_found"]))
+            }
+            return (200, Self.json(loc))
+        case (.get, 6, "locations") where p[3] == "worktrees" && p[5] == "preview": return (200, previewJSON(p[2], p[4]))
+        case (.put, 6, "locations") where p[3] == "worktrees" && p[5] == "preview":
+            var saved: JSON = [:]
+            for k in ["port", "path", "url", "login", "note"] { if let v = req[k] { saved[k] = v } }
+            saved["updated"] = ISO8601DateFormatter().string(from: Date())
+            previews["\(p[2])/\(p[4])"] = saved
+            return (200, previewJSON(p[2], p[4]))
         case (.post, 2, "spaces"):
             guard root != nil else { return (400, Self.json(["error": "set the box's projects folder before using spaces", "code": "bad_request"])) }
             let n = (req["name"] as? String) ?? ""
@@ -181,7 +223,9 @@ struct MockProjects {
         case (.get, 6, "locations") where p[3] == "worktrees" && p[5] == "services": return (200, worktreeServices(p[2], p[4]))
         case (.get, 6, "locations") where p[3] == "worktrees" && p[5] == "prepare": return (200, prepareJSON(p[2], p[4]))
         case (.post, 6, "locations") where p[3] == "worktrees" && p[5] == "prepare":
-            if prepareState("\(p[2])/\(p[4])").state == "running" { return (409, Self.json(["error": "this worktree is already being prepared", "code": "conflict"])) }
+            // A setup agent's run is MockBox's (it makes the agent's session): here only the script.
+            if isPreparing("\(p[2])/\(p[4])") { return (409, Self.json(["error": "this worktree is already being prepared", "code": "conflict"])) }
+            agentRuns["\(p[2])/\(p[4])"] = nil
             prepared["\(p[2])/\(p[4])"] = .some(Date())
             return (202, prepareJSON(p[2], p[4]))
         case (.post, 8, "locations") where p[3] == "worktrees" && p[5] == "services":
@@ -281,7 +325,8 @@ struct MockProjects {
     }
 
     private func settingsJSON(_ fixture: String) -> Data {
-        var out: JSON = ["home": "/home/ubuntu", "docker": ["available": true, "version": "27.3.1"]]
+        var out: JSON = ["home": "/home/ubuntu", "docker": ["available": true, "version": "27.3.1"],
+                         "prepare_rules": prepareRules ?? Self.defaultRules, "prepare_rules_default": prepareRules == nil, "auto_share": autoShare]
         if let root {
             out["projects_root"] = root
             out["spaces"] = spaces.map { s in
@@ -401,11 +446,79 @@ struct MockProjects {
         return (Date().timeIntervalSince(at) < 2 ? "running" : "ready", at)
     }
 
-    private func prepareJSON(_ location: String, _ worktree: String) -> Data {
-        let (state, at) = prepareState("\(location)/\(worktree)")
-        var out: JSON = ["state": state, "setup": "npm ci && cp ../.env.local .env", "services": ["dev"]]
+    func prepareJSON(_ location: String, _ worktree: String) -> Data {
+        let key = "\(location)/\(worktree)"
+        var out: JSON = ["setup": "npm ci && cp ../.env.local .env", "services": ["dev"], "prepare_with": prepareWith(location, nil)]
+        if let run = agentRuns[key] {
+            // A setup agent: at work for a few seconds, then done.
+            let working = Date().timeIntervalSince(run.at) < Self.agentWork
+            out["state"] = working ? "running" : "ready"
+            out["since"] = ISO8601DateFormatter().string(from: working ? run.at : run.at.addingTimeInterval(Self.agentWork))
+            out["kind"] = "agent"
+            out["session"] = run.session
+            return Self.json(out)
+        }
+        let (state, at) = prepareState(key)
+        out["state"] = state
+        if state != "skipped" { out["kind"] = "script" }
         if let at { out["since"] = ISO8601DateFormatter().string(from: at) }
         return Self.json(out)
+    }
+
+    /// How a new worktree of a project is prepared by default: by its script where it has one (sandbox reads as having
+    /// one, and the clones do), by a setup agent where the person allowed them, by its script elsewhere.
+    private func prepareWith(_ location: String, _ loc: JSON?) -> String {
+        if location == "sandbox" || clones.contains(where: { $0.name == location }) { return "script" }
+        if let setup = (loc?["scripts"] as? JSON)?["setup"] as? String, !setup.isEmpty { return "script" }
+        return setupAllowed.contains(location) ? "agent" : "script"
+    }
+
+    private func isPreparing(_ key: String) -> Bool {
+        if let run = agentRuns[key], Date().timeIntervalSince(run.at) < Self.agentWork { return true }
+        return prepareState(key).state == "running"
+    }
+
+    /// Starts a setup agent's run when the request asks for one (or leaves it to a project whose default is one):
+    /// the session it works in, or nil when it is the script's to run. Busy: one already runs.
+    enum AgentRun { case started(String), busy }
+    mutating func beginAgentRun(location: String, worktree: String, main: Bool, body: Data?) -> AgentRun? {
+        let req = (body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? JSON) ?? [:]
+        let way = (req["prepare_with"] as? String) ?? prepareWith(location, nil)
+        guard way == "agent" else { return nil }
+        let key = "\(location)/\(worktree)"
+        if isPreparing(key) { return .busy }
+        // Every other run gets the other name, as on pierd.
+        let base = main ? "\(location)-setup" : "\(location)-\(worktree)-setup"
+        let session = agentRuns[key]?.session == base ? base + "-2" : base
+        agentRuns[key] = (session, Date())
+        previews[key] = nil
+        return .started(session)
+    }
+
+    /// A worktree's preview: what was recorded, or what a setup agent's run left, with its public link while the box
+    /// makes them.
+    private func previewJSON(_ location: String, _ worktree: String) -> Data {
+        let key = "\(location)/\(worktree)"
+        var p = previews[key] ?? [:]
+        if p.isEmpty, let run = agentRuns[key], Date().timeIntervalSince(run.at) >= Self.agentWork {
+            let port = location == "sandbox" && worktree == "sandbox" ? 41000 : worktreePort(location, worktree)
+            p = ["port": port, "path": "/login", "login": ["user": "demo@example.com", "password": "demo-pass-123", "note": "made by the seeder"],
+                 "note": "Vite build served by php artisan serve; MySQL database \(location)_\(worktree)",
+                 "updated": ISO8601DateFormatter().string(from: run.at.addingTimeInterval(Self.agentWork))]
+        }
+        if autoShare, let port = p["port"] as? Int, port > 0 {
+            let name = "abcd2345" + String(key.unicodeScalars.map { String($0.value % 36, radix: 36) }.joined().prefix(16))
+            // A day at a time, renewed in its last twelve hours.
+            p["share"] = ["name": name, "url": "https://p-\(name).docktopier.com", "auto": true,
+                          "expires": ISO8601DateFormatter().string(from: Date().addingTimeInterval(20 * 3600))]
+        }
+        return Self.json(p)
+    }
+
+    private func worktreePort(_ location: String, _ worktree: String) -> Int {
+        let all = ((try? JSONSerialization.jsonObject(with: Data(MockFixtures.locations.utf8))) as? [JSON]) ?? []
+        let wts = (all.first { $0["name"] as? String == location }?["worktrees"] as? [JSON]) ?? []
+        return (wts.first { $0["name"] as? String == worktree }?["port"] as? Int) ?? 41000
     }
 
     private func worktreeServices(_ location: String, _ worktree: String) -> Data {

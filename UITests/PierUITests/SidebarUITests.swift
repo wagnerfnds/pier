@@ -171,11 +171,12 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(target.waitForExistence(timeout: 5))
         XCTAssertFalse(target.label.contains("sem ambiente"))
         target.tap()
-        // In a menu a toggle is a checkmarked button.
-        let toggle = app.buttons["Preparar ambiente"].firstMatch
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Worktree nova has no Preparar ambiente")
+        // The ways it can be prepared, as buttons in the menu (the picked one checkmarked).
+        let codeOnly = app.buttons["Só o código"].firstMatch
+        XCTAssertTrue(codeOnly.waitForExistence(timeout: 5), "Worktree nova offers no way to leave the environment for later")
+        XCTAssertTrue(app.buttons["Agente prepara"].firstMatch.exists, "Worktree nova offers no setup agent")
         shot("start-target-menu")
-        toggle.tap()
+        codeOnly.tap()
         XCTAssertTrue(target.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil(5) { target.label.contains("sem ambiente") }, "the chip does not say the worktree goes without its environment")
     }

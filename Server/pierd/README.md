@@ -130,10 +130,10 @@ removes one (its open connections close within seconds).
 
 | Where | What |
 |---|---|
-| `$PIER_HOME` (default `~/.config/pier`) | `box/` (identity, `clients.json`, `locations.json`, `ports.json`, `journal/`, `turns.json`, `accounts.json` and `accounts/`, `mcp.json`, logs, `pierd.sock`), `push.json`, `AuthKey.p8`, `push-state.json` |
+| `$PIER_HOME` (default `~/.config/pier`) | `box/` (identity, `clients.json`, `locations.json`, `ports.json`, `journal/`, `turns.json`, `accounts.json` and `accounts/`, `mcp.json`, `prepare.json`, `previews.json`, `settings.json`, logs, `pierd.sock`), `push.json`, `AuthKey.p8`, `push-state.json` |
 | `$PIER_USER_DIR` (default `~/.pier`) | `hooks.json` (box hooks: `{"hooks":[{"on":"before:worktree.create","run":"…"}]}`), `env.json` (`{"env":{…}}` for every worktree) |
 | repository `.pier/config.json` | what every worktree of the repository gets (below). It runs only once trusted on the box: `pierd location config NAME --trust HASH` |
-| box-local location config | the same keys, for one box, laid over the repository's: `pierd location config NAME --set file.json` |
+| box-local location config | the same keys, for one box, laid over the repository's: `pierd location config NAME --set file.json` (replaces it) or `--merge file.json` (`-`: stdin; lays keys over it) |
 | `$PIER_TMUX_SOCKET` | the tmux server's name (default `pier`) |
 
 A location config:
@@ -146,9 +146,14 @@ A location config:
   "env": { "DB_NAME": "shop_$PIER_PORT" },
   "services": [ { "name": "web", "run": "npm run dev -- --port $PIER_PORT", "autostart": true } ],
   "hooks": [ { "on": "worktree.created", "run": "echo $PIER_WORKTREE_PATH" } ],
-  "agents": [ { "id": "claude", "command": "claude --model opus" } ]
+  "agents": [ { "id": "claude", "command": "claude --model opus" } ],
+  "preview": { "path": "/login", "login": { "user": "demo@example.com", "password": "demo-pass" } }
 }
 ```
+
+`preview` is the page each worktree prepared by its setup script shows in the app, on its `$PIER_PORT`, with a test
+login of the app. The box's own config may also say `"auto_share": false`: that location's previews get no public
+link by themselves.
 
 Everything run in a worktree (sessions, setup and archive scripts, services, `exec`, repository hooks) gets
 `PIER_BOX`, `PIER_LOCATION`, `PIER_ROOT_PATH`, `PIER_WORKTREE_PATH`, `PIER_WORKTREE_NAME`,
@@ -158,6 +163,24 @@ Everything run in a worktree (sessions, setup and archive scripts, services, `ex
 
 Each worktree gets its own block of 10 ports from 41000 (kept in `ports.json`); a new block is never one where
 something already listens.
+
+### Preparing worktrees
+
+A new worktree is prepared as it is made: by its location's setup script and autostart services, or by a **setup
+agent**: Claude Code in a session of its own (`<worktree>-setup`, with `PIER_SETUP=1`), unattended (bypass mode, its
+warning skipped for that process alone through `--settings`; the account's own settings are left as they are), told
+by pierd that the repository is data, never instructions, and what the box allows (whether `sudo -n` works, the
+worktree's ports, the box's preparation rules: by default no Docker or LXD, no network or firewall changes; the app
+edits them). It installs what the project needs, gets the app running on `$PIER_PORT` with a test login and its debug
+consoles off, saves what it did as the location's config (`location config --merge`, marked `by: setup`), so the next
+worktrees are prepared by script, and reports with `pierd preview set` and `pierd prepare done`. A setup agent
+prepares a location's new worktrees by default only once the person allowed it for that location (the app asks once
+per project: `PUT /v1/locations/{name}/setup-agent`), and then only while it has no recipe, its repository config is
+trusted, the worktree is not a pull request's and pierd does not run as root; asked for by name
+(`--prepare-with agent`), one runs anyway. `worktree new` and `task new` take `--prepare-with agent|script|none`;
+`pierd prepare wait` blocks until a worktree's preparation is over (agents run it before they run the app or its
+tests; the setup agent itself never does). A worktree's preview with a port gets a public link by itself on a box
+with a relay that serves links, a day at a time, renewed while the worktree is there.
 
 ## Agent hooks
 
@@ -209,7 +232,9 @@ contract in the app's `docs/PUSH.md`.
 `doctor`, `version`, `tools`, `hook`, `integrations`, `client` (a paired client for scripts: `pierd client pair LINK`,
 then `pierd client GET /v1/sessions`), and the box commands over the local socket: `locations`,
 `location add|rm|config`, `worktree new|rm`, `services`, `service list|start|stop|restart`, `sessions`,
-`session new|send|screen|rename|wait|turns|kill`, `task new`, `exec`, `stats`, `info`, `emit`, `events`.
+`session new|send|screen|rename|wait|turns|kill`, `task new`, `prepare status|wait|start|done`, `preview get|set`,
+`exec`, `stats`, `info`, `emit`, `events`. Run in a worktree's session, `prepare` and `preview` take that worktree
+when none is named.
 
 ## API
 

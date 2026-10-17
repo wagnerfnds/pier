@@ -4,7 +4,9 @@ import PierKit
 /// A box's projects folder and its spaces (`GET`/`PUT /v1/settings`, `/v1/spaces`): the folder every project lives under,
 /// the way a root holds everything pierd does (clones go there, nothing outside it is added or deleted), and the spaces
 /// in it, folders that keep groups of projects apart on the disk. Removing a space removes its projects with it; they
-/// never move out of it. Docker's state is shown here too: the projects' isolated environments need it.
+/// never move out of it. Docker's state is shown here too: the projects' isolated environments need it. And how setup
+/// agents prepare worktrees on this box: the projects that allowed them (turning one on asks first, as picking one does),
+/// the rules each of them keeps to (no Docker by default), and whether a worktree's preview gets a public link by itself.
 struct BoxProjectsSettingsScreen: View {
     let box: String
 
@@ -16,10 +18,23 @@ struct BoxProjectsSettingsScreen: View {
     @State private var newSpace = false
     @State private var spaceName = ""
     @State private var removing: ProjectSpace?
+    @State private var rules = ""
+    @State private var savingRules = false
+    @State private var autoShare = true
+    /// The project whose consent to setup agents is being asked for, and those whose consent is being taken back.
+    @State private var consentFor: ConsentProject?
+    @State private var revoking: Set<String> = []
+
+    private struct ConsentProject: Identifiable { let name: String; var id: String { name } }
 
     private var conn: BoxConnection? { model.connection(for: box) }
     private var api: BoxAPI? { conn.map { BoxAPI(transport: $0.raw) } }
+    /// The box's projects a setup agent could prepare (capability `prepare.agent`).
+    private var agentProjects: [Location] { conn?.info?.has("prepare.agent") == true ? (conn?.locations ?? []).filter(\.repo) : [] }
     private var rootChanged: Bool { root.trimmingCharacters(in: .whitespaces) != (settings?.projectsRoot ?? "") }
+    private var rulesChanged: Bool {
+        rules.trimmingCharacters(in: .whitespacesAndNewlines) != (settings?.prepareRules ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         Form {
@@ -69,6 +84,9 @@ struct BoxProjectsSettingsScreen: View {
                 .listRowBackground(Theme.card)
             }
 
+            if !agentProjects.isEmpty { setupAgentsSection }
+            if let s = settings, s.prepareRules != nil || s.autoShare != nil { preparationSection(s) }
+
             if let d = settings?.docker {
                 Section {
                     if d.available {
@@ -95,6 +113,92 @@ struct BoxProjectsSettingsScreen: View {
             Button("Cancelar", role: .cancel) {}
         } message: { Text("Letras, números, ponto, hífen e sublinhado.") }
         .sheet(item: $removing) { s in RemoveSpaceSheet(box: box, space: s) { Task { await load() } }.environment(model) }
+        .sheet(item: $consentFor) { p in SetupAgentConsentSheet(box: box, location: p.name) {}.environment(model) }
+    }
+
+    /// The projects whose new worktrees without a recipe a setup agent prepares by itself: turning one on asks the
+    /// person first (`SetupAgentConsentSheet`), turning it off takes the consent back at once.
+    private var setupAgentsSection: some View {
+        Section {
+            ForEach(agentProjects) { loc in
+                Toggle(isOn: Binding(get: { loc.setupAgent }, set: { on in
+                    if on { consentFor = ConsentProject(name: loc.name) } else { Task { await revokeSetupAgent(loc.name) } }
+                })) {
+                    Text(model.prefs.displayName(box: box, location: loc.name)).foregroundStyle(Theme.text)
+                }
+                .tint(Theme.accent)
+                .disabled(revoking.contains(loc.name))
+                .accessibilityIdentifier("setup-agent-\(loc.name)")
+            }
+        } header: { Text("Agente por projeto") } footer: {
+            Text("Nos projetos ligados, as worktrees novas sem receita são preparadas por um agente que trabalha sozinho. Ligar pede sua confirmação.")
+        }
+        .listRowBackground(Theme.card)
+    }
+
+    /// Setup agents on this box: whether a preview's page gets a public link by itself, and the rules every one of them
+    /// keeps to (the box's defaults keep Docker and the network out of their reach).
+    private func preparationSection(_ s: BoxSettings) -> some View {
+        Section {
+            if s.autoShare != nil {
+                Toggle(isOn: $autoShare) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Link público automático").foregroundStyle(Theme.text)
+                        Text("A página que o agente registra ganha um link público por um dia, renovado enquanto a worktree existir.")
+                            .font(.caption).foregroundStyle(Theme.textDim)
+                    }
+                }
+                .tint(Theme.accent)
+                .onChange(of: autoShare) { _, on in
+                    if settings?.autoShare != on { Task { await saveAutoShare(on) } }
+                }
+                .accessibilityIdentifier("auto-share-toggle")
+            }
+            if s.prepareRules != nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Regras da preparação").font(.subheadline).foregroundStyle(Theme.textDim)
+                        Spacer()
+                        if settings?.prepareRulesDefault == true && !rulesChanged {
+                            Text("padrão").font(.caption2.weight(.semibold)).foregroundStyle(Theme.textDim)
+                                .padding(.horizontal, 6).padding(.vertical, 2).background(Theme.cardRaised, in: Capsule())
+                        }
+                    }
+                    TextEditor(text: $rules)
+                        .font(.mono(13)).foregroundStyle(Theme.text)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 130)
+                        .textInputAutocapitalization(.never)
+                        .accessibilityIdentifier("prepare-rules-field")
+                }
+                .padding(.vertical, 4)
+                if rulesChanged {
+                    Button { Task { await saveRules(rules) } } label: {
+                        HStack { Text("Salvar regras"); if savingRules { Spacer(); ProgressView() } }
+                    }
+                    .disabled(savingRules)
+                    .accessibilityIdentifier("prepare-rules-save")
+                } else if settings?.prepareRulesDefault == false {
+                    Button("Voltar às regras padrão") { Task { await saveRules("") } }
+                        .disabled(savingRules)
+                        .accessibilityIdentifier("prepare-rules-reset")
+                }
+            }
+        } header: { Text("Preparação por agente") } footer: {
+            Text("Nos projetos em que você permitiu, um agente prepara as worktrees sem receita: instala o que falta, sobe o servidor e cria um login de teste, e salva o que fez para as próximas. Toda preparação desta box segue estas regras.")
+        }
+        .listRowBackground(Theme.card)
+    }
+
+    private func revokeSetupAgent(_ name: String) async {
+        guard let api, let conn else { return }
+        revoking.insert(name)
+        defer { revoking.remove(name) }
+        do {
+            _ = try await api.setSetupAgent(location: name, allowed: false)
+            await conn.refreshLocations()
+            error = nil
+        } catch { self.error = ComposeErrorText.message(error) }
     }
 
     private func load() async {
@@ -102,7 +206,30 @@ struct BoxProjectsSettingsScreen: View {
         do {
             let s = try await api.settings()
             settings = s; root = s.projectsRoot ?? ""; error = nil
+            if !rulesChanged || rules.isEmpty { rules = s.prepareRules ?? "" }
+            if let on = s.autoShare { autoShare = on }
         } catch { self.error = ComposeErrorText.message(error) }
+    }
+
+    private func saveRules(_ text: String) async {
+        guard let api else { return }
+        savingRules = true
+        defer { savingRules = false }
+        do {
+            let s = try await api.setPrepareRules(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            settings = s; rules = s.prepareRules ?? ""; error = nil
+        } catch { self.error = ComposeErrorText.message(error) }
+    }
+
+    private func saveAutoShare(_ on: Bool) async {
+        guard let api else { return }
+        do {
+            let s = try await api.setAutoShare(on)
+            settings = s; autoShare = s.autoShare ?? on; error = nil
+        } catch {
+            self.error = ComposeErrorText.message(error)
+            autoShare = settings?.autoShare ?? true
+        }
     }
 
     private func saveRoot() async {

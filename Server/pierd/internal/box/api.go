@@ -108,12 +108,29 @@ type Box struct {
 	// Log, when set, takes what pierd notes for the box's owner in its log
 	// (an MCP record it could not read).
 	Log *log.Logger
+	// previews are the worktrees' previews (preview.go).
+	previewsOnce sync.Once
+	previewList  *previewStore
+	// setupSessions maps each setup agent's session to its worktree
+	// (setupagent.go); setupWatch follows them on the bus.
+	setupSessions sync.Map
+	setupWatch    sync.Once
+	// clock stands in for time.Now in tests of links' lifetimes.
+	clock func() time.Time
 }
 
 func (b *Box) logf(format string, args ...any) {
 	if b.Log != nil {
 		b.Log.Printf(format, args...)
 	}
+}
+
+// now is the box's time: time.Now, or a test's clock.
+func (b *Box) now() time.Time {
+	if b.clock != nil {
+		return b.clock()
+	}
+	return time.Now()
 }
 
 // Mount registers the box's routes on s. They are reachable by paired
@@ -188,6 +205,10 @@ func (b *Box) Mount(s *wire.Server) {
 	route("GET /v1/locations/{name}/worktrees/{worktree}/services", b.listWorktreeServices)
 	route("GET /v1/locations/{name}/worktrees/{worktree}/prepare", b.getPrepare)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/prepare", b.postPrepare)
+	route("POST /v1/locations/{name}/worktrees/{worktree}/prepare/done", b.prepareDone)
+	route("PUT /v1/locations/{name}/setup-agent", b.putSetupAgent)
+	route("GET /v1/locations/{name}/worktrees/{worktree}/preview", b.getPreview)
+	route("PUT /v1/locations/{name}/worktrees/{worktree}/preview", b.putPreview)
 	route("POST /v1/locations/{name}/worktrees/{worktree}/services/{service}/{action}", b.serviceAction)
 	route("GET /v1/worktrees", b.listWorktreeStatuses)
 	route("GET /v1/services", b.handleServices)
@@ -322,6 +343,11 @@ func (b *Box) listLocations(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// How a new worktree of each project would be prepared (the app's
+	// default choice), and whether the person allowed setup agents there.
+	for i := range all {
+		b.describePreparation(r.Context(), &all[i])
+	}
 	writeJSON(w, all)
 	return nil
 }
@@ -359,7 +385,7 @@ func (b *Box) removeLocation(w http.ResponseWriter, r *http.Request) error {
 	// Forgotten, its folders stay; what pierd ran for it stops: its links,
 	// its services, its environment's containers (their data kept).
 	if loc, err := b.Locations.Get(r.Context(), name); err == nil {
-		b.dropShares(name, "")
+		b.forgetWorktree(name, "")
 		for _, wt := range loc.Worktrees {
 			b.stopServices(name, wt.Name)
 		}
@@ -382,26 +408,36 @@ func (b *Box) addWorktree(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	wt, err := b.createWorktree(r, loc, req)
+	wt, prepare, err := b.createWorktree(r, loc, req)
 	if err != nil {
 		return err
 	}
+	prepare()
 	writeJSON(w, wt)
 	return nil
 }
 
-// createWorktree makes a git worktree once the hooks allow it, then prepares
-// it in the background (setup script, autostart services), unless the request
-// said not to (prepare: false).
-func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest) (Worktree, error) {
-	if err := b.before(r, "worktree.create", map[string]any{
-		"location": loc.Name, "name": req.Name, "branch": req.Branch, "base": req.Base,
-	}); err != nil {
-		return Worktree{}, err
-	}
-	wt, err := b.Locations.CreateWorktreeFrom(r.Context(), loc.Name, req)
+// createWorktree makes a git worktree once the hooks allow it. Calling
+// prepare then prepares it in the background, the way the request says
+// (prepare_with, or the older prepare: false) or the location's default: a
+// task calls it once its agent started, so a task that fails leaves no
+// setup agent behind.
+func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest) (wt Worktree, prepare func(), err error) {
+	// A pull request's code (pr, ref) is never handed to a setup agent
+	// unasked, now or when it is prepared again.
+	checkout := req.PR > 0 || req.Ref != ""
+	how, err := b.prepareWithFor(r.Context(), loc, req.PrepareWith, req.Prepare, checkout)
 	if err != nil {
-		return Worktree{}, err
+		return Worktree{}, nil, err
+	}
+	if err := b.before(r, "worktree.create", map[string]any{
+		"location": loc.Name, "name": req.Name, "branch": req.Branch, "base": req.Base, "prepare_with": how,
+	}); err != nil {
+		return Worktree{}, nil, err
+	}
+	wt, err = b.Locations.CreateWorktreeFrom(r.Context(), loc.Name, req)
+	if err != nil {
+		return Worktree{}, nil, err
 	}
 	b.own(wt.Path)
 	// Made by pierd for the project: the agents need not ask about it.
@@ -415,14 +451,44 @@ func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest)
 		created["repo_config"] = loc.RepoTrust
 	}
 	b.publish(r, "worktree.created", created)
-	if req.Prepare != nil && !*req.Prepare {
+	// Its port block, as the locations list it.
+	if port, err := b.Locations.Ports.For(wt.Path); err == nil && port > 0 {
+		wt.Port = port
+	}
+	key := prepKey(loc.Name, wt.Name)
+	if checkout {
+		b.preps().markCheckout(key)
+	}
+	if how == "none" {
 		b.setPrepare(loc.Name, wt.Name, "skipped", nil)
-		return wt, nil
+		return wt, func() {}, nil
 	}
-	if b.prep.start(prepKey(loc.Name, wt.Name)) {
-		go b.prepareWorktree(origin(r), loc, wt)
+	// Claimed now, so a read right after the answer sees it running.
+	started := false
+	var name, previous string
+	if how == "agent" {
+		name, previous, started = b.preps().startAgent(key, setupSessionName(loc, wt))
+	} else {
+		started = b.preps().start(key, "script", "")
 	}
-	return wt, nil
+	from, gateFrom := origin(r), gateOrigin(r)
+	// A recipe a setup agent saved that fails goes on with an agent, where
+	// the location allows them (agentFallback), unless a script was asked
+	// for by name.
+	fallback := how == "script" && req.PrepareWith == ""
+	return wt, func() {
+		if !started {
+			return
+		}
+		if how == "agent" {
+			go func() {
+				b.Events.Publish(events.Event{Type: "worktree.prepare.started", Box: b.Name, Origin: from, Data: b.prepareData(loc, wt)})
+				b.runSetupAgent(from, gateFrom, loc, wt, name, previous, "")
+			}()
+			return
+		}
+		go b.prepareByScript(from, gateFrom, loc, wt, fallback)
+	}, nil
 }
 
 // lifecycle runs a setup or archive script (callers run it in the
@@ -479,8 +545,9 @@ func (b *Box) removeWorktree(w http.ResponseWriter, r *http.Request) error {
 	b.stopServices(location, name)
 	from := origin(r)
 	removed := func(ctx context.Context) {
-		b.dropShares(location, name)
 		b.stopSessionsIn(from, dir)
+		// Its links, its preview, how its preparation went.
+		b.forgetWorktree(location, name)
 		b.Locations.Ports.Release(dir)
 		if branch != "" {
 			git(ctx, "-C", loc.Path, "branch", "-D", branch)

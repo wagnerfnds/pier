@@ -203,6 +203,51 @@ func (c *Client) SetLocationConfig(ctx context.Context, location string, local R
 	return out, c.call(ctx, http.MethodPut, "/v1/locations/"+url.PathEscape(location)+"/config", map[string]RepoConfig{"local": local}, &out)
 }
 
+// MergeLocationConfig lays keys over this box's own config for a location
+// (a setup agent's recipe), keeping the rest.
+func (c *Client) MergeLocationConfig(ctx context.Context, location string, over RepoConfig) (out Config, err error) {
+	return out, c.call(ctx, http.MethodPut, "/v1/locations/"+url.PathEscape(location)+"/config", map[string]RepoConfig{"merge": over}, &out)
+}
+
+func worktreePath(location, worktree, rest string) string {
+	return "/v1/locations/" + url.PathEscape(location) + "/worktrees/" + url.PathEscape(worktree) + rest
+}
+
+// Preview is a worktree's preview ({} when none was recorded).
+func (c *Client) Preview(ctx context.Context, location, worktree string) (out Preview, err error) {
+	return out, c.call(ctx, http.MethodGet, worktreePath(location, worktree, "/preview"), nil, &out)
+}
+
+// SetPreview replaces a worktree's preview.
+func (c *Client) SetPreview(ctx context.Context, location, worktree string, p Preview) (out Preview, err error) {
+	return out, c.call(ctx, http.MethodPut, worktreePath(location, worktree, "/preview"), p, &out)
+}
+
+// PrepareStatus is how a worktree's preparation stands.
+func (c *Client) PrepareStatus(ctx context.Context, location, worktree string) (out PrepareStatus, err error) {
+	return out, c.call(ctx, http.MethodGet, worktreePath(location, worktree, "/prepare"), nil, &out)
+}
+
+// Prepare prepares a worktree now, with "agent", "script" or ("") the
+// location's default.
+func (c *Client) Prepare(ctx context.Context, location, worktree, with string) (out PrepareStatus, err error) {
+	var body any
+	if with != "" {
+		body = map[string]string{"prepare_with": with}
+	}
+	return out, c.call(ctx, http.MethodPost, worktreePath(location, worktree, "/prepare"), body, &out)
+}
+
+// PrepareDone is a setup agent saying it is done, or (failed) why it could
+// not finish.
+func (c *Client) PrepareDone(ctx context.Context, location, worktree, failed string) (out PrepareStatus, err error) {
+	body := map[string]string{}
+	if failed != "" {
+		body["failed"] = failed
+	}
+	return out, c.call(ctx, http.MethodPost, worktreePath(location, worktree, "/prepare/done"), body, &out)
+}
+
 // TrustRepoConfig lets the box run a location's repository config, as long
 // as the file still has the hash that was reviewed.
 func (c *Client) TrustRepoConfig(ctx context.Context, location, hash string) (out Config, err error) {

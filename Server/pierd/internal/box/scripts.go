@@ -50,6 +50,31 @@ type RepoConfig struct {
 	Services []WorktreeService `json:"services,omitempty"`
 	// Hooks run for this repository's events only, in the worktree.
 	Hooks []hooks.Hook `json:"hooks,omitempty"`
+	// Preview is what each prepared worktree's page is (preview.go): its
+	// path and a test login, on the worktree's $PIER_PORT. A worktree
+	// prepared by the setup script gets it as its preview.
+	Preview *PreviewTemplate `json:"preview,omitempty"`
+	// AutoShare turns the public link a worktree's preview gets by itself
+	// on or off for this location (nil: the box's setting). Only the box's
+	// own config for the location counts: a repository's file cannot
+	// publish anything.
+	AutoShare *bool `json:"auto_share,omitempty"`
+	// Detected marks a box config pierd worked out from the repository's
+	// files (detect.go) that nobody has written or checked since: a setup
+	// agent, where the location allows them, still prepares its new
+	// worktrees.
+	Detected bool `json:"detected,omitempty"`
+	// PrepareWith "agent" is the person's consent to setup agents for this
+	// location (setupagent.go): by default its new worktrees without a
+	// recipe are then prepared by one. Only the box's own config counts, and
+	// only PUT …/setup-agent writes it: neither a repository's file nor a
+	// recipe saved over the config can ask for an agent that runs
+	// unattended.
+	PrepareWith string `json:"prepare_with,omitempty"`
+	// By "setup" marks a recipe a setup agent saved (its setup script and
+	// services): one that fails is handed to a setup agent again. A recipe a
+	// person wrote is only ever run.
+	By string `json:"by,omitempty"`
 }
 
 // scriptsFor is the location's own scripts if set, otherwise the

@@ -368,6 +368,9 @@ func serve(b boxHome, args []string) error {
 	go bx.Samples.Run(ctx)
 	go bx.SyncSkills()
 	go bx.SyncMCP()
+	// Setup agents outlive a restart: followed again before the hooks
+	// spooled meanwhile are published.
+	bx.ResumePrepare()
 	go bx.StartShares(ctx)
 	go bx.EndStaleSignIns(ctx)
 	bx.Mount(s)

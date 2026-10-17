@@ -42,6 +42,9 @@ type Share struct {
 	Port     int       `json:"port"`
 	Created  time.Time `json:"created"`
 	Expires  time.Time `json:"expires"`
+	// Auto marks the link pierd made for the worktree's preview
+	// (preview.go), renewed while the worktree is there.
+	Auto bool `json:"auto,omitempty"`
 }
 
 var errNoTunnel = errors.New("this box has no tunnel: public links go through its relay (pierd relay default)")
@@ -85,7 +88,7 @@ func (b *Box) StartShares(ctx context.Context) {
 	st := b.shareStore()
 	st.mu.Lock()
 	for _, sh := range st.all {
-		if time.Now().Before(sh.Expires) {
+		if b.now().Before(sh.Expires) {
 			// Registered now, published once the relay is connected.
 			go b.Publisher.Publish(ctx, sh.Name, sh.Port)
 		}
@@ -94,6 +97,8 @@ func (b *Box) StartShares(ctx context.Context) {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for {
+		// Previews' links are renewed before anything expires.
+		b.renewPreviewShares(ctx)
 		b.expireShares()
 		select {
 		case <-ctx.Done():
@@ -109,7 +114,7 @@ func (b *Box) expireShares() {
 	defer st.mu.Unlock()
 	keep := st.all[:0]
 	for _, sh := range st.all {
-		if time.Now().Before(sh.Expires) {
+		if b.now().Before(sh.Expires) {
 			keep = append(keep, sh)
 			continue
 		}
@@ -201,7 +206,8 @@ func (b *Box) addShare(w http.ResponseWriter, r *http.Request) error {
 		}
 		return err
 	}
-	sh := Share{Name: name, URL: url, Location: loc.Name, Worktree: wt.Name, Port: req.Port, Created: time.Now().UTC(), Expires: time.Now().UTC().Add(time.Duration(hours) * time.Hour)}
+	now := b.now().UTC()
+	sh := Share{Name: name, URL: url, Location: loc.Name, Worktree: wt.Name, Port: req.Port, Created: now, Expires: now.Add(time.Duration(hours) * time.Hour)}
 	st := b.shareStore()
 	st.mu.Lock()
 	st.all = append(st.all, sh)
@@ -210,6 +216,26 @@ func (b *Box) addShare(w http.ResponseWriter, r *http.Request) error {
 	b.publish(r, "share.created", map[string]any{"name": name, "url": url, "location": loc.Name, "worktree": wt.Name, "port": req.Port})
 	writeJSON(w, sh)
 	return nil
+}
+
+// dropShare forgets the link called name, already taken down; false when it
+// was not listed.
+func (b *Box) dropShare(name string) bool {
+	st := b.shareStore()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	keep := st.all[:0]
+	for _, sh := range st.all {
+		if sh.Name != name {
+			keep = append(keep, sh)
+		}
+	}
+	if len(keep) == len(st.all) {
+		return false
+	}
+	st.all = keep
+	st.save()
+	return true
 }
 
 // dropShares takes down the links of a location (worktree "": all of its
@@ -258,6 +284,8 @@ func (b *Box) removeShare(w http.ResponseWriter, r *http.Request) error {
 	if b.Publisher != nil {
 		b.Publisher.Unpublish(name)
 	}
+	// A preview's own link taken down by hand stays down.
+	b.previewShareRemoved(name)
 	b.publish(r, "share.removed", map[string]any{"name": name})
 	writeJSON(w, map[string]string{"removed": name})
 	return nil

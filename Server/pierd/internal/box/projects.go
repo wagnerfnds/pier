@@ -400,7 +400,7 @@ func (b *Box) runClone(from string, cl Clone, src repoSource, setup, adopt bool)
 				main = wt
 			}
 		}
-		if main.Path != "" && b.prep.start(prepKey(loc.Name, main.Name)) {
+		if main.Path != "" && b.preps().start(prepKey(loc.Name, main.Name), "script", "") {
 			if err := b.prepareWorktree(from, loc, main); err != nil {
 				fail(err)
 				return
@@ -478,6 +478,8 @@ func (b *Box) prepareLocation(ctx context.Context, name string) (string, error) 
 		return "none", nil
 	}
 	local := cfg.Local
+	// Only pierd's guess so far: a setup agent may still do better (setupagent.go).
+	local.Detected = local.Setup == "" && len(local.Services) == 0
 	if local.Setup == "" {
 		local.Setup = found.Setup
 	}
@@ -708,7 +710,7 @@ func (b *Box) purge(r *http.Request, loc Location, d DiskUse) error {
 		b.Locations.Ports.Release(wt.Path)
 	}
 	b.dropEnvironment(name, true)
-	b.dropShares(name, "")
+	b.forgetWorktree(name, "")
 	// Forgotten first: a location whose folder is half gone is worse than
 	// a folder nothing points at.
 	if err := b.Locations.Remove(name); err != nil {

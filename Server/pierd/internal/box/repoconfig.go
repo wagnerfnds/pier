@@ -3,6 +3,7 @@ package box
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -58,6 +59,19 @@ func (c RepoConfig) validate() error {
 			return fmt.Errorf("%q is not an environment variable name", k)
 		}
 	}
+	if c.Preview != nil {
+		if err := c.Preview.validate(); err != nil {
+			return err
+		}
+	}
+	switch c.PrepareWith {
+	case "", "agent", "script":
+	default:
+		return fmt.Errorf("prepare_with is agent or script")
+	}
+	if c.By != "" && c.By != "setup" {
+		return fmt.Errorf("by is setup, or left out")
+	}
 	return hooks.Validate(c.Hooks)
 }
 
@@ -88,7 +102,52 @@ func merge(repo, local RepoConfig) RepoConfig {
 	out.Services = mergeBy(repo.Services, local.Services, func(s WorktreeService) string { return s.Name })
 	out.Agents = mergeBy(repo.Agents, local.Agents, func(a AgentPreset) string { return a.ID })
 	out.Hooks = append(append([]hooks.Hook{}, repo.Hooks...), local.Hooks...)
+	if local.Preview != nil {
+		out.Preview = local.Preview
+	}
+	// Whether previews go public, whether setup agents may prepare it, who
+	// wrote the recipe and whether pierd guessed it are the box's to say,
+	// never a repository's.
+	out.AutoShare, out.Detected = local.AutoShare, local.Detected
+	out.PrepareWith, out.By = local.PrepareWith, local.By
 	return out
+}
+
+// layOver is what `PUT …/config {"merge": …}` saves: over lays on base the
+// way merge lays the box's config on a repository's, except that a hook
+// already there is not added twice, so a recipe saved again stays the same.
+func layOver(base, over RepoConfig) RepoConfig {
+	out := merge(base, over)
+	out.Hooks = append([]hooks.Hook{}, base.Hooks...)
+	for _, h := range over.Hooks {
+		dup := false
+		for _, have := range out.Hooks {
+			dup = dup || have.On == h.On && have.Run == h.Run
+		}
+		if !dup {
+			out.Hooks = append(out.Hooks, h)
+		}
+	}
+	if over.AutoShare == nil {
+		out.AutoShare = base.AutoShare
+	}
+	// The person's consent to setup agents is SetPrepareWith's alone: a
+	// recipe saved over the config (a setup agent's) never gives it.
+	out.PrepareWith = base.PrepareWith
+	// The recipe is whoever wrote it last: no longer only pierd's guess,
+	// and a setup agent's only while a setup agent wrote it.
+	if over.recipe() {
+		out.Detected = false
+	} else {
+		out.Detected, out.By = base.Detected, base.By
+	}
+	return out
+}
+
+// recipe says c holds what prepares a worktree: a setup script, services,
+// variables or a preview.
+func (c RepoConfig) recipe() bool {
+	return c.Setup != "" || len(c.Services) > 0 || len(c.Env) > 0 || c.Preview != nil
 }
 
 func mergeBy[T any](base, over []T, key func(T) string) []T {
@@ -167,7 +226,8 @@ func (l *Locations) saved(name string) (savedLocation, error) {
 	return savedLocation{}, ErrUnknownLocation
 }
 
-// SetLocalConfig replaces this box's own config for a location.
+// SetLocalConfig replaces this box's own config for a location, all but the
+// person's consent to setup agents, which only SetPrepareWith changes.
 func (l *Locations) SetLocalConfig(name string, c RepoConfig) error {
 	if err := c.validate(); err != nil {
 		return err
@@ -176,11 +236,61 @@ func (l *Locations) SetLocalConfig(name string, c RepoConfig) error {
 		for i := range all {
 			if all[i].Name == name {
 				cc := c
+				cc.PrepareWith = ""
+				if all[i].Config != nil {
+					cc.PrepareWith = all[i].Config.PrepareWith
+				}
 				all[i].Config = &cc
 				// The config now holds the scripts.
 				all[i].Setup, all[i].Archive = "", ""
 				return all, nil
 			}
+		}
+		return nil, ErrUnknownLocation
+	})
+}
+
+// SetPrepareWith records the person's consent to setup agents for a
+// location ("agent"), or takes it back (""), leaving the rest of the box's
+// config for it as it is.
+func (l *Locations) SetPrepareWith(name, with string) error {
+	return l.update(func(all []savedLocation) ([]savedLocation, error) {
+		for i := range all {
+			if all[i].Name != name {
+				continue
+			}
+			c := RepoConfig{}
+			if all[i].Config != nil {
+				c = *all[i].Config
+			}
+			c.PrepareWith = with
+			all[i].Config = &c
+			return all, nil
+		}
+		return nil, ErrUnknownLocation
+	})
+}
+
+// MergeLocalConfig lays over on this box's own config for a location
+// (layOver), in one step, so two writers never lose each other's keys: a
+// setup agent saves its recipe this way.
+func (l *Locations) MergeLocalConfig(name string, over RepoConfig) error {
+	return l.update(func(all []savedLocation) ([]savedLocation, error) {
+		for i := range all {
+			if all[i].Name != name {
+				continue
+			}
+			cur := RepoConfig{Setup: all[i].Setup, Archive: all[i].Archive}
+			if all[i].Config != nil {
+				cur = merge(cur, *all[i].Config)
+			}
+			next := layOver(cur, over)
+			if err := next.validate(); err != nil {
+				return nil, badRequest("%v", err)
+			}
+			all[i].Config = &next
+			all[i].Setup, all[i].Archive = "", ""
+			return all, nil
 		}
 		return nil, ErrUnknownLocation
 	})
@@ -429,9 +539,13 @@ func (b *Box) getConfig(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// putConfig replaces the box's own config for a location ({"local": …}), or
+// lays keys over it ({"merge": …}: what `pierd location config --merge`
+// sends, and how a setup agent saves its recipe).
 func (b *Box) putConfig(w http.ResponseWriter, r *http.Request) error {
 	var req struct {
-		Local RepoConfig `json:"local"`
+		Local RepoConfig  `json:"local"`
+		Merge *RepoConfig `json:"merge"`
 	}
 	if err := decode(r, &req); err != nil {
 		return err
@@ -440,8 +554,15 @@ func (b *Box) putConfig(w http.ResponseWriter, r *http.Request) error {
 	if err := b.before(r, "config.change", map[string]any{"location": name}); err != nil {
 		return err
 	}
-	if err := b.Locations.SetLocalConfig(name, req.Local); err != nil {
-		if err == ErrUnknownLocation {
+	var err error
+	if req.Merge != nil {
+		err = b.Locations.MergeLocalConfig(name, *req.Merge)
+	} else {
+		err = b.Locations.SetLocalConfig(name, req.Local)
+	}
+	if err != nil {
+		var he httpError
+		if err == ErrUnknownLocation || errors.As(err, &he) {
 			return err
 		}
 		return badRequest("%v", err)

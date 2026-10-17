@@ -28,8 +28,9 @@ enum SessionViewPrefs {
 }
 
 extension Session {
-    /// Best display title: rename/first prompt, else worktree, else name.
+    /// Best display title: a setup agent's in the app's words, else rename/first prompt, else worktree, else name.
     var displayTitle: String {
+        if let t = setupTitle { return t }
         if let t = title, !t.isEmpty { return t }
         if let wt = BoxSession(box: "", session: self).worktree { return wt }
         return name

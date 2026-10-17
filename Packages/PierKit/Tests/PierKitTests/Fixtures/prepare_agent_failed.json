@@ -1,0 +1,1 @@
+{"state":"failed","since":"2026-10-17T09:31:02.774401266-03:00","error":"the setup agent ended its turn without saying it was done (pierd prepare done): read its conversation","kind":"agent","session":"shop-login-setup-2","setup":"composer install && php artisan migrate --seed","services":["web"],"prepare_with":"script"}
