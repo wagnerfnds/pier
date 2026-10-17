@@ -233,10 +233,13 @@ struct SessionScreen: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) { SessionTerminalButton(vm: vm) }
-        if sidePanel {
+        // Present for the whole width class, not only while the window is wide enough for the column (narrower, it opens
+        // the details as a sheet): on the Mac each item coming or going rebuilds the window's toolbar, and a tiling
+        // window manager resizes windows all the time.
+        if sizeClass == .regular {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { toggleDetails() } label: {
-                    Label(inspectorOpen ? "Ocultar detalhes" : "Mostrar detalhes", systemImage: "sidebar.trailing")
+                    Label(inspectorOpen && sidePanel ? "Ocultar detalhes" : "Mostrar detalhes", systemImage: "sidebar.trailing")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
                 .accessibilityIdentifier("session-inspector-toggle")
@@ -295,7 +298,9 @@ struct SessionScreen: View {
 
     private var stateLine: String {
         var parts = [session.agentLabel, session.stateWord]
-        if !vm.isClosed, session.isAgent, session.agentState == .running || session.agentState == .waiting {
+        // Not on the Mac, where the line sits in the window's toolbar: a clock there changed the item's text on every
+        // redraw of the screen (the details and the working line keep their own clocks).
+        if !Platform.isMac, !vm.isClosed, session.isAgent, session.agentState == .running || session.agentState == .waiting {
             parts.append(Fmt.elapsed(since: session.stateSince ?? session.created))
         }
         let bg = vm.background.count
