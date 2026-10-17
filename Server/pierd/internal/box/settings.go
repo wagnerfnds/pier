@@ -26,14 +26,53 @@ import (
 type Settings struct {
 	// ProjectsRoot is the folder every project lives under; empty: anywhere.
 	ProjectsRoot string `json:"projects_root,omitempty"`
+	// PrepareRules is what every setup agent on this box must keep to
+	// (setupagent.go); empty: defaultPrepareRules.
+	PrepareRules string `json:"prepare_rules,omitempty"`
+	// AutoShare gives a worktree's preview a public link by itself
+	// (preview.go); nil is on. A location's own config can say otherwise.
+	AutoShare *bool `json:"auto_share,omitempty"`
 }
 
-// SettingsView is what GET /v1/settings answers.
+// SettingsView is what GET /v1/settings answers. Its prepare_rules and
+// auto_share are what applies: the default rules and on until someone
+// changes them.
 type SettingsView struct {
 	Settings
 	Home   string      `json:"home"`
 	Spaces []Space     `json:"spaces"`
 	Docker DockerState `json:"docker"`
+	// PrepareRules and AutoShare hide Settings' own (shallower fields win
+	// in encoding/json): the text in force and whether links are on.
+	PrepareRules string `json:"prepare_rules"`
+	// PrepareRulesDefault says the rules are the box's defaults, nobody's
+	// own text.
+	PrepareRulesDefault bool `json:"prepare_rules_default"`
+	AutoShare           bool `json:"auto_share"`
+}
+
+// maxPrepareRules bounds the rules' text: it goes into every setup agent's
+// first prompt.
+const maxPrepareRules = 8 << 10
+
+// prepareRules is the text every setup agent gets: the box's own, or the
+// defaults.
+func (s Settings) prepareRules() string {
+	if t := strings.TrimSpace(s.PrepareRules); t != "" {
+		return t
+	}
+	return defaultPrepareRules
+}
+
+// autoShare says whether previews get a public link by themselves.
+func (s Settings) autoShare() bool { return s.AutoShare == nil || *s.AutoShare }
+
+// updateSettings changes the box's settings with change and saves them.
+func (l *Locations) updateSettings(change func(*Settings)) (Settings, error) {
+	s := l.Settings()
+	change(&s)
+	b, _ := json.MarshalIndent(s, "", "  ")
+	return s, statefile.Write(l.settingsPath(), append(b, '\n'))
 }
 
 // Space is a folder of projects under the projects folder.
@@ -227,8 +266,10 @@ func (l *Locations) spaceDir(name string, create bool) (string, error) {
 }
 
 func (b *Box) settingsView(ctx context.Context) SettingsView {
-	v := SettingsView{Settings: b.Locations.Settings(), Spaces: b.Locations.Spaces(ctx), Docker: dockerState(ctx)}
+	s := b.Locations.Settings()
+	v := SettingsView{Settings: s, Spaces: b.Locations.Spaces(ctx), Docker: dockerState(ctx)}
 	v.Home, _ = os.UserHomeDir()
+	v.PrepareRules, v.PrepareRulesDefault, v.AutoShare = s.prepareRules(), strings.TrimSpace(s.PrepareRules) == "", s.autoShare()
 	return v
 }
 
@@ -240,9 +281,15 @@ func (b *Box) getSettings(w http.ResponseWriter, r *http.Request) error {
 func (b *Box) putSettings(w http.ResponseWriter, r *http.Request) error {
 	var req struct {
 		ProjectsRoot *string `json:"projects_root"`
+		// PrepareRules "" (or only spaces) brings the default rules back.
+		PrepareRules *string `json:"prepare_rules"`
+		AutoShare    *bool   `json:"auto_share"`
 	}
 	if err := decode(r, &req); err != nil {
 		return err
+	}
+	if req.PrepareRules != nil && len(*req.PrepareRules) > maxPrepareRules {
+		return badRequest("the preparation rules are longer than %d KB", maxPrepareRules>>10)
 	}
 	if req.ProjectsRoot != nil {
 		if err := b.before(r, "settings.change", map[string]any{"projects_root": *req.ProjectsRoot}); err != nil {
@@ -253,6 +300,31 @@ func (b *Box) putSettings(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		b.publish(r, "settings.changed", map[string]any{"projects_root": s.ProjectsRoot})
+	}
+	if req.PrepareRules != nil || req.AutoShare != nil {
+		// The rules' text goes to every setup agent, never into an event.
+		changed := []string{}
+		if req.PrepareRules != nil {
+			changed = append(changed, "prepare_rules")
+		}
+		if req.AutoShare != nil {
+			changed = append(changed, "auto_share")
+		}
+		if err := b.before(r, "settings.change", map[string]any{"changed": changed}); err != nil {
+			return err
+		}
+		if _, err := b.Locations.updateSettings(func(s *Settings) {
+			if req.PrepareRules != nil {
+				s.PrepareRules = strings.TrimSpace(*req.PrepareRules)
+			}
+			if req.AutoShare != nil {
+				on := *req.AutoShare
+				s.AutoShare = &on
+			}
+		}); err != nil {
+			return err
+		}
+		b.publish(r, "settings.changed", map[string]any{"changed": changed})
 	}
 	writeJSON(w, b.settingsView(r.Context()))
 	return nil

@@ -3,6 +3,7 @@ package box
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -58,6 +59,11 @@ func (c RepoConfig) validate() error {
 			return fmt.Errorf("%q is not an environment variable name", k)
 		}
 	}
+	if c.Preview != nil {
+		if err := c.Preview.validate(); err != nil {
+			return err
+		}
+	}
 	return hooks.Validate(c.Hooks)
 }
 
@@ -88,6 +94,35 @@ func merge(repo, local RepoConfig) RepoConfig {
 	out.Services = mergeBy(repo.Services, local.Services, func(s WorktreeService) string { return s.Name })
 	out.Agents = mergeBy(repo.Agents, local.Agents, func(a AgentPreset) string { return a.ID })
 	out.Hooks = append(append([]hooks.Hook{}, repo.Hooks...), local.Hooks...)
+	if local.Preview != nil {
+		out.Preview = local.Preview
+	}
+	// Whether previews go public, and whether pierd guessed the config, are
+	// the box's to say, never a repository's.
+	out.AutoShare, out.Detected = local.AutoShare, local.Detected
+	return out
+}
+
+// layOver is what `PUT …/config {"merge": …}` saves: over lays on base the
+// way merge lays the box's config on a repository's, except that a hook
+// already there is not added twice, so a recipe saved again stays the same.
+func layOver(base, over RepoConfig) RepoConfig {
+	out := merge(base, over)
+	out.Hooks = append([]hooks.Hook{}, base.Hooks...)
+	for _, h := range over.Hooks {
+		dup := false
+		for _, have := range out.Hooks {
+			dup = dup || have.On == h.On && have.Run == h.Run
+		}
+		if !dup {
+			out.Hooks = append(out.Hooks, h)
+		}
+	}
+	if over.AutoShare == nil {
+		out.AutoShare = base.AutoShare
+	}
+	// Someone wrote it now: it is no longer only pierd's guess.
+	out.Detected = false
 	return out
 }
 
@@ -181,6 +216,31 @@ func (l *Locations) SetLocalConfig(name string, c RepoConfig) error {
 				all[i].Setup, all[i].Archive = "", ""
 				return all, nil
 			}
+		}
+		return nil, ErrUnknownLocation
+	})
+}
+
+// MergeLocalConfig lays over on this box's own config for a location
+// (layOver), in one step, so two writers never lose each other's keys: a
+// setup agent saves its recipe this way.
+func (l *Locations) MergeLocalConfig(name string, over RepoConfig) error {
+	return l.update(func(all []savedLocation) ([]savedLocation, error) {
+		for i := range all {
+			if all[i].Name != name {
+				continue
+			}
+			cur := RepoConfig{Setup: all[i].Setup, Archive: all[i].Archive}
+			if all[i].Config != nil {
+				cur = merge(cur, *all[i].Config)
+			}
+			next := layOver(cur, over)
+			if err := next.validate(); err != nil {
+				return nil, badRequest("%v", err)
+			}
+			all[i].Config = &next
+			all[i].Setup, all[i].Archive = "", ""
+			return all, nil
 		}
 		return nil, ErrUnknownLocation
 	})
@@ -429,9 +489,13 @@ func (b *Box) getConfig(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// putConfig replaces the box's own config for a location ({"local": …}), or
+// lays keys over it ({"merge": …}: what `pierd location config --merge`
+// sends, and how a setup agent saves its recipe).
 func (b *Box) putConfig(w http.ResponseWriter, r *http.Request) error {
 	var req struct {
-		Local RepoConfig `json:"local"`
+		Local RepoConfig  `json:"local"`
+		Merge *RepoConfig `json:"merge"`
 	}
 	if err := decode(r, &req); err != nil {
 		return err
@@ -440,8 +504,15 @@ func (b *Box) putConfig(w http.ResponseWriter, r *http.Request) error {
 	if err := b.before(r, "config.change", map[string]any{"location": name}); err != nil {
 		return err
 	}
-	if err := b.Locations.SetLocalConfig(name, req.Local); err != nil {
-		if err == ErrUnknownLocation {
+	var err error
+	if req.Merge != nil {
+		err = b.Locations.MergeLocalConfig(name, *req.Merge)
+	} else {
+		err = b.Locations.SetLocalConfig(name, req.Local)
+	}
+	if err != nil {
+		var he httpError
+		if err == ErrUnknownLocation || errors.As(err, &he) {
 			return err
 		}
 		return badRequest("%v", err)

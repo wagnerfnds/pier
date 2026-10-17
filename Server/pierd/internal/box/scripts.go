@@ -50,6 +50,19 @@ type RepoConfig struct {
 	Services []WorktreeService `json:"services,omitempty"`
 	// Hooks run for this repository's events only, in the worktree.
 	Hooks []hooks.Hook `json:"hooks,omitempty"`
+	// Preview is what each prepared worktree's page is (preview.go): its
+	// path and a test login, on the worktree's $PIER_PORT. A worktree
+	// prepared by the setup script gets it as its preview.
+	Preview *PreviewTemplate `json:"preview,omitempty"`
+	// AutoShare turns the public link a worktree's preview gets by itself
+	// on or off for this location (nil: the box's setting). Only the box's
+	// own config for the location counts: a repository's file cannot
+	// publish anything.
+	AutoShare *bool `json:"auto_share,omitempty"`
+	// Detected marks a box config pierd worked out from the repository's
+	// files (detect.go) that nobody has written or checked since: a setup
+	// agent still prepares the location's new worktrees.
+	Detected bool `json:"detected,omitempty"`
 }
 
 // scriptsFor is the location's own scripts if set, otherwise the

@@ -312,8 +312,9 @@ type TaskRequest struct {
 	Open string `json:"open,omitempty"`
 	// Title names the work; without one, the prompt's first line does.
 	Title string `json:"title,omitempty"`
-	// Prepare is the worktree's (WorktreeRequest.Prepare).
-	Prepare *bool `json:"prepare,omitempty"`
+	// Prepare and PrepareWith are the worktree's (WorktreeRequest).
+	Prepare     *bool  `json:"prepare,omitempty"`
+	PrepareWith string `json:"prepare_with,omitempty"`
 }
 
 type Task struct {
@@ -355,7 +356,7 @@ func (b *Box) addTask(w http.ResponseWriter, r *http.Request) error {
 	if err := b.before(r, "task.create", data); err != nil {
 		return err
 	}
-	wt, err := b.createWorktree(r, loc, WorktreeRequest{Name: req.Name, Branch: req.Branch, Base: req.Base, PR: req.PR, Ref: req.Ref, Prepare: req.Prepare})
+	wt, prepare, err := b.createWorktree(r, loc, WorktreeRequest{Name: req.Name, Branch: req.Branch, Base: req.Base, PR: req.PR, Ref: req.Ref, Prepare: req.Prepare, PrepareWith: req.PrepareWith})
 	if err != nil {
 		return err
 	}
@@ -368,12 +369,15 @@ func (b *Box) addTask(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		// A task is a worktree with an agent in it: without the agent, the
 		// worktree it made goes too, so a retry starts clean.
+		b.forgetWorktree(req.Location, wt.Name)
 		if rmErr := b.Locations.RemoveWorktree(context.WithoutCancel(r.Context()), req.Location, wt.Name, true); rmErr != nil {
 			return fmt.Errorf("created %s, but could not start its session (%w); removing the worktree failed too: %v", wt.Path, err, rmErr)
 		}
 		b.publish(r, "worktree.removed", map[string]any{"location": req.Location, "name": wt.Name, "path": wt.Path, "reason": "task failed"})
 		return fmt.Errorf("could not start the task's session, so its worktree was removed: %w", err)
 	}
+	// Its preparation (the setup agent, or the script) works beside it.
+	prepare()
 	sess = b.titleNew(ctx, sess, req.Title, req.Prompt)
 	b.publish(r, "task.created", map[string]any{
 		"location": req.Location, "name": wt.Name, "path": wt.Path, "branch": wt.Branch,

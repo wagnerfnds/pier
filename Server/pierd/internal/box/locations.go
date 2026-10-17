@@ -52,6 +52,10 @@ type Location struct {
 	// Accounts are the agent accounts the project chose (accounts.go), by
 	// agent; an agent missing uses the box's default.
 	Accounts map[string]string `json:"accounts,omitempty"`
+	// PrepareWith is how a new worktree is prepared when the request does
+	// not say (setupagent.go): "agent" or "script". Only GET /v1/locations
+	// fills it in.
+	PrepareWith string `json:"prepare_with,omitempty"`
 }
 
 type Worktree struct {

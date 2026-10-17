@@ -1,6 +1,7 @@
 package box
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -40,6 +41,12 @@ func TestMain(m *testing.M) {
 	}
 	agentHome = func() (string, error) { return home, nil }
 	logf = func(string, ...any) {}
+	// A worktree a test makes is never handed to the Claude Code of the
+	// machine running it, nor are its settings or sudo touched: tests that
+	// want a setup agent ask for one, with a fake claude first on PATH.
+	autoSetupAgents = false
+	allowBypass = func([]string) error { return nil }
+	canSudo = func(context.Context) bool { return false }
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)

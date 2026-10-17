@@ -69,10 +69,11 @@ func readRepoFile(repo string) (c RepoConfig, hash string, ok bool, err error) {
 }
 
 // runsAnything reports whether c holds anything that runs or changes what
-// runs. Ports alone only reserve ports.
+// runs. Ports alone only reserve ports. A preview counts: it carries a
+// login, and a worktree's preview can get a public link.
 func (c RepoConfig) runsAnything() bool {
 	return c.Setup != "" || c.Archive != "" || len(c.Env) > 0 || len(c.Services) > 0 ||
-		len(c.Hooks) > 0 || len(c.Agents) > 0
+		len(c.Hooks) > 0 || len(c.Agents) > 0 || c.Preview != nil
 }
 
 // repoLayer is the part of a location's repository config the box applies,

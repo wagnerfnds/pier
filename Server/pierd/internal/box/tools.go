@@ -12,4 +12,8 @@ type WorktreeRequest struct {
 	// Prepare false leaves the setup script and the autostart services for
 	// later (POST .../worktrees/{wt}/prepare); absent or true runs them.
 	Prepare *bool `json:"prepare,omitempty"`
+	// PrepareWith says how it is prepared: "agent" (a setup agent,
+	// setupagent.go), "script" (the setup script and the autostart
+	// services) or "none"; absent, the location's default.
+	PrepareWith string `json:"prepare_with,omitempty"`
 }
