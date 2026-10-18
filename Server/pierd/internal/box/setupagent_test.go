@@ -117,6 +117,10 @@ func TestSetupPromptSaysWhatTheBoxAllows(t *testing.T) {
 	if s, _ := b.setupPrompt(ctx, loc, wt, ""); strings.Contains(s, "do not save a recipe over it") || !strings.Contains(s, "--merge -") {
 		t.Errorf("a setup agent's recipe is not the agent's to redo: %s", s)
 	}
+	// The recipe it saves runs with /bin/sh: it is told so, since bash's set -o pipefail stopped one at its first line.
+	if s, _ := b.setupPrompt(ctx, loc, wt, ""); !strings.Contains(s, "pierd runs it with /bin/sh") || !strings.Contains(s, "no `pipefail`") {
+		t.Errorf("the prompt does not say the recipe runs under POSIX sh")
+	}
 }
 
 // A setup session's name stays within tmux's 63 characters, with the -2 of

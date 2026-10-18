@@ -263,7 +263,8 @@ Two ways to prepare a worktree:
   domain once the box made a link, else "the box's public link domain") with every interactive debug console off
   (Rails' web-console, the Werkzeug debugger, Django's debug toolbar, Laravel Ignition's runnable solutions; errors
   may still show); **a recipe** saved with `pierd location config <loc> --merge` (`setup`, `services`, `preview`,
-  marked `"by": "setup"`: the next worktrees replay it by script); then report with `pierd preview set` and `pierd
+  marked `"by": "setup"`: the next worktrees replay it by script; its `setup` is POSIX sh,
+  since pierd runs scripts with `/bin/sh`, dash on Debian and Ubuntu); then report with `pierd preview set` and `pierd
   prepare done`, touching no tracked file it can avoid. A recipe someone wrote (the repository's, a person's on the
   box) is theirs: the agent is told to use it and fix only what the worktree lacks around it, saving none over it.
 
