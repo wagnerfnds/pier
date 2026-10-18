@@ -3,6 +3,7 @@ package integrations
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,43 @@ func TestTrustClaudeProjectInAFreshConfig(t *testing.T) {
 	}
 	if changed, _ := TrustClaudeProject(path, "/home/octocat/code/shop"); changed {
 		t.Fatal("a trusted folder was written again")
+	}
+}
+
+// A new worktree takes the answer its person gave Claude Code about the
+// repository's MCP servers in the project's main checkout; a folder that
+// answered keeps its own, and nothing is made up where nobody answered.
+func TestCarryClaudeMcpChoiceToANewWorktree(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".claude.json")
+	main, wt, other := "/home/octocat/code/shop", "/home/octocat/code/shop-fix", "/home/octocat/code/shop-old"
+	if _, err := TrustClaudeProject(path, main, wt, other); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := CarryClaudeMcpChoice(path, []string{wt}, []string{main, other}); err != nil || changed {
+		t.Fatalf("with no answer anywhere: changed %v, err %v", changed, err)
+	}
+	if _, err := EditClaudeConfig(path, func(root map[string]any) bool {
+		projects := root["projects"].(map[string]any)
+		projects[main].(map[string]any)["enabledMcpjsonServers"] = []any{"laravel-boost", "herd"}
+		projects[main].(map[string]any)["disabledMcpjsonServers"] = []any{"chrome-devtools"}
+		projects[other].(map[string]any)["disabledMcpjsonServers"] = []any{"herd"}
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := CarryClaudeMcpChoice(path, []string{wt, other}, []string{main, other}); err != nil || !changed {
+		t.Fatalf("changed %v, err %v", changed, err)
+	}
+	root := readConfig(t, path)
+	got := project(t, root, wt)
+	if fmt.Sprint(got["enabledMcpjsonServers"]) != "[laravel-boost herd]" || fmt.Sprint(got["disabledMcpjsonServers"]) != "[chrome-devtools]" {
+		t.Errorf("the worktree's answer = %v / %v", got["enabledMcpjsonServers"], got["disabledMcpjsonServers"])
+	}
+	if mine := project(t, root, other); fmt.Sprint(mine["disabledMcpjsonServers"]) != "[herd]" || len(mine["enabledMcpjsonServers"].([]any)) != 0 {
+		t.Errorf("a folder's own answer was replaced: %v", mine)
+	}
+	if got["hasTrustDialogAccepted"] != true {
+		t.Errorf("the trust was lost: %v", got)
 	}
 }
 

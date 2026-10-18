@@ -245,7 +245,9 @@ Two ways to prepare a worktree:
 * **agent** (capability `prepare.agent`): a **setup agent**, Claude Code in a session of its own beside the
   worktree's other agents (`<worktree's session base>-setup`, e.g. `shop-checkout-setup`, alternating with `…-setup-2`
   from one run to the next; listed with `setup: true`, 4.1), started through the normal session start on the
-  project's account (2.10), in `bypassPermissions` mode without `AskUserQuestion`. Bypass mode's warning, which would
+  project's account (2.10), in `bypassPermissions` mode without `AskUserQuestion`, and with no MCP server
+  (`--strict-mcp-config`): a repository's `.mcp.json` would first have Claude Code ask which of its servers to start,
+  with nobody to answer, and those run commands of the repository's choosing. Bypass mode's warning, which would
   wait for a person, is skipped for that process alone (`--settings '{"skipDangerousModePermissionPrompt":true}'`):
   the account's own settings are never changed. Its session has `PIER_SETUP=1`: it is the preparation, so `pierd
   prepare wait` answers at once there and `pierd prepare start` refuses. pierd running as root has no setup agents
@@ -826,7 +828,11 @@ start, the worktree is removed again and nothing prepares it. Errors: 503 `tmux_
   (tasks, sessions, chats) and when an account is added (for every project already there). Only what is missing is
   added: a folder the person marked untrusted stays so. Codex's review of new hooks ("Hooks need review") is answered
   the same way for pierd's own hooks (`[hooks.state."<hooks.json>:<event>:<group>:<hook>"] trusted_hash`, the hash
-  Codex computes). Failing to write one of these never stops a start; pierd logs it.
+  Codex computes). Claude Code also asks, in every folder new to it, which of the repository's MCP servers
+  (`.mcp.json`) to start: a new worktree gets the answer the person already gave in another folder of the project (the
+  main checkout first, then its worktrees: `enabledMcpjsonServers` / `disabledMcpjsonServers`), and where nobody has
+  answered the question is left to the person (it reads as waiting, 4.1). Failing to write one of these never stops a
+  start; pierd logs it.
 * When the question comes anyway (an agent whose config is elsewhere), in a project's folder or a chat's own (3.5),
   pierd answers it from the screen itself; a menu it cannot read waits for the person. With `agent` + `prompt`, prompts
   are held until it is answered.

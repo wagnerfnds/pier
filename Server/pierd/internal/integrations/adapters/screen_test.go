@@ -10,6 +10,8 @@ func TestScreenStateSeesQuestionsThatWait(t *testing.T) {
 		"bypass": "  WARNING: Claude Code running in Bypass Permissions mode\n  By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.\n" +
 			"  ❯ No, exit\n    Yes, I accept\n  Enter to confirm · Esc to cancel\n",
 		"tool": " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n",
+		"mcp": "  3 new MCP servers found in this project\n  Select any you wish to enable.\n  ❯ [✔] laravel-boost\n    [✔] herd\n" +
+			"       Enable selected\n Space to select · Esc to reject all\n",
 	} {
 		if got := ScreenState(screen); got != "waiting" {
 			t.Errorf("%s: %q", name, got)

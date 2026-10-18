@@ -434,7 +434,8 @@ func TestSetupAgentPreparesAWorktree(t *testing.T) {
 	}
 	if setup == nil || setup.Location != "cal/login" || setup.Dir != wt.Path || setup.Title != setupTitle || setup.Agent != "claude" || !setup.Setup ||
 		!strings.Contains(setup.Command, "--permission-mode bypassPermissions") || !strings.Contains(setup.Command, "--disallowedTools AskUserQuestion") ||
-		!strings.Contains(setup.Command, `--settings '{"skipDangerousModePermissionPrompt":true}'`) || !strings.Contains(setup.Command, "preview set cal/login") {
+		!strings.Contains(setup.Command, `--settings '{"skipDangerousModePermissionPrompt":true}'`) || !strings.Contains(setup.Command, "preview set cal/login") ||
+		!strings.Contains(setup.Command, "--strict-mcp-config") {
 		t.Fatalf("the setup session = %+v", setup)
 	}
 	if got := bx.Sessions.EnvVar(context.Background(), *setup, "PIER_SETUP"); got != "1" {

@@ -285,12 +285,14 @@ func (b *Box) startSetupAgent(ctx context.Context, from, gateFrom string, loc Lo
 		return err
 	}
 	// Unattended: nothing to approve, no question it could ask (a variadic
-	// flag, so the next flag ends its list before the prompt), and bypass
-	// mode's warning skipped for this process alone: the person's own
-	// settings stay as they are.
+	// flag, so the next flag ends its list before the prompt), bypass mode's
+	// warning skipped for this process alone (the person's own settings stay
+	// as they are), and no MCP server, the repository's least of all: Claude
+	// Code would first ask which of a .mcp.json's to start, with nobody to
+	// answer, and those run code of the repository's choosing.
 	setup := p
 	setup.Command = p.Command + " --settings " + shellQuote(skipBypassWarning) +
-		" --disallowedTools AskUserQuestion --permission-mode bypassPermissions"
+		" --strict-mcp-config --disallowedTools AskUserQuestion --permission-mode bypassPermissions"
 	command, err := AgentCommandWith(setup, prompt, "", "")
 	if err != nil {
 		return err

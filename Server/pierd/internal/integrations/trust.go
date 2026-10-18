@@ -235,6 +235,55 @@ func TrustClaudeProject(path string, dirs ...string) (bool, error) {
 	})
 }
 
+// CarryClaudeMcpChoice gives each folder in dirs that has no answer yet to
+// Claude Code's question about its repository's MCP servers (.mcp.json:
+// enabledMcpjsonServers and disabledMcpjsonServers both empty or missing)
+// the answer the first folder of from with one gave (the project's main
+// checkout, another of its worktrees). Claude Code asks it in every new
+// folder before anything else, so a new worktree of a project whose person
+// answered once would wait on it again, an unattended agent forever. A
+// folder with no entry yet is left to TrustClaudeProject.
+func CarryClaudeMcpChoice(path string, dirs, from []string) (bool, error) {
+	return EditClaudeConfig(path, func(root map[string]any) bool {
+		projects, ok := root["projects"].(map[string]any)
+		if !ok {
+			return false
+		}
+		var enabled, disabled []any
+		for _, dir := range from {
+			entry, ok := projects[dir].(map[string]any)
+			if !ok || !mcpChoiceMade(entry) {
+				continue
+			}
+			enabled, _ = entry["enabledMcpjsonServers"].([]any)
+			disabled, _ = entry["disabledMcpjsonServers"].([]any)
+			break
+		}
+		if enabled == nil && disabled == nil {
+			return false
+		}
+		changed := false
+		for _, dir := range dirs {
+			entry, ok := projects[dir].(map[string]any)
+			if !ok || mcpChoiceMade(entry) {
+				continue
+			}
+			entry["enabledMcpjsonServers"] = append([]any{}, enabled...)
+			entry["disabledMcpjsonServers"] = append([]any{}, disabled...)
+			changed = true
+		}
+		return changed
+	})
+}
+
+// mcpChoiceMade says a project's entry holds an answer to the question
+// about its repository's MCP servers: one of them enabled or turned down.
+func mcpChoiceMade(entry map[string]any) bool {
+	en, _ := entry["enabledMcpjsonServers"].([]any)
+	dis, _ := entry["disabledMcpjsonServers"].([]any)
+	return len(en) > 0 || len(dis) > 0
+}
+
 // MarkClaudeOnboarded records in Claude Code's global config at path that
 // its first-run screens were seen (the theme, the sign-in method, the
 // security notes), so an agent started on that config goes straight to its
