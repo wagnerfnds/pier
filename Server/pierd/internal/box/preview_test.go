@@ -26,16 +26,25 @@ type lockedPublisher struct {
 	fail error
 	// prefix is the box's key's, "abcd2345" unless set.
 	prefix string
+	// calls counts Publish, answered or failed.
+	calls int
 }
 
 func (p *lockedPublisher) Publish(_ context.Context, name string, port int) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.calls++
 	if p.fail != nil {
 		return "", p.fail
 	}
 	p.published[name] = port
 	return "https://p-" + name + ".example.test", nil
+}
+
+func (p *lockedPublisher) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
 }
 
 func (p *lockedPublisher) setFail(err error) {
@@ -331,8 +340,11 @@ func TestPreviewLinkIsMadeOnceTheRelayAnswers(t *testing.T) {
 	// A relay without links: no word, and not asked again for hours.
 	call(t, c.wc, "DELETE", "/v1/shares/"+bx.previewView("cal", "login").Share.Name, "", nil, nil)
 	pub.setFail(relay.ErrNoShares)
+	asked := pub.callCount()
 	call(t, c.wc, "PUT", "/v1/locations/cal/worktrees/login/preview", "", Preview{Port: port + 3}, nil)
 	waitFor(t, ch, "preview.changed")
+	// The link is asked for in the background: the relay must still have none when it is.
+	waitUntil(t, "the relay asked for the new port's link", 5*time.Second, func() bool { return pub.callCount() > asked })
 	pub.setFail(nil)
 	clock.add(time.Hour)
 	bx.renewPreviewShares(ctx)
