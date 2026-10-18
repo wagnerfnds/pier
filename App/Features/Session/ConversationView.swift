@@ -8,7 +8,6 @@ let readableColumn: CGFloat = 780
 struct ConversationView: View {
     let vm: SessionViewModel
     @Environment(Router.self) private var router
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var bottomVisible = true
     @State private var scrollState = ConversationScrollState()
     @State private var scrollEvents = ConversationScrollEvents()
@@ -29,33 +28,33 @@ struct ConversationView: View {
 
     private enum ScrollTarget: Hashable { case tail }
 
-    /// The newest turns and the end are one measured group, followed explicitly: on modern Catalyst, and on an iPad at
-    /// regular width, where a lazy end row of its own came back blank when a long conversation whose last reply is taller
-    /// than the screen was opened again from the sidebar. Older rows stay lazy on iOS. The iPhone keeps its own lazy
-    /// end row: with the group, a conversation two screens tall opened at its top there.
-    private var measuresTail: Bool {
-        #if targetEnvironment(macCatalyst)
+    /// The newest turns and the end are one measured group, followed explicitly to its lower edge, wherever scroll
+    /// geometry exists (iOS 18, macOS 15). It is never a row of a lazy stack (`ConversationStack`): there it kept the
+    /// height it had when first drawn while its replies grew and cut the end of a conversation off, and a lazy end row
+    /// of its own came back blank when a long conversation was opened again (both on iOS, measured by estimates).
+    private static var measuresTail: Bool {
         if #available(iOS 18, *) { return true }
         return false
-        #else
-        if #available(iOS 18, *) { return sizeClass == .regular }
-        return false
-        #endif
     }
 
     var body: some View {
         let blocks = vm.blocks
         let rows = blocks.indices.map { Row(id: blocks[$0].id, index: $0) }
-        let tailStart = measuresTail ? ConversationTail.startIndex(in: blocks) : rows.endIndex
+        let tailStart = Self.measuresTail ? ConversationTail.startIndex(in: blocks) : rows.endIndex
         ScrollViewReader { proxy in
             ScrollView {
                 ConversationStack {
                     top(proxy)
-                    if !measuresTail || tailStart > 0 { startingPrompt }
+                    if !Self.measuresTail || tailStart > 0 { startingPrompt }
                     ForEach(rows[..<tailStart]) { row in
                         transcriptBlock(blocks[row.index])
                     }
-                    if measuresTail {
+                    if !Self.measuresTail {
+                        // The iOS/Catalyst 17 visibility fallback requires the bottom to remain its own lazy row.
+                        conversationEnd
+                    }
+                } tail: {
+                    if Self.measuresTail {
                         // Keep the latest replies and the end in one measured group across the draft/record handoff.
                         VStack(alignment: .leading, spacing: 14) {
                             if tailStart == 0 { startingPrompt }
@@ -69,9 +68,6 @@ struct ConversationView: View {
                         }
                         // Keep the scroll target outside the geometry reader's wrapper.
                         .id(ScrollTarget.tail)
-                    } else {
-                        // The iOS/Catalyst 17 visibility fallback requires the bottom to remain its own lazy row.
-                        conversationEnd
                     }
                 }
                 .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
@@ -115,8 +111,8 @@ struct ConversationView: View {
                 }
             }
             // Observe streaming in a child, so each draft update does not fold/diff the entire history.
-            // Follow content changes explicitly, outside the layout transaction. On modern Catalyst and a regular-width
-            // iPad the end shares one measured group with the recent replies, so the command targets that group's lower edge.
+            // Follow content changes explicitly, outside the layout transaction. On modern Catalyst the end shares one
+            // measured group with the recent replies, so the command targets that group's lower edge.
             .background { DraftFollow(vm: vm) { follow(proxy) } }
             .background {
                 #if DEBUG
@@ -212,14 +208,14 @@ struct ConversationView: View {
             }
             #if DEBUG
             ChatHistoryDiagnostics.recordScroll(event: "follow", sequence: sequence, step: 1,
-                action: "scroll", target: measuresTail ? "tail" : "bottom",
+                action: "scroll", target: Self.measuresTail ? "tail" : "bottom",
                 distanceFromBottom: scrollEvents.distanceFromBottom, contentHeight: scrollEvents.contentHeight,
                 visibleMinY: scrollEvents.visibleMinY, visibleMaxY: scrollEvents.visibleMaxY,
                 viewportHeight: scrollEvents.viewportHeight, followsBottom: scrollState.followsBottom,
                 isUserInteracting: scrollEvents.isUserInteracting, isViewportChanging: scrollEvents.isViewportChanging,
                 itemCount: vm.store.items.count)
             #endif
-            if measuresTail {
+            if Self.measuresTail {
                 proxy.scrollTo(ScrollTarget.tail, anchor: .bottom)
                 // The first command can precede the text's final measurement. Correct once after it settles.
                 scrollEvents.armInitialTailFollow { follow(proxy) }
@@ -448,21 +444,34 @@ struct ReviewCard: View {
 }
 
 /// Catalyst's lazy text estimates can enter a layout loop while older rows appear. Measure loaded history directly.
-private struct ConversationStack<Content: View>: View {
-    let content: Content
+/// iOS keeps the history lazy, with the newest turns and the end (`tail`) as an eager stack below it: as a row of the
+/// lazy stack the tail kept its first height while its replies grew, and its end was estimated.
+private struct ConversationStack<History: View, Tail: View>: View {
+    let history: History
+    let tail: Tail
 
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    init(@ViewBuilder history: () -> History, @ViewBuilder tail: () -> Tail) {
+        self.history = history()
+        self.tail = tail()
+    }
 
     var body: some View {
         #if targetEnvironment(macCatalyst)
         if #available(iOS 18, *) {
-            VStack(alignment: .leading, spacing: 14) { content }
+            VStack(alignment: .leading, spacing: 14) { history; tail }
         } else {
             // The older visibility fallback depends on lazy row appearance.
-            LazyVStack(alignment: .leading, spacing: 14) { content }
+            LazyVStack(alignment: .leading, spacing: 14) { history; tail }
         }
         #else
-        LazyVStack(alignment: .leading, spacing: 14) { content }
+        if #available(iOS 18, *) {
+            VStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 14) { history }
+                tail
+            }
+        } else {
+            LazyVStack(alignment: .leading, spacing: 14) { history; tail }
+        }
         #endif
     }
 }
