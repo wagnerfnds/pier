@@ -183,6 +183,41 @@ func (b *Box) trustLocationDir(location, dir string) {
 		env = append(env, k+"="+v)
 	}
 	b.pretrust(dir, env, b.agentsHere()...)
+	b.carryMcpChoice(location, dir, env)
+}
+
+// carryMcpChoice gives a new folder of the project location the answer its
+// person gave Claude Code about the repository's MCP servers in another of
+// its folders (the main checkout first, then the worktrees), in the account
+// env points the project's agents at.
+func (b *Box) carryMcpChoice(location, dir string, env []string) {
+	home, err := agentHome()
+	if err != nil || dir == "" {
+		return
+	}
+	if _, ok := agentFound("claude"); !ok {
+		return
+	}
+	locs, err := b.Locations.List(context.Background())
+	if err != nil {
+		return
+	}
+	var from []string
+	for _, l := range locs {
+		if l.Name != location {
+			continue
+		}
+		from = append(from, trustPaths(l.Path)...)
+		for _, wt := range l.Worktrees {
+			from = append(from, trustPaths(wt.Path)...)
+		}
+	}
+	config := integrations.ClaudeConfigFile(agentConfigDir(env, "claude"), home)
+	if changed, err := integrations.CarryClaudeMcpChoice(config, trustPaths(dir), from); err != nil {
+		logf("pierd: Claude Code will ask about the MCP servers of %s: %v", dir, err)
+	} else if changed {
+		logf("pierd: Claude Code keeps the project's answer about its MCP servers in %s", dir)
+	}
 }
 
 // agentsHere are the agents pierd answers for that this box has.
