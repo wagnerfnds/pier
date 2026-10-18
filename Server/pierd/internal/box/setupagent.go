@@ -610,7 +610,7 @@ const setupPromptText = `You are the setup agent of a Pier box: you prepare a fr
         "preview": {"path": "/login", "login": {"user": "<test user>", "password": "<its password>"}}}
        JSON
 
-   The setup script runs in each new worktree's folder with that worktree's own ` + "`$PIER_*`" + ` variables: use them, never this worktree's values. It must work on a fresh checkout and when run twice, and hold only what each worktree needs (dependencies, .env, its database, migrations, seeders, the asset build), not what you installed once for the box. Run it here once to check it. Leave "preview" out when the app has no page.
+   The setup script runs in each new worktree's folder with that worktree's own ` + "`$PIER_*`" + ` variables: use them, never this worktree's values. It must work on a fresh checkout and when run twice, and hold only what each worktree needs (dependencies, .env, its database, migrations, seeders, the asset build), not what you installed once for the box. pierd runs it with /bin/sh (dash on Debian and Ubuntu), not bash: write POSIX sh (` + "`set -eu`" + `, no ` + "`pipefail`" + `, arrays, ` + "`[[ ]]`" + ` or ` + "`source`" + `; call ` + "`bash -c`" + ` for a part that needs bash). Run it here once with ` + "`sh`" + ` to check it. Leave "preview" out when the app has no page.
 {{- end}}
 9. Report:
    - for a web app: ` + "`{{.Pierd}} preview set {{.Ref}} --port $PIER_PORT --path /login --user <test user> --password <its password>`" + ` (leave out what does not apply);
