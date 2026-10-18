@@ -15,6 +15,9 @@ struct ConversationView: View {
 
     private var detached: Bool { !scrollState.followsBottom }
     @State private var scrolledUp = false
+    /// How many blocks at the top of the loaded history are not drawn (`windowsHistory`): nil until the conversation
+    /// loads, then a page short of the history, and a page less each time the reader reaches the top.
+    @State private var hiddenHistory: Int?
 
     /// The view model's rows, folded once per change of the record (`SessionViewModel.blocks`), not on every draw.
     private var blocks: [ConversationBlock] { vm.blocks }
@@ -37,16 +40,40 @@ struct ConversationView: View {
         return false
     }
 
+    /// Modern Catalyst lays the loaded history out eagerly (`ConversationStack`), all of it before the first frame:
+    /// opening a long conversation again held the main thread about a second for 300 items. There the history shows
+    /// its newest blocks only, a page more each time the reader reaches the top, before any page comes from the box.
+    private static var windowsHistory: Bool {
+        #if targetEnvironment(macCatalyst)
+        if #available(iOS 18, *) { return true }
+        #endif
+        return false
+    }
+
+    private static let historyPage = 20
+
+    /// The blocks at the top of the history that are not drawn, given where the measured tail starts.
+    private func hiddenBlocks(tailStart: Int) -> Int {
+        guard Self.windowsHistory else { return 0 }
+        return min(hiddenHistory ?? max(0, tailStart - Self.historyPage), tailStart)
+    }
+
+    private var tailStart: Int {
+        let blocks = vm.blocks
+        return Self.measuresTail ? ConversationTail.startIndex(in: blocks) : blocks.endIndex
+    }
+
     var body: some View {
         let blocks = vm.blocks
         let rows = blocks.indices.map { Row(id: blocks[$0].id, index: $0) }
         let tailStart = Self.measuresTail ? ConversationTail.startIndex(in: blocks) : rows.endIndex
+        let hidden = hiddenBlocks(tailStart: tailStart)
         ScrollViewReader { proxy in
             ScrollView {
                 ConversationStack {
-                    top(proxy)
+                    top(proxy, hidden: hidden)
                     if !Self.measuresTail || tailStart > 0 { startingPrompt }
-                    ForEach(rows[..<tailStart]) { row in
+                    ForEach(rows[hidden..<tailStart]) { row in
                         transcriptBlock(blocks[row.index])
                     }
                     if !Self.measuresTail {
@@ -120,11 +147,14 @@ struct ConversationView: View {
                 #endif
             }
             .onChange(of: vm.conversationContentRevision) { _, _ in follow(proxy) }
-            .onChange(of: vm.loaded) { _, loaded in if loaded { follow(proxy) } }
+            .onChange(of: vm.loaded) { _, loaded in
+                if loaded { settleHistoryWindow(); follow(proxy) }
+            }
             .onChange(of: vm.outgoing.count) { _, _ in follow(proxy) }
             .onChange(of: vm.session.agentState) { _, _ in follow(proxy) }
             .onChange(of: vm.reviewCard?.changes) { _, _ in follow(proxy) }
             .onChange(of: vm.sendTick) { _, _ in requestFollow(proxy) }
+            .onAppear { if vm.loaded { settleHistoryWindow() } }
             .onDisappear {
                 followTask?.cancel()
                 scrollEvents.cancelGeometry()
@@ -225,8 +255,23 @@ struct ConversationView: View {
         }
     }
 
-    @ViewBuilder private func top(_ proxy: ScrollViewProxy) -> some View {
-        if vm.store.hasMoreBefore {
+    /// Fixes where the drawn history starts once the conversation is there, so replies arriving at the end never move
+    /// the blocks the reader may be reading.
+    private func settleHistoryWindow() {
+        guard Self.windowsHistory, hiddenHistory == nil else { return }
+        hiddenHistory = max(0, tailStart - Self.historyPage)
+    }
+
+    /// Draws a page more of the loaded history. Answers the block that was first, where the reader's place is kept.
+    private func revealHistory() -> String? {
+        let tailStart = tailStart, hidden = hiddenBlocks(tailStart: tailStart), blocks = vm.blocks
+        guard hidden > 0, hidden < blocks.count else { return nil }
+        hiddenHistory = max(0, hidden - Self.historyPage)
+        return blocks[hidden].id
+    }
+
+    @ViewBuilder private func top(_ proxy: ScrollViewProxy, hidden: Int) -> some View {
+        if hidden > 0 || vm.store.hasMoreBefore {
             Button {
                 Task { await loadOlder(proxy) }
             } label: {
@@ -254,6 +299,17 @@ struct ConversationView: View {
     }
 
     private func loadOlder(_ proxy: ScrollViewProxy) async {
+        // What is already here first: no request while loaded history is still out of the drawn window.
+        if let first = revealHistory() {
+            scrollState.requestHistory()
+            scrollEvents.pendingContentFollow = false
+            scrollEvents.cancelInitialTailFollow()
+            followTask?.cancel()
+            // The blocks drawn above it are laid out first, then the reader's place is put back.
+            try? await Task.sleep(for: .milliseconds(30))
+            proxy.scrollTo(first, anchor: .top)
+            return
+        }
         guard !vm.loadingOlder, vm.store.hasMoreBefore, let offset = vm.store.oldestOffset else { return }
         scrollState.requestHistory()
         scrollEvents.pendingContentFollow = false

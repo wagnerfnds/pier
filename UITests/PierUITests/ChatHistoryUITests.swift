@@ -173,6 +173,27 @@ final class ChatHistoryUITests: XCTestCase {
         XCTAssertTrue(reply.waitForExistence(timeout: 15), "the chat could not render a streamed reply after pagination")
     }
 
+    /// A long conversation's loaded history comes in as the reader scrolls up (on the Mac a page of it is drawn at a
+    /// time) without asking the box for what is already loaded, and the end is a tap away again.
+    func testScrollingUpDrawsLoadedHistoryFirst() {
+        let pageFlag = app.launchArguments.firstIndex(of: "-uiTestChatLabPageSize")!
+        app.launchArguments[pageFlag + 1] = "300"
+        openLab()
+        // 300 items are about 60 turns. One 12 turns up is loaded, past the Mac's first drawn page (about the newest 9
+        // turns): it shows once the reader reaches the top of that page. Lab replies are long, so a page is many screens.
+        let far = marker(latestTurn - 12)
+        for _ in 0..<24 {
+            if far.exists { break }
+            conversation.swipeDown(velocity: .fast)
+        }
+        XCTAssertTrue(far.waitForExistence(timeout: 5), "scrolling up never drew the loaded history")
+        XCTAssertEqual(historyRequests, 0, "the box was asked for history that was already loaded")
+        let end = app.buttons["Ir para o fim"].firstMatch
+        XCTAssertTrue(end.waitForExistence(timeout: 5), "scrolling away from the bottom did not offer a return")
+        end.tap()
+        assertLatestVisible()
+    }
+
     func testSwitchingSessionsKeepsTheLongConversationResponsive() throws {
         app.launchArguments += ["-uiTestChatLabTallTail", "1"]
         openLab()
