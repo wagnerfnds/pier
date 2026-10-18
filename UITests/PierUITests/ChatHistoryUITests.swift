@@ -179,9 +179,10 @@ final class ChatHistoryUITests: XCTestCase {
         let pageFlag = app.launchArguments.firstIndex(of: "-uiTestChatLabPageSize")!
         app.launchArguments[pageFlag + 1] = "300"
         openLab()
-        // 300 items are about 60 turns: one 30 turns up is loaded, and not drawn on the Mac until the reader gets there.
-        let far = marker(latestTurn - 30)
-        for _ in 0..<40 {
+        // 300 items are about 60 turns. One 12 turns up is loaded, past the Mac's first drawn page (about the newest 9
+        // turns): it shows once the reader reaches the top of that page. Lab replies are long, so a page is many screens.
+        let far = marker(latestTurn - 12)
+        for _ in 0..<24 {
             if far.exists { break }
             conversation.swipeDown(velocity: .fast)
         }
