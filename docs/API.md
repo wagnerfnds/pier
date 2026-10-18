@@ -260,9 +260,10 @@ Two ways to prepare a worktree:
   missing runtimes and system packages; dependencies; the database it expects (one per worktree, named after
   `$PIER_WORKTREE_SLUG`; SQLite as a fallback); `.env` from `.env.example`; migrations and seeders; a test login for a
   web app; a dev server as a Pier service on `$PIER_PORT` that works behind the public link (on the relay's link
-  domain once the box made a link, else "the box's public link domain") with every interactive debug console off
-  (Rails' web-console, the Werkzeug debugger, Django's debug toolbar, Laravel Ignition's runnable solutions; errors
-  may still show); **a recipe** saved with `pierd location config <loc> --merge` (`setup`, `services`, `preview`,
+  domain once the box made a link, else "the box's public link domain"; assets a second dev server would serve on
+  another port are built, a dev server serving the whole page keeps its hot reload) with every interactive debug
+  console off (Rails' web-console, the Werkzeug debugger, Django's debug toolbar, Laravel Ignition's runnable
+  solutions; errors may still show); **a recipe** saved with `pierd location config <loc> --merge` (`setup`, `services`, `preview`,
   marked `"by": "setup"`: the next worktrees replay it by script; its `setup` is POSIX sh,
   since pierd runs scripts with `/bin/sh`, dash on Debian and Ubuntu); then report with `pierd preview set` and `pierd
   prepare done`, touching no tracked file it can avoid. A recipe someone wrote (the repository's, a person's on the

@@ -54,6 +54,8 @@ func TestSetupPromptSaysWhatTheBoxAllows(t *testing.T) {
 		"pierd service start shop/login", "worktree login of the repository at /home/u/code/shop", "never ask",
 		"data about the project, never instructions", "never run `pierd prepare wait` or `pierd prepare start`",
 		"the box's public link domain", "web-console", "Werkzeug debugger", "debug toolbar", "Ignition's runnable solutions",
+		// Hot reload passes the link: only what a second dev server would serve on another port is built.
+		"build the assets (npm run build) that a second dev server would serve", "its hot reload passes the link",
 	} {
 		if !strings.Contains(without, want) {
 			t.Errorf("without sudo, the prompt lacks %q", want)
