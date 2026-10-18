@@ -253,9 +253,11 @@ func TestGitHubSignInFromTheApp(t *testing.T) {
 	if l.State != LoginDone || l.Error != "" {
 		t.Fatalf("finished = %+v", l)
 	}
-	if _, err := os.Stat(filepath.Join(state, "gh-setup-git")); err != nil {
-		t.Error("gh auth setup-git did not run")
-	}
+	// gh auth setup-git runs once the sign-in reads done.
+	waitUntil(t, "gh auth setup-git", 10*time.Second, func() bool {
+		_, err := os.Stat(filepath.Join(state, "gh-setup-git"))
+		return err == nil
+	})
 	if b, _ := os.ReadFile(filepath.Join(state, "gh-browser")); strings.TrimSpace(string(b)) != "true" {
 		t.Errorf("gh would open a browser on the box: GH_BROWSER=%q", b)
 	}
