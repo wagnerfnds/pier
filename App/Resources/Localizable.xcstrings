@@ -4865,6 +4865,16 @@
         }
       }
     },
+    "Editou 1 arquivo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edited 1 file"
+          }
+        }
+      }
+    },
     "Ele está rodando “%@”, que para junto. A sessão termina na box." : {
       "localizations" : {
         "en" : {

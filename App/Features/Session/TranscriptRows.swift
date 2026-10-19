@@ -237,14 +237,16 @@ struct EditGroupRow: View {
     var body: some View {
         let added = edits.reduce(0) { $0 + ($1.added ?? 0) }
         let removed = edits.reduce(0) { $0 + ($1.removed ?? 0) }
+        // Files, not edits: a file edited three times counts and shows once.
+        let files = ConversationFold.distinctFiles(edits.compactMap(\.file))
         VStack(alignment: .leading, spacing: 0) {
             Button { vm.toggle(id, detailID: nil) } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "pencil.line").font(.caption).foregroundStyle(Theme.textDim).frame(width: 16)
-                    Text("Editou \(edits.count) arquivos").font(.footnote).foregroundStyle(Theme.textDim).fixedSize()
+                    Text(files.count == 1 ? S("Editou 1 arquivo") : S("Editou \(files.count) arquivos")).font(.footnote).foregroundStyle(Theme.textDim).fixedSize()
                     PlusMinus(added: added, removed: removed, size: 11)
                     if !isOpen {
-                        Text(edits.compactMap { $0.file.map { ($0 as NSString).lastPathComponent } }.joined(separator: ", "))
+                        Text(files.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))
                             .font(.mono(12)).foregroundStyle(Theme.textFaint).lineLimit(1).truncationMode(.tail)
                     }
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.textFaint)
@@ -255,7 +257,7 @@ struct EditGroupRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(RowHoverStyle())
-            .accessibilityLabel("Editou \(edits.count) arquivos, \(added) linhas adicionadas, \(removed) removidas")
+            .accessibilityLabel("Editou \(files.count) arquivos, \(added) linhas adicionadas, \(removed) removidas")
             .accessibilityHint(isOpen ? "Recolher" : "Mostrar os arquivos")
             .accessibilityIdentifier("edit-group")
             if isOpen {

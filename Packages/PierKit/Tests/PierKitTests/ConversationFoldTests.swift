@@ -43,6 +43,11 @@ private func it(_ kind: String, _ n: Int, text: String? = nil, verb: String? = n
         #expect(edits.map(\.id) == ["cl@2.1", "cl@3.1", "cl@4.1"])
     }
 
+    @Test func anEditGroupCountsFilesNotEdits() {
+        let files = ["a/marca.js", "a/roteiro.js", "a/marca.js", "", "b/cena.js", "a/roteiro.js"]
+        #expect(ConversationFold.distinctFiles(files) == ["a/marca.js", "a/roteiro.js", "b/cena.js"])
+    }
+
     @Test func liveOnlyOnTheLastTurn() {
         let items = [it("user", 1, text: "a"), it("tools", 2, calls: 1), it("text", 3, text: "x"), it("user", 4, text: "b"), it("tools", 5, calls: 1)]
         let b = ConversationFold.blocks(items, live: true)
