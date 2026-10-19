@@ -52,15 +52,14 @@ struct NextStepChips: View {
                 headingView
                 Group {
                     if compact {
-                        // One row when they fit, else one under the other.
-                        ViewThatFits(in: .horizontal) {
+                        // One row at a fixed height that scrolls sideways when it runs long: the end of a conversation
+                        // is measured to place it, so its height must not depend on a second layout pass.
+                        ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(Array(replies.enumerated()), id: \.offset) { i, r in chip(i, r).fixedSize() }
-                            }
-                            VStack(alignment: .leading, spacing: 8) {
                                 ForEach(Array(replies.enumerated()), id: \.offset) { i, r in chip(i, r) }
                             }
                         }
+                        .frame(height: 34)
                     } else {
                         VStack(spacing: 6) {
                             ForEach(Array(replies.enumerated()), id: \.offset) { i, r in row(i, r) }
@@ -153,7 +152,7 @@ struct NextStepChips: View {
                 Image(systemName: on ? "checkmark" : "arrow.turn.down.right")
                     .font(.system(size: 11, weight: .semibold)).foregroundStyle(on ? Theme.green : Theme.textDim)
                 Text(text).font(.subheadline).foregroundStyle(on ? Theme.green : Theme.text)
-                    .multilineTextAlignment(.leading).lineLimit(2)
+                    .lineLimit(1)
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(on ? Theme.green.opacity(0.12) : Theme.card, in: Capsule())

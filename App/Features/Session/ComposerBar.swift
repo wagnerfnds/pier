@@ -259,16 +259,11 @@ struct ComposerBar: View {
     }
 }
 
-/// The composer's small icon buttons: a soft wash under the pointer, no bezel.
+/// The composer's small icon buttons: the system's pointer highlight, no bezel.
 private struct ComposerIconStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Hovered(configuration: configuration) }
-    private struct Hovered: View {
-        let configuration: ButtonStyleConfiguration
-        @State private var hovering = false
-        var body: some View {
-            configuration.label
-                .background(Circle().fill(configuration.isPressed ? Theme.washStrong : hovering ? Theme.wash : .clear))
-                .onHover { hovering = $0 }
-        }
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .hoverEffect(.highlight)
     }
 }
