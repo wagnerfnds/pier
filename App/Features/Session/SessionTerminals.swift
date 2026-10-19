@@ -533,9 +533,12 @@ struct SessionTerminalTabs<Conversation: View>: View {
 
     private func liveSurface(_ m: MountedTerminal, visible: Bool, focus: Bool) -> some View {
         let s = m.session
-        return LiveTerminalSurface(terminal: m.terminal, exited: s.exited, visible: visible, focus: focus,
-                                   onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
-                                   onClose: { ask(close: s) })
+        return VStack(spacing: 0) {
+            TerminalHeader(dir: s.dir, running: s.exited ? nil : terminals.running(s), exited: s.exited)
+            LiveTerminalSurface(terminal: m.terminal, exited: s.exited, visible: visible, focus: focus,
+                                onFocused: { if terminals.focusTarget == s.name { terminals.focusTarget = nil } },
+                                onClose: { ask(close: s) })
+        }
             .opacity(visible ? 1 : 0)
             .allowsHitTesting(visible)
             .accessibilityHidden(!visible)
@@ -716,6 +719,45 @@ private struct SessionTabChrome: ViewModifier {
                     }
             }
             .onHover { over = $0 }
+    }
+}
+
+/// Over a terminal, as a terminal app's title bar: where it runs ("~/code/shop-checkout") and what runs in it now,
+/// on the terminal's own color.
+private struct TerminalHeader: View {
+    let dir: String
+    let running: String?
+    let exited: Bool
+
+    /// The folder with the home folder as "~".
+    private var place: String {
+        let parts = dir.split(separator: "/", omittingEmptySubsequences: true)
+        if parts.count >= 2, parts[0] == "home" || parts[0] == "Users" { return "~/" + parts.dropFirst(2).joined(separator: "/") }
+        if parts.first == "root" { return "~/" + parts.dropFirst().joined(separator: "/") }
+        return dir
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "folder").font(.system(size: 10, weight: .medium)).foregroundStyle(Theme.textFaint)
+            Text(verbatim: place).font(.mono(11)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.head)
+            Spacer(minLength: 8)
+            if let running, !running.isEmpty {
+                HStack(spacing: 5) {
+                    Circle().fill(Theme.green).frame(width: 6, height: 6)
+                    Text(verbatim: running).font(.mono(11)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.tail)
+                }
+                .frame(maxWidth: 320, alignment: .trailing)
+            } else if exited {
+                Text("o programa terminou").font(.caption2).foregroundStyle(Theme.textFaint)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 26)
+        .background(Theme.terminalBg)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 1) }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("terminal-header")
     }
 }
 
