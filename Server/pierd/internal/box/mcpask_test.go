@@ -21,9 +21,12 @@ func TestMCPQuestionIsReadAndAnsweredFromTheScreen(t *testing.T) {
 	repo := gitRepo(t)
 	call(t, c, "POST", "/v1/locations", "", map[string]string{"name": "cal", "path": repo}, nil)
 	start := func() string {
-		var sess Session
+		var sess struct {
+			Session
+			Error string `json:"error"`
+		}
 		if status := call(t, c, "POST", "/v1/sessions", "", map[string]string{"location": "cal", "command": "python3 " + script}, &sess); status != 200 {
-			t.Fatalf("add session: %d", status)
+			t.Fatalf("add session: %d %s", status, sess.Error)
 		}
 		deadline := time.Now().Add(5 * time.Second)
 		for {
@@ -65,7 +68,8 @@ func TestMCPQuestionIsReadAndAnsweredFromTheScreen(t *testing.T) {
 		t.Fatalf("after the answer = %d", status)
 	}
 
-	// None: all turned down.
+	// None: all turned down. (The first session goes first: a second with the same command could take its name.)
+	call(t, c, "DELETE", "/v1/sessions/"+name, "", nil, nil)
 	name = start()
 	if status := call(t, c, "POST", "/v1/sessions/"+name+"/mcp", "", map[string]any{"enable": []string{}}, nil); status != 200 {
 		t.Fatalf("turn down = %d\n%s", status, screen(name))
