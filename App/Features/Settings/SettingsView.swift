@@ -1,4 +1,5 @@
 import SwiftUI
+import PierSpeech
 import Intents
 import UserNotifications
 import PierKit
@@ -119,6 +120,7 @@ struct SettingsView: View {
             } header: { Text("Falar") } footer: {
                 Text("Ligado, o pedido vai na hora para o agente que o Pier escolher. Desligado, o Pier mostra a decisão e espera você tocar em Enviar.")
             }
+            DictationSettingsSection()
             Section("Notificações") {
                 HStack {
                     Text("Avisar quando um agente precisar de você ou terminar").font(.subheadline)
@@ -338,6 +340,65 @@ struct MacSurfaceSettingsSection: View {
     }
 }
 #endif
+
+/// "Ditado": the engine that turns speech into text (Parakeet on the device, or the system's), and Parakeet's model:
+/// on the device or not, downloaded or deleted from here.
+struct DictationSettingsSection: View {
+    @AppStorage(Dictation.engineKey) private var engine = Dictation.Engine.parakeet.rawValue
+    @State private var downloaded = ParakeetEngine.isDownloaded
+    @State private var confirmDelete = false
+    private var dictation: Dictation { TalkCenter.shared.dictation }
+
+    var body: some View {
+        Section {
+            Picker("Reconhecimento de voz", selection: $engine) {
+                Text("Parakeet (neste aparelho)").tag(Dictation.Engine.parakeet.rawValue)
+                Text("Ditado do sistema").tag(Dictation.Engine.system.rawValue)
+            }
+            .accessibilityIdentifier("dictation-engine")
+            .listRowBackground(Theme.card)
+            if engine == Dictation.Engine.parakeet.rawValue {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Modelo de voz").font(.subheadline)
+                        Text(downloaded ? S("Neste aparelho · \(size)") : S("Não baixado · \(size)"))
+                            .font(.caption).foregroundStyle(Theme.textDim)
+                    }
+                    Spacer(minLength: 8)
+                    if case .preparing(let p) = dictation.state {
+                        ProgressView(value: p).frame(width: 90)
+                    } else if downloaded {
+                        Button("Apagar", role: .destructive) { confirmDelete = true }.buttonStyle(.borderless)
+                    } else {
+                        Button("Baixar") {
+                            Task {
+                                await dictation.downloadModel(listen: false)
+                                downloaded = ParakeetEngine.isDownloaded
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier("dictation-settings-download")
+                    }
+                }
+                .listRowBackground(Theme.card)
+            }
+        } header: { Text("Ditado") } footer: {
+            Text(engine == Dictation.Engine.parakeet.rawValue
+                 ? S("O Parakeet, da NVIDIA, transforma sua voz em texto neste aparelho, em português, inglês e outras línguas europeias: nada do que você diz sai dele. O modelo é baixado uma vez, na primeira vez que você dita.")
+                 : S("O ditado do sistema usa o reconhecimento de fala da Apple; no Mac, ele precisa do Ditado ligado em Ajustes do Sistema › Teclado."))
+        }
+        .confirmationDialog("Apagar o modelo de voz?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Apagar", role: .destructive) {
+                Task {
+                    try? await ParakeetEngine.shared.remove()
+                    downloaded = ParakeetEngine.isDownloaded
+                }
+            }
+        } message: { Text("Libera \(size). Ele é baixado de novo na próxima vez que você ditar.") }
+    }
+
+    private var size: String { ByteCountFormatter.string(fromByteCount: ParakeetEngine.downloadBytes, countStyle: .file) }
+}
 
 /// "Tempo para desfazer": how long one-tap answers wait before they go out (`PendingActions`); typed messages go at once.
 struct UndoSettingsSection: View {

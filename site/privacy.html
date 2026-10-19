@@ -37,6 +37,8 @@
     <li>The app talks only to the boxes you pair it with, over mutual TLS: directly, or, away from the box's network,
       through the Pier tunnel, which carries that encryption without being able to open it. We never see your code,
       prompts, conversations or files.</li>
+    <li>The one other download: the first time you dictate, the app fetches its voice model (NVIDIA's Parakeet) from
+      Hugging Face, once. Nothing about you goes with that request, and what you say is turned into text on the device.</li>
   </ul>
 
   <h2>What stays on your device</h2>
@@ -44,6 +46,8 @@
     <li>The keys that pair the app with your boxes, in the system Keychain.</li>
     <li>Your preferences (sections, project names, appearance) and copies of what your boxes showed, so the app opens
       quickly. Deleting the app deletes them.</li>
+    <li>Your voice, when you dictate: the Parakeet model turns it into text on the device and the audio is not kept. If you
+      choose the system's dictation instead, Apple's speech recognition handles it, under Apple's privacy policy.</li>
   </ul>
 
   <h2>What goes to your boxes</h2>
@@ -104,6 +108,8 @@
     <li>O app conversa só com as boxes que você pareia, por TLS mútuo: diretamente ou, fora da rede da box, pelo túnel
       do Pier, que carrega essa criptografia sem conseguir abri-la. Nunca vemos seu código, seus prompts, suas conversas
       ou seus arquivos.</li>
+    <li>O único outro download: na primeira vez que você dita, o app baixa o modelo de voz (o Parakeet, da NVIDIA) do
+      Hugging Face, uma vez. Nada sobre você vai nesse pedido, e o que você fala vira texto no próprio aparelho.</li>
   </ul>
 
   <h2>O que fica no seu aparelho</h2>
@@ -111,6 +117,8 @@
     <li>As chaves que pareiam o app com as suas boxes, no Keychain do sistema.</li>
     <li>Suas preferências (seções, nomes de projetos, aparência) e cópias do que as boxes mostraram, para o app abrir
       rápido. Apagar o app apaga tudo isso.</li>
+    <li>Sua voz, quando você dita: o modelo Parakeet a transforma em texto no aparelho e o áudio não é guardado. Se você
+      escolher o ditado do sistema, o reconhecimento de fala da Apple cuida dela, sob a política de privacidade da Apple.</li>
   </ul>
 
   <h2>O que vai para as suas boxes</h2>

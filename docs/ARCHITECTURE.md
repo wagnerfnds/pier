@@ -39,6 +39,10 @@ Packages/PierKit/           # SwiftPM: transport, identity, pairing, typed API, 
     Models/     Codable models of pierd's JSON
     Support/    ConversationFold, MenuParser, GitActions, PRCommands, AgentBoard, InboxRules, NextSteps, TalkRouter, …
   Tests/PierKitTests/  Fixtures/*.json (pierd answers, sample data) and synthetic/ (hand-written edge cases)
+Packages/PierSpeech/         # SwiftPM, the app only: dictation with NVIDIA's Parakeet (TDT 0.6b "ultra") on the Neural Engine
+                            # through FluidAudio (pinned, its TTS/diarization/ITN traits off): ParakeetEngine (download once
+                            # from Hugging Face, load, transcribe), PCMCollector (the mic at 16 kHz mono); ParakeetEvalTests
+                            # transcribes recordings with their word error rate (PIER_SPEECH_EVAL=<folder>)
 Tools/pierctl/              # macOS CLI client for end-to-end checks against a real box (~/.config/pierctl or $PIERCTL_HOME)
 Tools/chat-e2e/             # a real chat timed end to end on a box, through pierd's local socket (docs/CHAT-QUALITY.md)
 App/                        # the app target (SwiftUI)
@@ -582,7 +586,8 @@ own, as Abrir no Pier opens it),
 `-openFirstSession 1`, `-openCompose 1 -composeProject <loc>
 -composePrompt <text> -composeNoFocus 1 -composeOptions 1 -composeSheet project|worktree|base -composeSubmit 1`,
 `-startTab inbox|board|projects|settings`, `-seedSections 1`, `-snapshotTo <file.png> [-snapshotAfter <s>]`, `-homeCustomize 1`, `-homeScrollTo <widget>`, `-sessionExpandAll 1`,
-`-sessionDetails 1`, `-sessionTerminal 1`, `-composerTypeReturn <text>` (the words and then a line break typed into the
+`-sessionDetails 1`, `-sessionTerminal 1`, `-dictationProbe 1` (dictation's engine, permissions and recognizers on standard
+error, nothing asked), `-dictationShow needsModel|preparing|finishing|failed` (that dictation state on screen), `-composerTypeReturn <text>` (the words and then a line break typed into the
 open session's composer the way UIKit inserts typed text: Return taken by the field itself must still send), `-uiTestChatLab 1` (with the mock: a long chat of hard Markdown that streams a
 reply like Claude Code's when sent to; `ChatQualityUITests`), `-navPerfProbe 1 [-navPerfProbeLoops <n>] [-navPerfProbeOnly tabs|sessions|projects]` (walks the Home, sessions, Inbox, Board, projects and worktrees of the paired boxes or the mock, 2.5 s a step: `NAV-PERF {...}` per step with the first frame and hitch time, the footprint between walks; with Time Profiler attached it shows what each screen costs), `-carPlaySelfTest 1` (docs/CARPLAY.md), `-chatPerfProbe 1 [-sessionSend <text>]` (frame pacing of
 the open conversation, scrolled and while a reply streams: `CHAT-PERF {...}` on stderr and Documents/chat-perf.json), `-openInstallHelp 1` (the onboarding's "Outros jeitos de instalar" sheet),

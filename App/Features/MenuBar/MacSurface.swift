@@ -855,10 +855,11 @@ enum MacSurfaceSettings {
     func stopDictation() {
         guard dictationTarget != nil else { return }
         let d = TalkCenter.shared.dictation
-        if d.isListening { _ = d.stop() }
-        // The final words stay in the field: one last payload with the transcript, then the target is forgotten.
-        onChange?()
+        // The final words stay in the field: one last payload with the transcript (written a last time by Parakeet),
+        // then the target is forgotten.
         Task { [weak self] in
+            if d.isListening { _ = await d.finish() }
+            self?.onChange?()
             try? await Task.sleep(for: .milliseconds(300))
             self?.dictationTarget = nil
             self?.onChange?()

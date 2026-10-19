@@ -228,6 +228,7 @@ final class AppModel {
         if UserDefaults.standard.bool(forKey: "dictationProbe") {
             FileHandle.standardError.write(Data("DICTATION \(Dictation.status)\n".utf8))
         }
+        if let show = UserDefaults.standard.string(forKey: "dictationShow") { TalkCenter.shared.dictation.debugShow(show) }
         // Screenshot hooks: `-openTalk 1` the Falar sheet (with `-talkText "…"` typed and routed), `-openPalette 1` the
         // ⌘K palette (iPad, Mac), `-openFaxina 1` the Faxina screen.
         if UserDefaults.standard.bool(forKey: "openTalk") {
