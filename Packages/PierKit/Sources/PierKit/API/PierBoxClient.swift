@@ -48,6 +48,10 @@ public protocol PierBoxClient: Sendable {
 
     // 5 Needs you
     func answerQuestions(session: String, tool: String, answers: [QuestionAnswer]) async throws -> [String]
+    /// Claude Code's question about the repository's MCP servers, nil when it is not on screen (capability `answer.mcp`).
+    func mcpQuestion(session: String) async throws -> MCPQuestion?                               // GET /v1/sessions/{n}/mcp
+    /// Answers it: the servers named turned on, the others down (none: all down).
+    func answerMCP(session: String, enable: [String]) async throws                              // POST /v1/sessions/{n}/mcp
     // 6 Transcript
     func transcript(session: String, since: Int, gen: String?) async throws -> TranscriptPage
     func transcriptBefore(session: String, before: Int64, limit: Int) async throws -> TranscriptPage

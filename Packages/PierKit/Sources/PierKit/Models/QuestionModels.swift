@@ -75,3 +75,35 @@ public struct QuestionAnswer: Codable, Sendable, Hashable {
         self.other = try c.decodeIfPresent(String.self, forKey: .other)
     }
 }
+
+/// Claude Code's question about a repository's MCP servers (its `.mcp.json`) before it starts, read off the screen by the
+/// box (`GET /v1/sessions/{name}/mcp`, capability `answer.mcp`, docs/API.md §5.4): each server and whether it is ticked.
+/// Checked against Server/pierd/internal/box/mcpask.go.
+public struct MCPQuestion: Codable, Sendable, Hashable {
+    public struct Server: Codable, Sendable, Hashable, Identifiable {
+        public let name: String
+        public let enabled: Bool
+        public var id: String { name }
+
+        public init(name: String, enabled: Bool) { self.name = name; self.enabled = enabled }
+
+        enum CodingKeys: String, CodingKey { case name, enabled }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = try c.decode(String.self, forKey: .name)
+            enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        }
+    }
+
+    public let servers: [Server]
+
+    public init(servers: [Server]) { self.servers = servers }
+
+    enum CodingKeys: String, CodingKey { case servers }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        servers = try c.decodeIfPresent([Server].self, forKey: .servers) ?? []
+    }
+}

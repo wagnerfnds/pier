@@ -277,6 +277,26 @@
         }
       }
     },
+    "%@ quer usar o servidor MCP do projeto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wants to use the project's MCP server"
+          }
+        }
+      }
+    },
+    "%@ quer usar os servidores MCP do projeto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wants to use the project's MCP servers"
+          }
+        }
+      }
+    },
     "%@ rodam em %@" : {
       "localizations" : {
         "en" : {
@@ -2785,12 +2805,42 @@
         }
       }
     },
+    "Ativar %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable %@"
+          }
+        }
+      }
+    },
+    "Ativar %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable %lld"
+          }
+        }
+      }
+    },
     "Ativar em Ajustes do iOS" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enable in iOS Settings"
+          }
+        }
+      }
+    },
+    "Ativar todos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable all"
           }
         }
       }
@@ -11461,6 +11511,26 @@
         }
       }
     },
+    "Recusar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn down"
+          }
+        }
+      }
+    },
+    "Recusar todos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn all down"
+          }
+        }
+      }
+    },
     "Reiniciar %@" : {
       "localizations" : {
         "en" : {
@@ -12247,6 +12317,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No connection to %@"
+          }
+        }
+      }
+    },
+    "Servidores MCP rodam código na box. Ative só os que você conhece." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP servers run code on the box. Enable only the ones you know."
           }
         }
       }

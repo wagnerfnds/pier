@@ -112,7 +112,7 @@ Custom keys, top level next to `aps`:
 | `location` | the session's `location` (`"repo/worktree"`), used by `REVIEW` |
 | `hasMenu` | `true` when a numbered permission menu was seen on screen (informational) |
 | `options` | a waiting agent's choices, in order (≤ 4, each ≤ 60 characters): the notification's buttons, see 4.3 |
-| `optionsKind` | where they came from: `question` (the transcript's form; answered by label) or `menu` (numbered rows on screen; answered by digit) |
+| `optionsKind` | where they came from: `question` (the transcript's form; answered by label), `menu` (numbered rows on screen; answered by digit) or `mcp` (Claude Code's question about the repository's MCP servers: "Ativar todos" / "Recusar", or "Enable all" / "Turn down"; answered with `POST …/mcp`, API.md §5.4.1) |
 
 Every category also carries `.allowInCarPlay` and the message intent (`INSendMessageIntentIdentifier`), and each agent
 alert is shown as a message from that agent (a communication notification, `App/Shared/CommunicationNotification.swift`,
@@ -167,7 +167,9 @@ numbered buttons still answer. `NotificationChoices` (`App/Shared`) is the share
 local notifications too, and merges its fixed categories with the dynamic ones instead of replacing them (a replace
 would strip the buttons off a question still on the Lock Screen; the newest 24 sets are kept).
 
-What pierd reads (`internal/push/engine`, `waitingOptions`): for a question tool, the transcript's open `question`
+What pierd reads (`internal/push/engine`, `waitingOptions`): Claude Code's question about the repository's MCP
+servers first (`menu.MCP`: the alert's body names them, its buttons turn them all on or all down, in the recipient's
+language, `optionsKind: "mcp"`); for a question tool, the transcript's open `question`
 item when it is one question with a single pick (`optionsKind: "question"`), else the numbered rows on screen minus
 the agent's own trailing "Type something." / "Chat about this" rows (`menu.OptionLabels`, `optionsKind: "menu"`;
 Claude Code draws AskUserQuestion that way and writes the transcript item only once answered; a plan approval is a

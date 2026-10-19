@@ -412,7 +412,7 @@ func (e *Engine) announceWaiting(name string, since time.Time) {
 	}
 	// --- Answer from the notification: a question's (or a plain menu's) choices ride along as `options`, so the phone
 	// shows them as the notification's buttons (docs/PUSH.md 4.3). A permission with a menu keeps Permitir / Negar. ---
-	var options []string
+	var options, mcpServers []string
 	optionsKind := ""
 	if !hasMenu {
 		if opts := s.Ask.SingleChoice(); len(opts) >= 2 {
@@ -420,6 +420,9 @@ func (e *Engine) announceWaiting(name string, since time.Time) {
 			options, optionsKind = clipOptions(opts), "question"
 		} else if s.Ask.Steps() == 0 {
 			options, optionsKind = e.waitingOptions(ctx, name, permission)
+		}
+		if optionsKind == "mcp" {
+			mcpServers, options = options, text.MCPOptions(text.EN)
 		}
 		if len(options) > 0 {
 			if _, ok := e.fresh(ctx, name, "waiting", since); !ok {
@@ -451,15 +454,20 @@ func (e *Engine) announceWaiting(name string, since time.Time) {
 			continue
 		}
 		body := text.WaitingBody(r.lang, ask)
-		if len(options) > 0 {
-			body += "\n" + text.ChoicesLine(options)
+		opts := options
+		if optionsKind == "mcp" {
+			opts = text.MCPOptions(r.lang)
+			body = text.MCPBody(r.lang, mcpServers)
+		}
+		if len(opts) > 0 {
+			body += "\n" + text.ChoicesLine(opts)
 		}
 		b, err := payload.BuildAlert(payload.AlertParams{
 			Box: r.box, Session: name, Location: s.Location,
 			Title:    text.Title(r.lang, "waiting", text.SessionName(s, all)),
 			Subtitle: text.Subtitle(text.PlaceOf(r.lang, s, locs), text.AgentLabel(text.AgentOf(s)), r.box, false),
 			Body:     body,
-			Category: category, HasMenu: &hasMenu, Options: options, OptionsKind: optionsKind, Level: "time-sensitive", Sound: true,
+			Category: category, HasMenu: &hasMenu, Options: opts, OptionsKind: optionsKind, Level: "time-sensitive", Sound: true,
 		})
 		if err != nil {
 			log.Error("build alert", "err", err)
@@ -496,6 +504,15 @@ func (e *Engine) waitingOptions(ctx context.Context, name string, permission boo
 			}
 		}
 		if screen, err := e.box.Screen(ctx, name); err == nil {
+			// Claude Code's question about the repository's MCP servers: their names here, the buttons' words per
+			// recipient (text.MCPOptions).
+			if d, ok := menu.MCP(screen); ok {
+				names := make([]string, 0, len(d.Servers))
+				for _, s := range d.Servers {
+					names = append(names, s.Name)
+				}
+				return names, "mcp"
+			}
 			if opts := menu.OptionLabels(screen); len(opts) >= 2 {
 				return clipOptions(opts), "menu"
 			}

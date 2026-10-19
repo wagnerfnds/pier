@@ -49,6 +49,13 @@ enum SessionActions {
             guard let s = try? await client.sessions().first(where: { $0.name == session }) else { continue }
             guard s.needsYou else { return .failure(.menuChanged) }
             do {
+                // Claude Code's question about the repository's MCP servers (a notification's "Ativar todos" / "Recusar"):
+                // the box reads it off the screen and presses the keys its dialog takes.
+                if let choice = MCPAnswers.choice(label), let q = try? await client.mcpQuestion(session: session) {
+                    try await client.answerMCP(session: session, enable: MCPAnswers.enable(choice, in: q))
+                    await SessionActivityBridge.answered(box: box, session: session)
+                    return .success(())
+                }
                 // The form the hook sent with the wait (Claude Code records the question only once answered).
                 if let qs = s.ask?.questionItem?.questions, qs.count == 1, qs[0].multi != true,
                    let pick = qs[0].options.first(where: { same($0.label) })?.label,

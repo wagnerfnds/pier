@@ -223,6 +223,15 @@ public final class BoxAPI: PierBoxClient, Sendable {
         return r.answered ?? []
     }
 
+    public func mcpQuestion(session: String) async throws -> MCPQuestion? {
+        do { return try await get(sessionPath(session, "/mcp")) } catch let e as BoxError where e.status == 404 { return nil }
+    }
+
+    public func answerMCP(session: String, enable: [String]) async throws {
+        struct B: Encodable { let enable: [String] }
+        _ = try await call(.post, sessionPath(session, "/mcp"), body: B(enable: enable))
+    }
+
     // MARK: 6 transcript
 
     public func transcript(session: String, since: Int, gen: String?) async throws -> TranscriptPage {

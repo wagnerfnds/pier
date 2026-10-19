@@ -88,6 +88,9 @@ final class SessionViewModel {
     var answeredFor: Date? { didSet { answeredAt = answeredFor == nil ? nil : Date() } }
     @ObservationIgnored private var answeredAt: Date?
     var answering = false
+    /// Claude Code's question about the repository's MCP servers while it is on screen (capability `answer.mcp`).
+    var mcp: MCPQuestion?
+    @ObservationIgnored private var mcpLookedAt: String?
 
     @ObservationIgnored private var kickFlag = false
     @ObservationIgnored private var tickCount = 0
@@ -516,6 +519,7 @@ final class SessionViewModel {
         if case .success(let sc)? = sc {
             if sc != screen { screen = sc }
             if !screenLoaded { screenLoaded = true }
+            await lookForMCPQuestion(screen: sc, waiting: s.needsYou)
             if s.agentState == .running, let st = StepText.from(screen: sc), st != step { step = st }
         }
         if s.agentState != .running, step != nil { step = nil }
@@ -834,6 +838,37 @@ final class SessionViewModel {
         } catch { actionError = describe(error) }
         answering = false
         conn?.scheduleRefresh(sessions: true); kick()
+    }
+
+    /// The MCP question, asked of the box when the screen mentions MCP servers and changed since the last look.
+    private func lookForMCPQuestion(screen sc: String, waiting: Bool) async {
+        guard waiting, conn?.info?.has("answer.mcp") == true, sc.range(of: "MCP server", options: .caseInsensitive) != nil else {
+            if mcp != nil { mcp = nil }
+            mcpLookedAt = nil
+            return
+        }
+        guard sc != mcpLookedAt else { return }
+        mcpLookedAt = sc
+        let q = try? await client.mcpQuestion(session: name)
+        if q != mcp { mcp = q }
+    }
+
+    /// Answers Claude Code's question about the MCP servers: the ones named turned on, the others down.
+    func answerMCP(enable: [String]) async {
+        let episode = session.stateSince
+        answering = true
+        Haptic.impact()
+        do {
+            try await client.answerMCP(session: name, enable: enable)
+            answeredFor = episode; answeredScreen = screen
+            mcp = nil
+        } catch { actionError = describe(error) }
+        answering = false
+        conn?.scheduleRefresh(sessions: true); kick()
+    }
+
+    func scheduleAnswerMCP(enable: [String], label: String) {
+        deferAnswer(label) { vm in await vm.answerMCP(enable: enable) }
     }
 
     /// Structured answer first, digit keys when the box can't drive the form (§14).

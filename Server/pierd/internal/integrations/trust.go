@@ -276,6 +276,79 @@ func CarryClaudeMcpChoice(path string, dirs, from []string) (bool, error) {
 	})
 }
 
+// CarryClaudeLocalMcpChoice does what CarryClaudeMcpChoice does for the
+// place Claude Code 2.1.30x keeps the answer: the folder's own
+// .claude/settings.local.json (enabledMcpjsonServers,
+// disabledMcpjsonServers, enableAllProjectMcpServers). The first folder of
+// from that answered gives it to dir, unless dir answered already; the
+// file's other settings stay as they are.
+func CarryClaudeLocalMcpChoice(dir string, from []string) (bool, error) {
+	if dir == "" {
+		return false, nil
+	}
+	target := filepath.Join(dir, ".claude", "settings.local.json")
+	have, err := readJSONObject(target)
+	if err != nil {
+		return false, err
+	}
+	if localMcpChoiceMade(have) {
+		return false, nil
+	}
+	for _, f := range from {
+		if f == "" || filepath.Clean(f) == filepath.Clean(dir) {
+			continue
+		}
+		src, err := readJSONObject(filepath.Join(f, ".claude", "settings.local.json"))
+		if err != nil || !localMcpChoiceMade(src) {
+			continue
+		}
+		for _, k := range []string{"enabledMcpjsonServers", "disabledMcpjsonServers", "enableAllProjectMcpServers"} {
+			if v, ok := src[k]; ok {
+				have[k] = v
+			}
+		}
+		data, err := json.MarshalIndent(have, "", "  ")
+		if err != nil {
+			return false, err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return false, err
+		}
+		return true, os.WriteFile(target, append(data, '\n'), 0o644)
+	}
+	return false, nil
+}
+
+// readJSONObject reads a JSON object file; a missing one is empty.
+func readJSONObject(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return out, nil
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return out, nil
+}
+
+// localMcpChoiceMade says a folder's settings hold an answer about its
+// repository's MCP servers.
+func localMcpChoiceMade(m map[string]any) bool {
+	if m["enableAllProjectMcpServers"] == true {
+		return true
+	}
+	en, _ := m["enabledMcpjsonServers"].([]any)
+	dis, _ := m["disabledMcpjsonServers"].([]any)
+	return len(en) > 0 || len(dis) > 0
+}
+
 // mcpChoiceMade says a project's entry holds an answer to the question
 // about its repository's MCP servers: one of them enabled or turned down.
 func mcpChoiceMade(entry map[string]any) bool {

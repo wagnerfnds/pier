@@ -18,7 +18,7 @@ var Screen = register(&Adapter{
 })
 
 // approval matches the questions agents stop at for a person.
-var approval = regexp.MustCompile(`(?i)(do you want to (proceed|make this edit|allow)|allow (once|always)|\(y/n\)|\[y/n\]|approve\b.*\?|yes, (and )?(allow|proceed|i trust|i accept)|trust (this folder|the files)|select any you wish to enable|press enter to confirm|waiting for (your )?(approval|permission))`)
+var approval = regexp.MustCompile(`(?i)(do you want to (proceed|make this edit|allow)|allow (once|always)|\(y/n\)|\[y/n\]|approve\b.*\?|yes, (and )?(allow|proceed|i trust|i accept)|trust (this folder|the files)|select any you wish to enable|new mcp servers? found|press enter to confirm|waiting for (your )?(approval|permission))`)
 
 // ScreenState reads the bottom of a pane: "waiting" when it shows an
 // approval question, "" otherwise. Quiescence is the caller's to judge.
