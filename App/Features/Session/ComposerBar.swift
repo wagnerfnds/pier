@@ -46,7 +46,7 @@ struct ComposerBar: View {
                             .onKeyPress(.escape) { PendingActions.shared.undoLatest() ? .handled : .ignored }
                             // Return sends on the Mac and from an iPad's keyboard, as Messages does; Shift- or Option-
                             // Return writes a new line (and Return does on the on-screen keyboard).
-                            .returnSends { if canSend { Task { await send() } } }
+                            .returnSends(text: $text) { if canSend { Task { await send() } } }
                         actionButton.padding(4)
                     }
                     .background(Theme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
@@ -70,6 +70,21 @@ struct ComposerBar: View {
         .animation(.snappy(duration: 0.2), value: showsStop)
         .animation(.snappy(duration: 0.2), value: hasText && busy)
         .onChange(of: vm.composerRestore, initial: true) { _, r in restore(r) }
+        #if DEBUG
+        .task {
+            // `-composerTypeReturn <text>`: the words typed into the field's own text view, then the line break a text
+            // view writes when it takes Return itself, as UIKit inserts typed text (the Mac's Return, checked without
+            // keys).
+            guard let typed = UserDefaults.standard.string(forKey: "composerTypeReturn") else { return }
+            try? await Task.sleep(for: .seconds(3))
+            focused = true
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let input = FirstResponder.current as? UIKeyInput else { return }
+            input.insertText(typed)
+            try? await Task.sleep(for: .milliseconds(300))
+            input.insertText("\n")
+        }
+        #endif
         .onChange(of: photo) { _, item in
             guard let item else { return }
             photo = nil
