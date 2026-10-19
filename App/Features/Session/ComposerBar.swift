@@ -89,7 +89,7 @@ struct ComposerBar: View {
             guard dictatingHere, dictation.isListening, !t.isEmpty else { return }
             text = dictationBase.isEmpty ? t : dictationBase + " " + t
         }
-        .onDisappear { if dictatingHere, dictation.isListening { dictation.cancel() }; dictatingHere = false }
+        .onDisappear { if dictatingHere, dictation.isListening || dictation.isPreparing { dictation.cancel() }; dictatingHere = false }
         #if DEBUG
         .task {
             // `-composerTypeReturn <text>`: the words typed into the field's own text view, then the line break a text
@@ -118,21 +118,28 @@ struct ComposerBar: View {
     /// field as it is heard; it is sent like a typed one.
     private var micButton: some View {
         Button(action: toggleDictation) {
-            Image(systemName: dictation.isListening ? "stop.fill" : "mic")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(dictation.isListening ? .white : Theme.textDim)
-                .frame(width: 30, height: 30)
-                .background(dictation.isListening ? Theme.red : .clear, in: Circle())
-                .contentShape(Circle())
+            ZStack {
+                if dictatingHere, dictation.state == .finishing {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: dictation.isListening ? "stop.fill" : "mic")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(dictation.isListening ? .white : Theme.textDim)
+                }
+            }
+            .frame(width: 30, height: 30)
+            .background(dictation.isListening ? Theme.red : .clear, in: Circle())
+            .contentShape(Circle())
         }
         .buttonStyle(ComposerIconStyle())
+        .disabled(dictation.state == .finishing || dictation.isPreparing)
         .accessibilityLabel(dictation.isListening ? "Parar de ditar" : "Ditar")
         .accessibilityIdentifier("composer-mic")
     }
 
     private func toggleDictation() {
         if dictation.isListening {
-            finishDictation()
+            Task { await finishDictation() }
             Haptic.impact(.light)
         } else {
             dictationBase = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -142,10 +149,10 @@ struct ComposerBar: View {
         }
     }
 
-    /// Stops listening and keeps what was heard in the field.
-    private func finishDictation() {
+    /// Stops listening and keeps what was heard in the field (Parakeet writes it a last time first).
+    private func finishDictation() async {
         guard dictatingHere, dictation.isListening else { return }
-        let heard = dictation.stop()
+        let heard = await dictation.finish()
         if !heard.isEmpty { text = dictationBase.isEmpty ? heard : dictationBase + " " + heard }
     }
 
@@ -204,7 +211,7 @@ struct ComposerBar: View {
 
     /// The message shows and goes out at once (`scheduleSend`); failed, its text comes back through `composerRestore`.
     private func send() async {
-        finishDictation()
+        await finishDictation()
         let t = text
         if vm.scheduleSend(t) { text = "" }
     }

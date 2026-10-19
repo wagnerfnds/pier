@@ -2465,6 +2465,16 @@
         }
       }
     },
+    "Apagar o modelo de voz?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete the voice model?"
+          }
+        }
+      }
+    },
     "Apagar também a branch" : {
       "localizations" : {
         "en" : {
@@ -3015,6 +3025,16 @@
         }
       }
     },
+    "Baixando o modelo de voz… %lld%%" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloading the voice model… %lld%%"
+          }
+        }
+      }
+    },
     "Baixando o repositório…" : {
       "localizations" : {
         "en" : {
@@ -3031,6 +3051,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Download"
+          }
+        }
+      }
+    },
+    "Baixar e ditar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download and dictate"
           }
         }
       }
@@ -4721,6 +4751,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dismiss · %@"
+          }
+        }
+      }
+    },
+    "Ditado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation"
+          }
+        }
+      }
+    },
+    "Ditado do sistema" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System dictation"
           }
         }
       }
@@ -6913,6 +6963,16 @@
         }
       }
     },
+    "Libera %@. Ele é baixado de novo na próxima vez que você ditar." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frees %@. It is downloaded again the next time you dictate."
+          }
+        }
+      }
+    },
     "Ligado, o pedido vai na hora para o agente que o Pier escolher. Desligado, o Pier mostra a decisão e espera você tocar em Enviar." : {
       "localizations" : {
         "en" : {
@@ -7349,6 +7409,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Model"
+          }
+        }
+      }
+    },
+    "Modelo de voz" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice model"
           }
         }
       }
@@ -8303,6 +8373,16 @@
         }
       }
     },
+    "Neste aparelho · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On this device · %@"
+          }
+        }
+      }
+    },
     "No Linux, deixe o pierd rodando depois do logout" : {
       "localizations" : {
         "en" : {
@@ -8783,6 +8863,16 @@
         }
       }
     },
+    "Não baixado · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not downloaded · %@"
+          }
+        }
+      }
+    },
     "Não commitadas" : {
       "localizations" : {
         "en" : {
@@ -9173,6 +9263,16 @@
         }
       }
     },
+    "O Parakeet, da NVIDIA, transforma sua voz em texto neste aparelho, em português, inglês e outras línguas europeias: nada do que você diz sai dele. O modelo é baixado uma vez, na primeira vez que você dita." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NVIDIA's Parakeet turns your voice into text on this device, in Portuguese, English and other European languages: nothing you say leaves it. The model is downloaded once, the first time you dictate."
+          }
+        }
+      }
+    },
     "O arquivo passa de 20 MB, o limite da box." : {
       "localizations" : {
         "en" : {
@@ -9383,6 +9483,16 @@
         }
       }
     },
+    "O ditado do sistema usa o reconhecimento de fala da Apple; no Mac, ele precisa do Ditado ligado em Ajustes do Sistema › Teclado." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System dictation uses Apple's speech recognition; on the Mac it needs Dictation turned on in System Settings › Keyboard."
+          }
+        }
+      }
+    },
     "O ditado não está disponível agora. %@" : {
       "localizations" : {
         "en" : {
@@ -9399,6 +9509,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dictation isn't available right now. Type the request."
+          }
+        }
+      }
+    },
+    "O ditado usa o Parakeet, um modelo de voz que roda neste aparelho: nada do que você diz sai dele. Ele precisa ser baixado uma vez (%@)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation uses Parakeet, a voice model that runs on this device: nothing you say leaves it. It needs to be downloaded once (%@)."
           }
         }
       }
@@ -9429,6 +9549,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "git refused: %@\nTurn on “Discard changes” to force it."
+          }
+        }
+      }
+    },
+    "O modelo de voz não baixou. Confira a conexão e tente de novo. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The voice model didn't download. Check the connection and try again. %@"
           }
         }
       }
@@ -10295,6 +10425,16 @@
         }
       }
     },
+    "Para ditar, permita o microfone nos Ajustes. Você também pode escrever o pedido." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To dictate, allow the microphone in Settings. You can also type the request."
+          }
+        }
+      }
+    },
     "Para os servidores de worktrees que ficam." : {
       "localizations" : {
         "en" : {
@@ -10331,6 +10471,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Idle"
+          }
+        }
+      }
+    },
+    "Parakeet (neste aparelho)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet (on this device)"
           }
         }
       }
@@ -10971,6 +11121,16 @@
         }
       }
     },
+    "Preparando o modelo de voz…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing the voice model…"
+          }
+        }
+      }
+    },
     "Preparando…" : {
       "localizations" : {
         "en" : {
@@ -11597,6 +11757,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reconnecting…"
+          }
+        }
+      }
+    },
+    "Reconhecimento de voz" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech recognition"
           }
         }
       }
@@ -12457,6 +12627,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Done."
+          }
+        }
+      }
+    },
+    "Transcrevendo…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcribing…"
+          }
+        }
+      }
+    },
+    "Usar o ditado do sistema" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use the system's dictation"
           }
         }
       }

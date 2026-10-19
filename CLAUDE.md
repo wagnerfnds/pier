@@ -20,6 +20,7 @@ mutual TLS.
 | `Extensions/PierNotificationService` | Turns a push's `options` into notification buttons | Swift |
 | `Mac/PierMenuBar` | AppKit plugin: menu bar item, edge tab, side panel | Swift |
 | `Packages/PierKit` | SwiftPM package shared by everything Swift: transport (swift-nio-ssl), identity, pairing, typed API, Codable models of pierd's JSON, pure tested helpers (`Support/`) | Swift |
+| `Packages/PierSpeech` | The app's dictation with Parakeet on the device (FluidAudio, Core ML): model download/load/transcribe, the mic at 16 kHz | Swift |
 | `Server/pierd` | The box server, its own Go module (`go.mod`, standard library only), own README and `docs/` | Go |
 | `Tools/pierctl` | macOS CLI client for end-to-end checks against a real box | Swift |
 | `Tools/markdown-conformance` | The chat's Markdown reader against CommonMark/GFM (markdown-it) on real replies and edge cases | Swift, JS, Python |

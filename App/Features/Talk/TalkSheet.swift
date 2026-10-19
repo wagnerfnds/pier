@@ -91,19 +91,7 @@ struct TalkSheet: View {
                 .disabled(talk.phase == .sending)
                 .accessibilityIdentifier("talk-field")
             if let image = talk.image { imageChip(image) }
-            if dictation.isListening {
-                HStack(spacing: 8) {
-                    TalkWaveform(level: dictation.level, color: Theme.red).frame(width: 34, height: 18)
-                    Text("Ouvindo… toque no microfone para parar").font(.caption).foregroundStyle(Theme.textDim)
-                }
-                .transition(.opacity)
-            } else if dictation.state == .denied {
-                deniedHint
-            } else if dictation.state == .systemOff {
-                DictationOffHint()
-            } else if dictation.state == .unavailable {
-                Text("O ditado não está disponível agora. Escreva o pedido.").font(.caption).foregroundStyle(Theme.orange)
-            }
+            DictationStatusLine(dictation: dictation, typeInstead: S("Escreva o pedido."))
             HStack(spacing: 10) {
                 Button(action: toggleDictation) {
                     Image(systemName: dictation.isListening ? "stop.fill" : "mic.fill")
@@ -170,18 +158,6 @@ struct TalkSheet: View {
         .background(Theme.cardRaised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("talk-image")
-    }
-
-    private var deniedHint: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Para ditar, permita o microfone e o reconhecimento de fala nos Ajustes. Você também pode escrever o pedido.")
-                .font(.caption).foregroundStyle(Theme.orange)
-            Button("Abrir Ajustes") {
-                if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
-            }
-            .font(.caption.weight(.semibold))
-        }
-        .accessibilityIdentifier("talk-denied")
     }
 
     private var examples: some View {
@@ -385,8 +361,10 @@ struct TalkSheet: View {
 
     private func toggleDictation() {
         if dictation.isListening {
-            let heard = dictation.stop()
-            if !heard.isEmpty { talk.text = dictationBase.isEmpty ? heard : dictationBase + " " + heard }
+            Task {
+                let heard = await dictation.finish()
+                if !heard.isEmpty { talk.text = dictationBase.isEmpty ? heard : dictationBase + " " + heard }
+            }
             Haptic.impact(.light)
         } else {
             fieldFocused = false
@@ -398,8 +376,13 @@ struct TalkSheet: View {
 
     private func route() {
         if dictation.isListening {
-            let heard = dictation.stop()
-            if !heard.isEmpty { talk.text = dictationBase.isEmpty ? heard : dictationBase + " " + heard }
+            // The last words first (Parakeet writes them a last time), then the request goes.
+            Task {
+                let heard = await dictation.finish()
+                if !heard.isEmpty { talk.text = dictationBase.isEmpty ? heard : dictationBase + " " + heard }
+                route()
+            }
+            return
         }
         guard talk.canRoute else { return }
         fieldFocused = false
