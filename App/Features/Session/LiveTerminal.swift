@@ -287,8 +287,8 @@ final class LiveTerminal {
 
     private static let base = TerminalConfiguration {
         $0.withFontSize(fontSize)
-        $0.withWindowPaddingX(10)
-        $0.withWindowPaddingY(8)
+        $0.withWindowPaddingX(14)
+        $0.withWindowPaddingY(12)
         $0.withCursorStyle(.bar)
         // A color too close to the background (yellow on white) is darkened until it reads.
         $0.withMinimumContrast(1.6)

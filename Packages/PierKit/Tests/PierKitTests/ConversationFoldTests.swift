@@ -27,6 +27,22 @@ private func it(_ kind: String, _ n: Int, text: String? = nil, verb: String? = n
         #expect(w.read == 3 && w.run == 1 && w.notes == 1 && w.search == 0)
     }
 
+    @Test func editsInARowAreOneGroup() {
+        // Three edits in a row read as one line ("Editou 3 arquivos"); an edit alone stays itself.
+        let items = [
+            it("user", 1, text: "do it"),
+            it("edit", 2), it("edit", 3), it("edit", 4),
+            it("text", 5, text: "Done."),
+            it("user", 6, text: "one more"),
+            it("edit", 7),
+            it("text", 8, text: "Done again."),
+        ]
+        let b = ConversationFold.blocks(items, live: false)
+        #expect(b.map(\.id) == ["cl@1.1", "edits-cl@2.1", "cl@5.1", "cl@6.1", "cl@7.1", "cl@8.1"])
+        guard case .edits(_, let edits) = b[1] else { Issue.record("expected an edit group"); return }
+        #expect(edits.map(\.id) == ["cl@2.1", "cl@3.1", "cl@4.1"])
+    }
+
     @Test func liveOnlyOnTheLastTurn() {
         let items = [it("user", 1, text: "a"), it("tools", 2, calls: 1), it("text", 3, text: "x"), it("user", 4, text: "b"), it("tools", 5, calls: 1)]
         let b = ConversationFold.blocks(items, live: true)

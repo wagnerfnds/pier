@@ -96,7 +96,7 @@ struct WorkFoldRow: View {
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RowHoverStyle())
             .accessibilityHint(isOpen ? "Recolher os passos" : "Mostrar os passos")
             if isOpen {
                 VStack(alignment: .leading, spacing: 10) {
@@ -128,14 +128,14 @@ struct ToolGroupRow: View {
                         Text(p.title).font(.footnote).foregroundStyle(Theme.textDim).lineLimit(1).fixedSize()
                         if let t = p.target { Text(t).font(.mono(12)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle) }
                         if item.done != true { ProgressView().controlSize(.mini).tint(Theme.textDim) }
-                        Spacer(minLength: 4)
                         Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.textFaint)
                             .rotationEffect(.degrees(isOpen ? 90 : 0))
+                        Spacer(minLength: 4)
                     }
-                    .padding(.vertical, 3)
+                    .padding(.vertical, 4)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RowHoverStyle())
                 .accessibilityHint(isOpen ? "Recolher" : "Expandir")
                 if isOpen {
                     if calls.count == 1 {
@@ -188,10 +188,12 @@ struct ToolCallBody: View {
     }
 }
 
-/// "Editou calc.py +6 −2" as a quiet chip; opens to the exact change.
+/// "Editou calc.py +6 −2" as one quiet line, like the tool rows around it; opens to the exact change.
 struct EditRow: View {
     let vm: SessionViewModel
     let item: TranscriptItem
+    /// Inside an edit group: no verb of its own, the group's header says it.
+    var grouped = false
     private var isOpen: Bool { vm.expanded.contains(item.id) }
     private var file: (dir: String, name: String) {
         let f = item.file ?? ""
@@ -202,27 +204,88 @@ struct EditRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { vm.toggle(item.id, detailID: item.tool) } label: {
-                HStack(spacing: 7) {
+                HStack(spacing: 8) {
+                    Image(systemName: grouped ? "doc.text" : "pencil.line").font(.caption).foregroundStyle(Theme.textDim).frame(width: 16)
+                    if !grouped { Text("Editou").font(.footnote).foregroundStyle(Theme.textDim).fixedSize() }
+                    (Text(file.dir).foregroundStyle(Theme.textFaint) + Text(file.name).foregroundStyle(Theme.text))
+                        .font(.mono(12, weight: .medium)).lineLimit(1).truncationMode(.head)
+                    PlusMinus(added: item.added ?? 0, removed: item.removed ?? 0, size: 11)
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.textFaint)
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
-                    Image(systemName: "pencil.line").font(.caption).foregroundStyle(Theme.textDim)
-                    Text("Editou").font(.footnote).foregroundStyle(Theme.textDim)
-                    (Text(file.dir).foregroundStyle(Theme.textDim) + Text(file.name).foregroundStyle(Theme.text))
-                        .font(.mono(12, weight: .medium)).lineLimit(1).truncationMode(.head)
-                    if let a = item.added, a > 0 { Text("+\(a)").font(.mono(11, weight: .semibold)).foregroundStyle(Theme.green) }
-                    if let r = item.removed, r > 0 { Text("−\(r)").font(.mono(11, weight: .semibold)).foregroundStyle(Theme.red) }
+                    Spacer(minLength: 4)
                 }
-                .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.stroke))
+                .padding(.vertical, 4)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RowHoverStyle())
             .accessibilityLabel("Editou \(item.file ?? ""), \(item.added ?? 0) linhas adicionadas, \(item.removed ?? 0) removidas")
             .accessibilityHint(isOpen ? "Recolher a alteração" : "Mostrar a alteração")
             if isOpen, let t = item.tool {
-                ToolDetailView(vm: vm, id: t).padding(.top, 8)
+                ToolDetailView(vm: vm, id: t).padding(.top, 6).padding(.bottom, 4).padding(.leading, 24)
             }
+        }
+    }
+}
+
+/// Several edits in a row as one line, "Editou 3 arquivos +113 −37", that opens to each file and its change.
+struct EditGroupRow: View {
+    let vm: SessionViewModel
+    let id: String
+    let edits: [TranscriptItem]
+    private var isOpen: Bool { vm.expanded.contains(id) }
+
+    var body: some View {
+        let added = edits.reduce(0) { $0 + ($1.added ?? 0) }
+        let removed = edits.reduce(0) { $0 + ($1.removed ?? 0) }
+        VStack(alignment: .leading, spacing: 0) {
+            Button { vm.toggle(id, detailID: nil) } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "pencil.line").font(.caption).foregroundStyle(Theme.textDim).frame(width: 16)
+                    Text("Editou \(edits.count) arquivos").font(.footnote).foregroundStyle(Theme.textDim).fixedSize()
+                    PlusMinus(added: added, removed: removed, size: 11)
+                    if !isOpen {
+                        Text(edits.compactMap { $0.file.map { ($0 as NSString).lastPathComponent } }.joined(separator: ", "))
+                            .font(.mono(12)).foregroundStyle(Theme.textFaint).lineLimit(1).truncationMode(.tail)
+                    }
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.textFaint)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    Spacer(minLength: 4)
+                }
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(RowHoverStyle())
+            .accessibilityLabel("Editou \(edits.count) arquivos, \(added) linhas adicionadas, \(removed) removidas")
+            .accessibilityHint(isOpen ? "Recolher" : "Mostrar os arquivos")
+            .accessibilityIdentifier("edit-group")
+            if isOpen {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(edits) { EditRow(vm: vm, item: $0, grouped: true) }
+                }
+                .padding(.leading, 12)
+                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 1).fill(Theme.stroke).frame(width: 2).padding(.vertical, 4).padding(.leading, 7) }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
+/// A row that answers the pointer (Mac, iPad): a soft wash behind it on hover, a stronger one while pressed.
+struct RowHoverStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        RowHoverBody(configuration: configuration)
+    }
+
+    private struct RowHoverBody: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovering = false
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, 6)
+                .background(configuration.isPressed ? Theme.washStrong : hovering ? Theme.wash : .clear,
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .padding(.horizontal, -6)
+                .onHover { hovering = $0 }
         }
     }
 }

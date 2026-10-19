@@ -22,6 +22,8 @@ import PierKit
                 let summary = ToolSummary.workSummary(steps)
                 let word = live ? S("Trabalhando") : S("Trabalhou")
                 rows.append(["id": id, "kind": "meta", "symbol": "chevron.right", "text": summary.isEmpty ? word : "\(word) · \(summary)"])
+            case .edits(_, let edits):
+                for it in edits { if let r = row(it) { rows.append(r) } }
             }
         }
         // Held on the box until the agent's turn ends (sent while it worked): still the person's words, marked as waiting.

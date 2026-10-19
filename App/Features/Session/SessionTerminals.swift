@@ -609,7 +609,7 @@ struct SessionTerminalTabs<Conversation: View>: View {
         let opening = terminals.opening
         return HStack(spacing: 0) {
             ScrollView(.horizontal) {
-                HStack(spacing: 0) {
+                HStack(spacing: 2) {
                     if conversation {
                         ConversationTab(active: current == nil, needsYou: needsYou) {
                             terminals.pick(nil)
@@ -652,11 +652,13 @@ struct SessionTerminalTabs<Conversation: View>: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .contentMargins(.horizontal, 6, for: .scrollContent)
             if sideBySideAllowed { sideBySideButton }
         }
-        .frame(height: Platform.isMac ? 30 : 36)
-        // A strip with its line under the tabs: the tab picked, in the color of what it shows, runs into it.
-        .background { ZStack(alignment: .bottom) { Theme.card; Rectangle().fill(Theme.stroke).frame(height: 1) } }
+        .padding(.vertical, 4)
+        .frame(height: Platform.isMac ? 36 : 42)
+        // A quiet strip on the window's own color, a hairline under it; the tab picked is a raised pill.
+        .background { ZStack(alignment: .bottom) { Theme.bg; Rectangle().fill(Theme.stroke).frame(height: 1) } }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-tabs")
     }
@@ -688,11 +690,31 @@ struct SessionTerminalTabs<Conversation: View>: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .leading) { Rectangle().fill(Theme.stroke).frame(width: 1) }
         .help(on ? "Mostrar em abas (⌥⌘T)" : "Lado a lado (⌥⌘T)")
         .accessibilityLabel("Lado a lado")
         .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityIdentifier("session-side-by-side")
+    }
+}
+
+/// A tab of the session's strip: the one picked a raised pill on the card's color, the others plain, washed under the
+/// pointer (as Safari's and Xcode's tabs of today, no rule or divider around them).
+private struct SessionTabChrome: ViewModifier {
+    let active: Bool
+    var hovering = false
+    @State private var over = false
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(active ? Theme.card : (hovering || over) ? Theme.wash : .clear)
+                    .shadow(color: active ? Theme.cardShadow : .clear, radius: 2, y: 1)
+                    .overlay {
+                        if active { RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.stroke) }
+                    }
+            }
+            .onHover { over = $0 }
     }
 }
 
@@ -745,14 +767,12 @@ private struct ConversationTab: View {
                     .foregroundStyle(active ? Theme.text : Theme.textDim).lineLimit(1)
                 if needsYou { Circle().fill(Theme.orange).frame(width: 7, height: 7) }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
             .frame(maxHeight: .infinity)
-            .background { if active { Theme.bg } }
-            .overlay(alignment: .top) { if active { Rectangle().fill(Theme.accent).frame(height: 2) } }
-            .overlay(alignment: .trailing) { Rectangle().fill(Theme.stroke).frame(width: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(SessionTabChrome(active: active))
         .accessibilityAddTraits(active ? .isSelected : [])
         .accessibilityIdentifier("session-tab-conversation")
     }
@@ -783,7 +803,7 @@ private struct TerminalTab: View {
                     Text(verbatim: shown).font(.system(size: Density.small + 0.5, weight: active ? .semibold : .regular))
                         .foregroundStyle(exited ? Theme.textFaint : active ? Theme.text : Theme.textDim).lineLimit(1)
                 }
-                .padding(.leading, 10).padding(.trailing, 6)
+                .padding(.leading, 9).padding(.trailing, 4)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
             }
@@ -800,14 +820,12 @@ private struct TerminalTab: View {
             }
             .buttonStyle(.plain)
             .opacity(active || hovering || !Platform.isMac ? 1 : 0)
-            .padding(.trailing, 10)
+            .padding(.trailing, 6)
             .accessibilityLabel("Fechar \(title)")
             .accessibilityIdentifier("terminal-close-\(session)")
         }
         .frame(maxHeight: .infinity)
-        .background { if active { ZStack { Theme.card; Theme.terminalBg } } }
-        .overlay(alignment: .top) { if active { Rectangle().fill(Theme.accent).frame(height: 2) } }
-        .overlay(alignment: .trailing) { Rectangle().fill(Theme.stroke).frame(width: 1) }
+        .modifier(SessionTabChrome(active: active, hovering: hovering))
         .onHover { hovering = $0 }
         .help(exited ? "\(title) · \(String(localized: "o programa terminou"))" : "\(title) · \(session)")
     }
@@ -831,7 +849,7 @@ private struct BrowserTab: View {
                     Text("Navegador").font(.system(size: Density.small + 0.5, weight: active ? .semibold : .regular))
                         .foregroundStyle(active ? Theme.text : Theme.textDim).lineLimit(1)
                 }
-                .padding(.leading, 10).padding(.trailing, 6)
+                .padding(.leading, 9).padding(.trailing, 4)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
             }
@@ -846,15 +864,12 @@ private struct BrowserTab: View {
             }
             .buttonStyle(.plain)
             .opacity(active || hovering || !Platform.isMac ? 1 : 0)
-            .padding(.trailing, 10)
+            .padding(.trailing, 6)
             .accessibilityLabel("Fechar navegador")
             .accessibilityIdentifier("browser-close")
         }
         .frame(maxHeight: .infinity)
-        // The picked tab runs into the browser's bar, in its color.
-        .background { if active { Theme.card } }
-        .overlay(alignment: .top) { if active { Rectangle().fill(Theme.accent).frame(height: 2) } }
-        .overlay(alignment: .trailing) { Rectangle().fill(Theme.stroke).frame(width: 1) }
+        .modifier(SessionTabChrome(active: active, hovering: hovering))
         .onHover { hovering = $0 }
         .help(page.map { Text(verbatim: $0.absoluteString) } ?? Text("Navegador"))
     }

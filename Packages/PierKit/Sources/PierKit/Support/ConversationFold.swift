@@ -4,11 +4,14 @@ import Foundation
 public enum ConversationBlock: Sendable, Equatable, Identifiable {
     case item(TranscriptItem)
     case fold(id: String, steps: [TranscriptItem], live: Bool)
+    /// Two or more edits in a row, shown as one group ("Editou 3 arquivos +113 −37") that opens to each file.
+    case edits(id: String, edits: [TranscriptItem])
 
     public var id: String {
         switch self {
         case .item(let it): it.id
         case .fold(let id, _, _): id
+        case .edits(let id, _): id
         }
     }
 }
@@ -50,7 +53,17 @@ public enum ConversationFold {
                 if keep { shown.append(it) } else { steps.append(it) }
             }
             if !steps.isEmpty { out.append(.fold(id: "fold-after-\(anchor)", steps: steps, live: working)) }
-            for it in shown { out.append(.item(it)) }
+            var run: [TranscriptItem] = []
+            func flushEdits() {
+                if run.count > 1 { out.append(.edits(id: "edits-\(run[0].id)", edits: run)) } else { out += run.map { .item($0) } }
+                run = []
+            }
+            for it in shown {
+                if it.type == .edit { run.append(it); continue }
+                flushEdits()
+                out.append(.item(it))
+            }
+            flushEdits()
             turn = []
         }
         for it in items {

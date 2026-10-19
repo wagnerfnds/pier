@@ -178,6 +178,8 @@ struct ConversationView: View {
             TranscriptRow(vm: vm, item: it).modifier(ConversationRowAccessibility()).id(it.id)
         case .fold(let id, let steps, let live):
             WorkFoldRow(vm: vm, id: id, steps: steps, live: live).modifier(ConversationRowAccessibility()).id(id)
+        case .edits(let id, let edits):
+            EditGroupRow(vm: vm, id: id, edits: edits).modifier(ConversationRowAccessibility()).id(id)
         }
     }
 

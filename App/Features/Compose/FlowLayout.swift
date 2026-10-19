@@ -9,7 +9,7 @@ struct FlowLayout: Layout {
         let width = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0, maxX: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = Self.size(v, width: width)
             if x > 0, x + s.width > width { x = 0; y += lineH + lineSpacing; lineH = 0 }
             x += s.width + spacing; lineH = max(lineH, s.height); maxX = max(maxX, x - spacing)
         }
@@ -19,11 +19,20 @@ struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, lineH: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = Self.size(v, width: bounds.width)
             if x > bounds.minX, x + s.width > bounds.maxX { x = bounds.minX; y += lineH + lineSpacing; lineH = 0 }
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
             x += s.width + spacing; lineH = max(lineH, s.height)
         }
+    }
+}
+
+extension FlowLayout {
+    /// A view's own width, or the line's when it is wider (it wraps or truncates instead of running past the edge).
+    static func size(_ v: LayoutSubview, width: CGFloat) -> CGSize {
+        let ideal = v.sizeThatFits(.unspecified)
+        guard width.isFinite, ideal.width > width else { return ideal }
+        return v.sizeThatFits(ProposedViewSize(width: width, height: nil))
     }
 }
 
