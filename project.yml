@@ -17,6 +17,9 @@ configFiles:
 packages:
   PierKit:
     path: Packages/PierKit
+  # Dictation with Parakeet on the device (FluidAudio, Core ML on the Neural Engine): the app only.
+  PierSpeech:
+    path: Packages/PierSpeech
   # Ghostty's terminal (libghostty: the VT engine, Metal renderer, keyboard and selection) for the worktree's terminal
   # tabs, fed by the box's terminal stream (POST /v1/sessions/{name}/tty). A prebuilt XCFramework; pinned exactly, since
   # its releases follow Ghostty's main every week.
@@ -32,6 +35,8 @@ targets:
     dependencies:
       - package: PierKit
         product: PierKit
+      - package: PierSpeech
+        product: PierSpeech
       - package: GhosttyKit
         product: GhosttyTerminal
       # The widget extension: Home Screen widgets and Live Activities on iPhone/iPad, desktop / Notification Center widgets

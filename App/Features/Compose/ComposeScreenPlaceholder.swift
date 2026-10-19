@@ -63,7 +63,7 @@ struct ComposeScreenPlaceholder: View {
             guard dictation.isListening, !t.isEmpty else { return }
             vm.prompt = Self.joined(dictationBase, t)
         }
-        .onDisappear { if dictation.isListening { dictation.cancel() } }
+        .onDisappear { if dictation.isListening || dictation.isPreparing { dictation.cancel() } }
         .sheet(item: $sheet) { s in
             switch s {
             case .project: ProjectPickerSheet(vm: vm).environment(app).environment(prefs)
@@ -208,6 +208,7 @@ struct ComposeScreenPlaceholder: View {
                 .background(dictation.isListening ? Theme.red : Theme.accent.opacity(0.14), in: Circle())
         }
         .buttonStyle(.plain)
+        .disabled(dictation.state == .finishing || dictation.isPreparing)
         .accessibilityLabel(dictation.isListening ? "Parar de ditar" : "Ditar")
         .accessibilityIdentifier("compose-mic")
     }
@@ -220,7 +221,7 @@ struct ComposeScreenPlaceholder: View {
 
     private func toggleDictation() {
         if dictation.isListening {
-            finishDictation()
+            Task { await finishDictation() }
             Haptic.impact(.light)
         } else {
             promptFocused = false
@@ -231,9 +232,9 @@ struct ComposeScreenPlaceholder: View {
     }
 
     /// Stops listening and keeps what was heard.
-    private func finishDictation() {
+    private func finishDictation() async {
         guard dictation.isListening else { return }
-        let heard = dictation.stop()
+        let heard = await dictation.finish()
         if !heard.isEmpty { vm.prompt = Self.joined(dictationBase, heard) }
     }
 
@@ -568,7 +569,7 @@ struct ComposeScreenPlaceholder: View {
     private func start() {
         Task {
             promptFocused = false
-            finishDictation()
+            await finishDictation()
             if let s = await vm.submit() {
                 router.replaceTop(with: SessionRoute(box: vm.box, session: s))
             }

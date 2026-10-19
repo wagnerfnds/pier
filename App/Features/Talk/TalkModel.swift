@@ -60,9 +60,11 @@ final class TalkCenter {
             open(listen: true)
             return
         }
-        let text = dictation.stop().trimmingCharacters(in: .whitespacesAndNewlines)
         Haptic.impact(.light)
-        if !text.isEmpty { open(text: text, autoRoute: true) }
+        Task {
+            let text = await dictation.finish().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { open(text: text, autoRoute: true) }
+        }
     }
 
     // MARK: receipt
