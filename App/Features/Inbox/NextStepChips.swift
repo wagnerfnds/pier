@@ -36,7 +36,8 @@ struct NextStepChips: View {
                 HStack(spacing: 8) {
                     ForEach(0..<2, id: \.self) { i in
                         if compact {
-                            Capsule().fill(Theme.cardRaised).frame(width: i == 0 ? 220 : 160, height: 32)
+                            // Flexible: two fixed widths ran past a phone's column and pushed the whole tail wider.
+                            Capsule().fill(Theme.cardRaised).frame(maxWidth: i == 0 ? 220 : 160).frame(height: 32)
                         } else {
                             RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardRaised).frame(height: 40)
                         }
@@ -51,8 +52,14 @@ struct NextStepChips: View {
                 headingView
                 Group {
                     if compact {
-                        FlowLayout(spacing: 8, lineSpacing: 8) {
-                            ForEach(Array(replies.enumerated()), id: \.offset) { i, r in chip(i, r) }
+                        // One row when they fit, else one under the other.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                ForEach(Array(replies.enumerated()), id: \.offset) { i, r in chip(i, r).fixedSize() }
+                            }
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(Array(replies.enumerated()), id: \.offset) { i, r in chip(i, r) }
+                            }
                         }
                     } else {
                         VStack(spacing: 6) {
@@ -153,7 +160,10 @@ struct NextStepChips: View {
             .overlay(Capsule().strokeBorder(on ? Theme.green.opacity(0.45) : Theme.stroke))
             .contentShape(Capsule())
         }
-        .buttonStyle(ChipPressStyle())
+        .buttonStyle(.plain)
+        // The system's pointer highlight (iPad, Mac): a style keeping its own hover state at the end of a conversation
+        // threw the conversation's opening position off.
+        .hoverEffect(.highlight)
         .disabled(disabled || (chosen != nil && !on))
         .opacity(disabled || (chosen != nil && !on) ? 0.55 : 1)
         .accessibilityLabel(text)
@@ -163,21 +173,6 @@ struct NextStepChips: View {
     }
 
     private var receiptPill: some View { NextStepReceipt(recipient: recipient) }
-}
-
-/// A chip that lifts under the pointer and dims while pressed.
-private struct ChipPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Hovered(configuration: configuration) }
-    private struct Hovered: View {
-        let configuration: ButtonStyleConfiguration
-        @State private var hovering = false
-        var body: some View {
-            configuration.label
-                .overlay(Capsule().fill(hovering ? Theme.wash : .clear).allowsHitTesting(false))
-                .opacity(configuration.isPressed ? 0.7 : 1)
-                .onHover { hovering = $0 }
-        }
-    }
 }
 
 /// "✓ Enviado para Claude", a moment after the words went out.

@@ -270,23 +270,14 @@ struct EditGroupRow: View {
     }
 }
 
-/// A row that answers the pointer (Mac, iPad): a soft wash behind it on hover, a stronger one while pressed.
+/// A row that answers the pointer (Mac, iPad): the system's highlight under it. A button style keeping its own hover
+/// state in every row of a conversation threw its scrolling off (lazy rows did not show as history came in).
 struct RowHoverStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        RowHoverBody(configuration: configuration)
-    }
-
-    private struct RowHoverBody: View {
-        let configuration: ButtonStyleConfiguration
-        @State private var hovering = false
-        var body: some View {
-            configuration.label
-                .padding(.horizontal, 6)
-                .background(configuration.isPressed ? Theme.washStrong : hovering ? Theme.wash : .clear,
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .padding(.horizontal, -6)
-                .onHover { hovering = $0 }
-        }
+        configuration.label
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 7, style: .continuous).inset(by: -4))
+            .hoverEffect(.highlight)
     }
 }
 
