@@ -223,3 +223,37 @@ struct DictationOffHint: View {
         .accessibilityIdentifier("dictation-off")
     }
 }
+
+/// Under a field that takes dictation: the waveform while it listens, else why it can't (permissions, the device's
+/// Dictation off, nothing to listen with). Nothing while idle.
+struct DictationStatusLine: View {
+    let dictation: Dictation
+    /// The way out when dictation can't run ("Escreva o pedido.").
+    var typeInstead: String
+
+    var body: some View {
+        if dictation.isListening {
+            HStack(spacing: 8) {
+                TalkWaveform(level: dictation.level, color: Theme.red).frame(width: 34, height: 18)
+                Text("Ouvindo… toque no microfone para parar").font(.caption).foregroundStyle(Theme.textDim)
+                Spacer(minLength: 0)
+            }
+            .transition(.opacity)
+        } else if dictation.state == .denied {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Para ditar, permita o microfone e o reconhecimento de fala nos Ajustes. Você também pode escrever o pedido.")
+                    .font(.caption).foregroundStyle(Theme.orange)
+                Button("Abrir Ajustes") {
+                    if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                }
+                .font(.caption.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if dictation.state == .systemOff {
+            DictationOffHint()
+        } else if dictation.state == .unavailable {
+            Text("O ditado não está disponível agora. \(typeInstead)").font(.caption).foregroundStyle(Theme.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}

@@ -5431,6 +5431,16 @@
         }
       }
     },
+    "Escreva a mensagem." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type the message."
+          }
+        }
+      }
+    },
     "Escreva a primeira mensagem" : {
       "localizations" : {
         "en" : {
@@ -9369,6 +9379,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This file's diff is empty."
+          }
+        }
+      }
+    },
+    "O ditado não está disponível agora. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation isn't available right now. %@"
           }
         }
       }

@@ -212,34 +212,10 @@ struct ComposeScreenPlaceholder: View {
         .accessibilityIdentifier("compose-mic")
     }
 
-    @ViewBuilder private var dictationStatus: some View {
-        if dictation.isListening {
-            HStack(spacing: 8) {
-                TalkWaveform(level: dictation.level, color: Theme.red).frame(width: 34, height: 18)
-                Text("Ouvindo… toque no microfone para parar").font(.caption).foregroundStyle(Theme.textDim)
-                Spacer(minLength: 0)
-            }
+    private var dictationStatus: some View {
+        DictationStatusLine(dictation: dictation, typeInstead: S("Escreva o pedido."))
             .padding(.horizontal, 14).padding(.bottom, 8)
-            .transition(.opacity)
             .accessibilityIdentifier("compose-listening")
-        } else if dictation.state == .denied {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Para ditar, permita o microfone e o reconhecimento de fala nos Ajustes. Você também pode escrever o pedido.")
-                    .font(.caption).foregroundStyle(Theme.orange)
-                Button("Abrir Ajustes") {
-                    if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
-                }
-                .font(.caption.weight(.semibold))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14).padding(.bottom, 8)
-        } else if dictation.state == .systemOff {
-            DictationOffHint().padding(.horizontal, 14).padding(.bottom, 8)
-        } else if dictation.state == .unavailable {
-            Text("O ditado não está disponível agora. Escreva o pedido.").font(.caption).foregroundStyle(Theme.orange)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14).padding(.bottom, 8)
-        }
     }
 
     private func toggleDictation() {

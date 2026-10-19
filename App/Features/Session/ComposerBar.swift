@@ -12,6 +12,11 @@ struct ComposerBar: View {
     /// The text a failed send gave back last, while the field still holds just that.
     @State private var restored: String?
     @FocusState private var focused: Bool
+    /// What was typed when dictation started: what is heard goes after it.
+    @State private var dictationBase = ""
+    /// Dictation was started from this composer (its status shows here, not under every conversation's).
+    @State private var dictatingHere = false
+    private var dictation: Dictation { TalkCenter.shared.dictation }
 
     private var session: Session { vm.session }
     private var busy: Bool { session.agentState == .running || session.agentState == .waiting }
@@ -48,6 +53,7 @@ struct ComposerBar: View {
                         .accessibilityLabel("Anexar foto")
                         agentLine
                         Spacer(minLength: 6)
+                        micButton
                         if Platform.isMac || HardwareKeyboard.shared.connected, focused, hasText, !busy {
                             Text("↩ envia · ⇧↩ nova linha").font(.caption2).foregroundStyle(Theme.textFaint).lineLimit(1)
                                 .transition(.opacity)
@@ -61,6 +67,10 @@ struct ComposerBar: View {
                 .shadow(color: Theme.cardShadow, radius: 10, y: 3)
                 .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .onTapGesture { focused = true }
+                if dictatingHere, dictation.isListening || dictation.state != .idle {
+                    DictationStatusLine(dictation: dictation, typeInstead: S("Escreva a mensagem."))
+                        .padding(.horizontal, 14)
+                }
                 if busy, hasText {
                     Text("Será enviada quando o agente terminar a vez atual.").font(.caption2).foregroundStyle(Theme.textDim)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 14)
@@ -75,6 +85,11 @@ struct ComposerBar: View {
         .animation(.snappy(duration: 0.2), value: showsStop)
         .animation(.snappy(duration: 0.2), value: hasText && busy)
         .onChange(of: vm.composerRestore, initial: true) { _, r in restore(r) }
+        .onChange(of: dictation.transcript) { _, t in
+            guard dictatingHere, dictation.isListening, !t.isEmpty else { return }
+            text = dictationBase.isEmpty ? t : dictationBase + " " + t
+        }
+        .onDisappear { if dictatingHere, dictation.isListening { dictation.cancel() }; dictatingHere = false }
         #if DEBUG
         .task {
             // `-composerTypeReturn <text>`: the words typed into the field's own text view, then the line break a text
@@ -98,6 +113,41 @@ struct ComposerBar: View {
     }
 
     private var placeholder: String { S("Mensagem para \(session.agentShortName)") }
+
+    /// Say the message instead of typing it: the same on-device dictation as Nova tarefa and Falar, written into the
+    /// field as it is heard; it is sent like a typed one.
+    private var micButton: some View {
+        Button(action: toggleDictation) {
+            Image(systemName: dictation.isListening ? "stop.fill" : "mic")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(dictation.isListening ? .white : Theme.textDim)
+                .frame(width: 30, height: 30)
+                .background(dictation.isListening ? Theme.red : .clear, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(ComposerIconStyle())
+        .accessibilityLabel(dictation.isListening ? "Parar de ditar" : "Ditar")
+        .accessibilityIdentifier("composer-mic")
+    }
+
+    private func toggleDictation() {
+        if dictation.isListening {
+            finishDictation()
+            Haptic.impact(.light)
+        } else {
+            dictationBase = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            dictatingHere = true
+            Haptic.impact(.medium)
+            Task { await dictation.start() }
+        }
+    }
+
+    /// Stops listening and keeps what was heard in the field.
+    private func finishDictation() {
+        guard dictatingHere, dictation.isListening else { return }
+        let heard = dictation.stop()
+        if !heard.isEmpty { text = dictationBase.isEmpty ? heard : dictationBase + " " + heard }
+    }
 
     /// Who answers, quietly, beside the attach button: the agent's model, mode and effort, and how full its context is.
     @ViewBuilder private var agentLine: some View {
@@ -154,6 +204,7 @@ struct ComposerBar: View {
 
     /// The message shows and goes out at once (`scheduleSend`); failed, its text comes back through `composerRestore`.
     private func send() async {
+        finishDictation()
         let t = text
         if vm.scheduleSend(t) { text = "" }
     }
