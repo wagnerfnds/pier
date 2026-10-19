@@ -4,9 +4,10 @@ import Foundation
 /// dev servers straight at the box's address and port when this device reaches it, else that server's public link
 /// (through the box's relay), else nothing, with why, so the browser can say what would give it a page.
 public enum PreviewTarget: Equatable, Sendable {
-    /// A dev server at the box's own address (`Projects.previewURL`).
+    /// A dev server at the box's own address (`Projects.previewURL`): it has no public link.
     case direct(URL, port: Int)
-    /// A dev server's public link (`/v1/shares`): this device does not reach the box's port.
+    /// A dev server's public link (`/v1/shares`), the page opened first: it works from anywhere, and on a server that
+    /// listens on the box's localhost only, which its own address never shows.
     case publicLink(URL, port: Int)
     /// Nothing listens in the worktree.
     case noServer
@@ -24,16 +25,16 @@ public enum PreviewTarget: Equatable, Sendable {
     /// The page for a worktree: `servers` are its dev servers (`Projects.devServers`), `reachable` what this device
     /// reached of their ports at `host` (a port not probed counts as out of reach), `links` the worktree's public links.
     /// The server on the worktree's own port ($PIER_PORT) goes first, then the rest of its block, then any other, lowest
-    /// first: the first one reached opens at the box's address, else the first one with a public link opens there.
+    /// first: the first one with a public link opens there, else the first one reached at the box's address.
     public static func choose(servers: [BoxService], worktreePort: Int?, host: String, reachable: [Int: Bool],
                               links: [PublicLink]) -> PreviewTarget {
         let ports = order(servers.map(\.port), worktreePort: worktreePort)
         guard let first = ports.first else { return .noServer }
-        for p in ports where reachable[p] == true {
-            if let u = Projects.previewURL(host: host, port: p) { return .direct(u, port: p) }
-        }
         for p in ports {
             if let l = links.first(where: { $0.port == p }), let u = URL(string: l.url), u.host != nil { return .publicLink(u, port: p) }
+        }
+        for p in ports where reachable[p] == true {
+            if let u = Projects.previewURL(host: host, port: p) { return .direct(u, port: p) }
         }
         return .unreachable(port: first)
     }

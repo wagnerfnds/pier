@@ -153,7 +153,18 @@ struct SessionPreviewSection: View {
         } else if !store.servers.isEmpty {
             Section("Visualização") {
                 ForEach(store.servers) { s in
-                    if let url = Projects.previewURL(host: host, port: s.port) {
+                    // Its public link first: it opens from anywhere, and on a server bound to the box's localhost.
+                    if let l = store.links.first(where: { $0.port == s.port }), let url = URL(string: l.url) {
+                        Link(destination: url) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "globe.americas.fill").font(.caption).foregroundStyle(Theme.green)
+                                Text(url.absoluteString).font(.mono(12)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
+                                Spacer(minLength: 4)
+                                Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(Theme.textFaint)
+                            }
+                        }
+                        .accessibilityIdentifier("session-preview-public-\(s.port)")
+                    } else if let url = Projects.previewURL(host: host, port: s.port) {
                         Link(destination: url) {
                             HStack(spacing: 8) {
                                 Circle().fill(store.reachable[s.port] == false ? Theme.orange : Theme.green).frame(width: 7, height: 7)

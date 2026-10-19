@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -470,4 +472,67 @@ func TestScriptPreparationGivesTheLocationsPreview(t *testing.T) {
 type clientT struct {
 	wc  *wire.Client
 	bus *events.Bus
+}
+
+// A dev server that comes up in a worktree with no preview recorded (an
+// agent that never ran `pierd preview set`) gets a public link by itself,
+// on localhost only too; a port that does not speak HTTP is passed over, a
+// preview somebody records replaces the one found, and is never moved.
+func TestADevServerNobodyRecordedGetsItsLink(t *testing.T) {
+	pub := &lockedPublisher{published: map[string]int{}}
+	c, bx, port := previewBox(t, func(b *Box) { b.Publisher = pub })
+	ch, stop := c.bus.Subscribe()
+	defer stop()
+	ctx := context.Background()
+
+	// Something that listens but answers no HTTP, on the worktree's own port.
+	quiet, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Skipf("port %d: %v", port, err)
+	}
+	defer quiet.Close()
+	go func() {
+		for {
+			conn, err := quiet.Accept()
+			if err != nil {
+				return
+			}
+			go func() { time.Sleep(3 * time.Second); conn.Close() }()
+		}
+	}()
+	bx.detectPreviews(ctx)
+	if p := bx.previewView("cal", "login"); !p.empty() {
+		t.Fatalf("a port that answers no HTTP became the preview: %+v", p)
+	}
+
+	page, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port+3))
+	if err != nil {
+		t.Skipf("port %d: %v", port+3, err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })}
+	go srv.Serve(page)
+	defer srv.Close()
+	bx.detectPreviews(ctx)
+	if e := waitFor(t, ch, "share.created"); e.Data["port"] != float64(port+3) && e.Data["port"] != port+3 {
+		t.Fatalf("share.created = %+v", e.Data)
+	}
+	p := bx.previewView("cal", "login")
+	if p.Port != port+3 || p.Share == nil || !p.Share.Auto {
+		t.Fatalf("found preview = %+v", p)
+	}
+	name := p.Share.Name
+
+	// Looked for again: nothing changes.
+	bx.detectPreviews(ctx)
+	if p := bx.previewView("cal", "login"); p.Port != port+3 || p.Share == nil || p.Share.Name != name {
+		t.Fatalf("after another look = %+v", p)
+	}
+
+	// An agent records its own: it wins, and the next look leaves it.
+	call(t, c.wc, "PUT", "/v1/locations/cal/worktrees/login/preview", "", Preview{Port: port + 5, Path: "/login"}, nil)
+	waitFor(t, ch, "share.created")
+	bx.detectPreviews(ctx)
+	if p := bx.previewView("cal", "login"); p.Port != port+5 || p.Path != "/login" || p.Share == nil || p.Share.Name != name {
+		t.Fatalf("the recorded preview was moved: %+v", p)
+	}
 }

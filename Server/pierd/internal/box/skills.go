@@ -114,7 +114,7 @@ func (b *Box) skillText(id string) string {
 	case "pier-box":
 		fmt.Fprintf(&body, "# %s\n\nYou run on a Pier box, in one of its worktrees. Everything below is in your environment already; read values with `printenv NAME`, never print secrets back to the person.\n\n", name)
 		body.WriteString("## The worktree\n\n")
-		body.WriteString("- `PIER_PORT` (and `PIER_PORT_1`… when the project asks for more): this worktree's own ports. `PORT` is `PIER_PORT` unless the project sets it. Serve on these, never on a fixed port: other worktrees run beside you.\n")
+		body.WriteString("- `PIER_PORT` (and `PIER_PORT_1`… when the project asks for more): this worktree's own ports. `PORT` is `PIER_PORT` unless the project sets it. Serve on these, never on a fixed port: other worktrees run beside you. A server on them gets a public link by itself (`pierd preview get` prints it): that link, never a localhost address, is what the person opens.\n")
 		body.WriteString("- `PIER_LOCATION`, `PIER_WORKTREE_NAME`, `PIER_WORKTREE_PATH`, `PIER_ROOT_PATH` (the main checkout), `PIER_BRANCH`, `PIER_WORKTREE_SLUG` (safe in database names).\n")
 		body.WriteString("- When the project has an isolated environment: `PIER_ENV_BIN` holds launchers that run its language (php, node, python…) in Docker at the project's version; they are first on `PATH`, so just run the commands. Its databases are reached through `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `DATABASE_URL`, `REDIS_URL`, and `PIER_<NAME>_HOST` / `PIER_<NAME>_PORT` for each container.\n\n")
 		body.WriteString("## Its preparation may still be running\n\n")
@@ -142,7 +142,7 @@ func (b *Box) skillText(id string) string {
 		body.WriteString("1. Start the dev server on this worktree's port, listening beyond localhost: `PORT=$PIER_PORT HOST=0.0.0.0 npm run dev`, or the framework's flags (`--port $PIER_PORT --host 0.0.0.0` for Vite and Astro, `-p $PIER_PORT -H 0.0.0.0` for Next, `runserver 0.0.0.0:$PIER_PORT` for Django, `-b 0.0.0.0 -p $PIER_PORT` for Rails, `--host=0.0.0.0 --port=$PIER_PORT` for `php artisan serve`). Run it in the background.\n")
 		body.WriteString("2. Check it answers: `curl -sS -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:$PIER_PORT/`.\n")
 		body.WriteString("3. Record it for the person: `pierd preview set --port $PIER_PORT` (add `--path /login` for the page to open first, and `--user U --password P` for a test login of the app, never a real account). The worktree's Details screen in the Pier app shows it with its public link and the login.\n")
-		body.WriteString("4. Tell the person it is up on port `$PIER_PORT` (print the number).\n\n")
+		body.WriteString("4. Give the person its public link: `pierd preview get` prints it on its `public` line a few seconds after step 3 (https://p-….). Never hand them a localhost, 127.0.0.1 or the box's own address: they are on another device, often on another network, and the link is what opens there, in the Pier app's browser too.\n\n")
 		body.WriteString("If the project defines a service for its dev server (the app's Details lists them), prefer starting it there: it keeps running when your session ends.\n")
 	}
 	body.WriteString("\n" + skillMarker + "\n")

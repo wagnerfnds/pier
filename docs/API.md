@@ -678,6 +678,11 @@ script from its location config's `preview`.
   turns that off; a link a person takes down (`DELETE /v1/shares`) stays down until the preview names another port. A box without a relay, or whose relay serves no links, records
   the preview with no link and no error; a relay that cannot be reached is asked again later
   (`share.failed {location, worktree, error, auto}`).
+* **Found by itself**: on a box with a relay, a worktree with no preview recorded whose dev server comes up (a
+  task agent that never ran `pierd preview set`) gets one within ten seconds: the first of its servers that answers
+  HTTP at 127.0.0.1, its `$PIER_PORT` first, then the rest of its block, then any other it runs, lowest first. Its
+  automatic link follows, so a server listening on the box's localhost only is opened from anywhere too. That preview
+  moves to another of the worktree's servers once its own stops; one somebody records replaces it and is never moved.
 * A location config's `preview` (`{"path": "/login", "login": {"user": "…", "password": "…"}, "note": "…"}`, the box's
   own or a trusted repository's) is the preview every worktree prepared by script gets on its `$PIER_PORT`.
 

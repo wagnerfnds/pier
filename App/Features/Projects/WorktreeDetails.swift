@@ -52,10 +52,11 @@ final class WorktreeDetailsStore {
             if let s = await svc, s != services { services = s }
             if let s = await st, let mine = s.first(where: { $0.name == worktree }), mine != status { status = mine }
             if conn.info?.has("prepare") == true, let p = try? await api.prepareStatus(location: location, worktree: worktree), p != prepare { prepare = p }
-            if conn.info?.has("shares") == true, let all = try? await api.publicLinks() {
-                let mine = all.filter { $0.location == location && $0.worktree == worktree }
-                if mine != links { links = mine }
-            }
+        }
+        // The session's inspector shows a server's public link before its address on the box, so these come every time.
+        if conn.info?.has("shares") == true, let all = try? await api.publicLinks() {
+            let mine = all.filter { $0.location == location && $0.worktree == worktree }
+            if mine != links { links = mine }
         }
         if let a = await all { let v = Projects.devServers(a, location: location, worktree: wt); if v != servers { servers = v } }
         if !loaded { loaded = true }
