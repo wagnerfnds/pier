@@ -79,6 +79,12 @@ public enum ConversationFold {
         return out
     }
 
+    /// The files of a run of edits, each once, in the order first edited.
+    public static func distinctFiles(_ files: [String]) -> [String] {
+        var seen = Set<String>()
+        return files.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
     /// What a folded stretch of work did, counted: commands run, files read, searches, helpers, other tools, and the
     /// agent's intermediate notes.
     public struct Work: Sendable, Equatable {
