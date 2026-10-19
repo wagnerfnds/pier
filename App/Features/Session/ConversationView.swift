@@ -277,12 +277,18 @@ struct ConversationView: View {
             Button {
                 Task { await loadOlder(proxy) }
             } label: {
+                // A small pill in the middle, not a bar across the column.
                 HStack(spacing: 6) {
-                    if vm.loadingOlder { ProgressView().controlSize(.small) } else { Image(systemName: "clock.arrow.circlepath").font(.caption) }
-                    Text("Mensagens anteriores").font(.footnote)
+                    if vm.loadingOlder { ProgressView().controlSize(.mini) } else { Image(systemName: "arrow.up").font(.caption2.weight(.semibold)) }
+                    Text("Mensagens anteriores").font(.caption.weight(.medium))
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 8)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Theme.wash, in: Capsule())
+                .overlay(Capsule().strokeBorder(Theme.stroke))
+                .contentShape(Capsule())
+                .frame(maxWidth: .infinity).padding(.vertical, 4)
             }
+            .buttonStyle(.plain)
             .foregroundStyle(Theme.textDim)
             .disabled(vm.loadingOlder)
             .onAppear {

@@ -606,6 +606,7 @@ struct SessionTerminalTabs<Conversation: View>: View {
         let needsYou = current != nil && vm.session.needsYou
         let browserOpen = terminals.browserOpen
         let page = terminals.browser?.url
+        let pageTitle = terminals.browser?.title
         let opening = terminals.opening
         return HStack(spacing: 0) {
             ScrollView(.horizontal) {
@@ -635,7 +636,7 @@ struct SessionTerminalTabs<Conversation: View>: View {
                             }
                     }
                     if browserOpen {
-                        BrowserTab(active: current == .browser, page: page,
+                        BrowserTab(active: current == .browser, page: page, title: pageTitle,
                                    select: { terminals.pick(.browser) }, close: { terminals.closeBrowser() })
                     }
                     stripButton(help: "Novo terminal (⌃⇧`)", label: "Novo terminal", id: "terminal-new", action: openTerminal) {
@@ -836,6 +837,8 @@ private struct TerminalTab: View {
 private struct BrowserTab: View {
     let active: Bool
     let page: URL?
+    /// The page's own title, which names the tab once it loaded (as a browser's tab does).
+    var title: String? = nil
     let select: () -> Void
     let close: () -> Void
     @State private var hovering = false
@@ -846,8 +849,12 @@ private struct BrowserTab: View {
                 HStack(spacing: 6) {
                     Image(systemName: "globe").font(.system(size: Density.small))
                         .foregroundStyle(active ? Theme.accent : Theme.textDim)
-                    Text("Navegador").font(.system(size: Density.small + 0.5, weight: active ? .semibold : .regular))
-                        .foregroundStyle(active ? Theme.text : Theme.textDim).lineLimit(1)
+                    Group {
+                        if let title, !title.isEmpty { Text(verbatim: title) } else { Text("Navegador") }
+                    }
+                    .font(.system(size: Density.small + 0.5, weight: active ? .semibold : .regular))
+                    .foregroundStyle(active ? Theme.text : Theme.textDim).lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: 180, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.leading, 9).padding(.trailing, 4)
                 .frame(maxHeight: .infinity)
