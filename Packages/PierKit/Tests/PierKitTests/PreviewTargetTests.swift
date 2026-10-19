@@ -3,8 +3,8 @@ import Testing
 
 @testable import PierKit
 
-/// The in-app browser's page for a worktree: its dev server at the box's address when this device reaches it, else its
-/// public link, else why there is none; and what is typed in its address field.
+/// The in-app browser's page for a worktree: its dev server's public link, else the server at the box's address when
+/// this device reaches it, else why there is none; and what is typed in its address field.
 @Suite struct PreviewTargetTests {
     private func server(_ port: Int) -> BoxService {
         BoxService(location: "shop", worktree: "checkout-fix", path: "/home/octocat/code/shop-checkout-fix", port: port)
@@ -14,8 +14,16 @@ import Testing
         PublicLink(name: name, url: "https://p-\(name).example.com", location: "shop", worktree: "checkout-fix", port: port)
     }
 
-    @Test func aServerThisDeviceReachesOpensAtTheBoxsAddress() {
-        let t = PreviewTarget.choose(servers: [server(41010)], worktreePort: 41010, host: "devbox.local", reachable: [41010: true], links: [link(41010)])
+    @Test func itsPublicLinkOpensFirst() {
+        // Reached at the box's address or not: the link works from anywhere, and on a server bound to localhost.
+        for reach in [[41010: true], [41010: false], [:]] {
+            let t = PreviewTarget.choose(servers: [server(41010)], worktreePort: 41010, host: "devbox.local", reachable: reach, links: [link(41010)])
+            #expect(t == .publicLink(URL(string: "https://p-a1b2.example.com")!, port: 41010))
+        }
+    }
+
+    @Test func withoutALinkAServerThisDeviceReachesOpensAtTheBoxsAddress() {
+        let t = PreviewTarget.choose(servers: [server(41010)], worktreePort: 41010, host: "devbox.local", reachable: [41010: true], links: [])
         #expect(t == .direct(URL(string: "http://devbox.local:41010")!, port: 41010))
         #expect(t.url?.absoluteString == "http://devbox.local:41010")
         // An IPv6 address goes in brackets.
@@ -24,11 +32,6 @@ import Testing
     }
 
     @Test func outOfReachItsPublicLinkOpens() {
-        let t = PreviewTarget.choose(servers: [server(41010)], worktreePort: 41010, host: "devbox.local", reachable: [41010: false], links: [link(41010)])
-        #expect(t == .publicLink(URL(string: "https://p-a1b2.example.com")!, port: 41010))
-        // A port not probed yet counts as out of reach.
-        let unprobed = PreviewTarget.choose(servers: [server(41010)], worktreePort: 41010, host: "devbox.local", reachable: [:], links: [link(41010)])
-        #expect(unprobed == .publicLink(URL(string: "https://p-a1b2.example.com")!, port: 41010))
         // A box reached through a relay has no address of its own for the page: the link it is.
         let relayed = PreviewTarget.choose(servers: [server(41010)], worktreePort: 41010, host: "", reachable: [41010: true], links: [link(41010)])
         #expect(relayed == .publicLink(URL(string: "https://p-a1b2.example.com")!, port: 41010))
@@ -54,11 +57,11 @@ import Testing
         let all = PreviewTarget.choose(servers: [server(3000), server(41011), server(41010)], worktreePort: 41010, host: "devbox.local",
                                        reachable: [3000: true, 41010: true, 41011: true], links: [])
         #expect(all == .direct(URL(string: "http://devbox.local:41010")!, port: 41010))
-        // Only another one reached: that one, at the box's address, before the worktree's own public link.
+        // A link on another of its servers wins over one reached at the box's address.
         let other = PreviewTarget.choose(servers: [server(41010), server(41011)], worktreePort: 41010, host: "devbox.local",
-                                         reachable: [41010: false, 41011: true], links: [link(41010)])
-        #expect(other == .direct(URL(string: "http://devbox.local:41011")!, port: 41011))
-        // None reached: the link of the first in that order that has one.
+                                         reachable: [41010: true, 41011: false], links: [link(41011, "c3d4")])
+        #expect(other == .publicLink(URL(string: "https://p-c3d4.example.com")!, port: 41011))
+        // The link of the first in that order that has one.
         let links = PreviewTarget.choose(servers: [server(41010), server(41011)], worktreePort: 41010, host: "devbox.local",
                                          reachable: [:], links: [link(41011, "c3d4")])
         #expect(links == .publicLink(URL(string: "https://p-c3d4.example.com")!, port: 41011))

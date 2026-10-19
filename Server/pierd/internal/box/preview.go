@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +85,9 @@ type previewEntry struct {
 	// ShareStopped: a person took the link down (DELETE /v1/shares). It
 	// stays down until the preview names another port.
 	ShareStopped bool `json:"share_stopped,omitempty"`
+	// Detected: pierd found the page itself (detectPreviews), nobody
+	// recorded it; it follows the worktree's dev server.
+	Detected bool `json:"detected,omitempty"`
 }
 
 type previewStore struct {
@@ -239,10 +244,15 @@ func (b *Box) putPreview(w http.ResponseWriter, r *http.Request) error {
 // no login in it) and brings its public link in line, in the background:
 // the relay may take seconds to answer.
 func (b *Box) setPreview(from, location string, wt Worktree, p Preview) {
+	b.recordPreview(from, location, wt, p, false)
+}
+
+func (b *Box) recordPreview(from, location string, wt Worktree, p Preview, detected bool) {
 	key := prepKey(location, wt.Name)
 	st := b.previews()
 	st.mu.Lock()
 	e := st.all[key]
+	e.Detected = detected
 	if !p.empty() {
 		now := b.now().UTC()
 		p.Updated = &now
@@ -338,6 +348,8 @@ const (
 	autoShareRenew   = 12 * time.Hour
 	autoShareBackoff = 10 * time.Minute
 	autoShareNoRelay = 6 * time.Hour
+	// How often a worktree's dev servers are looked for (detectPreviews).
+	previewDetectEvery = 10 * time.Second
 )
 
 // previewLocks keeps one sync of a worktree's link at a time, and its
@@ -525,6 +537,118 @@ func (b *Box) renewPreviewShares(ctx context.Context) {
 		}
 		b.syncPreviewShare(ctx, location, worktree)
 	}
+}
+
+// detectPreviews gives a worktree whose dev server came up with no preview
+// recorded (an agent that never ran `pierd preview set`) one of its own, so
+// its page has a public link as soon as it answers: the first of its servers
+// that speaks HTTP, its own port ($PIER_PORT) first, then the rest of its
+// block, then any other it runs, lowest first. The relay reaches the page at
+// 127.0.0.1, so a server that listens on localhost only is seen too, which
+// the box's own address never shows. A preview found this way moves to
+// another server once its own stops; one somebody recorded is left alone.
+func (b *Box) detectPreviews(ctx context.Context) {
+	if b.Publisher == nil {
+		return
+	}
+	ports, err := ListPorts(ctx)
+	if err != nil {
+		return
+	}
+	locs, err := b.Locations.List(ctx)
+	if err != nil {
+		return
+	}
+	services := Services(ports, locs)
+	for _, loc := range locs {
+		if !loc.Repo {
+			continue
+		}
+		for _, wt := range loc.Worktrees {
+			var listening []int
+			for _, s := range services {
+				if s.Location == loc.Name && s.Path == wt.Path {
+					listening = append(listening, s.Port)
+				}
+			}
+			if len(listening) == 0 {
+				continue
+			}
+			e, ok := b.previews().get(prepKey(loc.Name, wt.Name))
+			if ok && !e.Detected && !e.Preview.empty() {
+				continue
+			}
+			ordered := previewPortOrder(listening, wt.Port)
+			if ok && e.Detected && containsPort(ordered, e.Port) {
+				continue
+			}
+			if !b.autoShareFor(ctx, loc.Name) {
+				continue
+			}
+			for _, p := range ordered {
+				if answersHTTP(ctx, p) {
+					b.recordPreview(DefaultOrigin, loc.Name, wt, Preview{Port: p}, true)
+					break
+				}
+			}
+		}
+	}
+}
+
+// previewPortOrder is the order a worktree's servers are tried in: its own
+// port, then its block of ten, then the others, lowest first.
+func previewPortOrder(ports []int, own int) []int {
+	seen := map[int]bool{}
+	var out []int
+	for _, p := range ports {
+		if p > 0 && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	rank := func(p int) int {
+		switch {
+		case own > 0 && p == own:
+			return 0
+		case own > 0 && p > own && p < own+portBlock:
+			return 1
+		}
+		return 2
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if rank(out[i]) != rank(out[j]) {
+			return rank(out[i]) < rank(out[j])
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
+func containsPort(ports []int, p int) bool {
+	for _, q := range ports {
+		if q == p {
+			return true
+		}
+	}
+	return false
+}
+
+// answersHTTP says whether something on the box's port answers HTTP: a dev
+// server, not a database or a debugger that only listens.
+func answersHTTP(ctx context.Context, port int) bool {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/", port), nil)
+	if err != nil {
+		return false
+	}
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := c.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
 }
 
 // applyPreviewTemplate gives a worktree the location's preview (its config's

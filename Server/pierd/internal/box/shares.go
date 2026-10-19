@@ -96,14 +96,23 @@ func (b *Box) StartShares(ctx context.Context) {
 	st.mu.Unlock()
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
+	// A dev server nobody recorded gets its link within seconds of coming up.
+	detect := time.NewTicker(previewDetectEvery)
+	defer detect.Stop()
+	b.detectPreviews(ctx)
 	for {
 		// Previews' links are renewed before anything expires.
 		b.renewPreviewShares(ctx)
 		b.expireShares()
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
+		for minute := false; !minute; {
+			select {
+			case <-ctx.Done():
+				return
+			case <-detect.C:
+				b.detectPreviews(ctx)
+			case <-t.C:
+				minute = true
+			}
 		}
 	}
 }
