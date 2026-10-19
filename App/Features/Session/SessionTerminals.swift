@@ -462,6 +462,11 @@ struct SessionTerminalTabs<Conversation: View>: View {
                 await terminals.open()
                 // With the browser asked for too, it stays the tab on screen beside the new terminal's.
                 if browsing { terminals.pick(.browser) }
+                // `-sessionTerminalType <line>`: typed into the new terminal with Enter once its stream is up.
+                if let line = d.string(forKey: "sessionTerminalType"), let s = terminals.all.last {
+                    try? await Task.sleep(for: .seconds(2))
+                    terminals.liveTerminal(for: s).typeForDebug(line + "\r")
+                }
             }
             #endif
     }

@@ -262,6 +262,11 @@ final class LiveTerminal {
     func retry() { phase = .connecting }
 
     /// A key from the keys bar, encoded as the program's modes want it.
+    #if DEBUG
+    /// Words typed as the keyboard would type them (`-sessionTerminalType`, screenshots and checks).
+    func typeForDebug(_ text: String) { pipe.type(Data(text.utf8)) }
+    #endif
+
     func press(_ key: ControlKey) {
         switch key {
         case .escape: state.sendKey(.escape)
