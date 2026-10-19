@@ -239,7 +239,9 @@ enum MarkdownStyle {
         let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         var a = (try? AttributedString(markdown: s, options: opts)) ?? AttributedString(s)
         for run in a.runs where run.inlinePresentationIntent?.contains(.code) == true {
-            a[run.range].font = .system(.callout, design: .monospaced)
+            // A step smaller than the words around it (a monospaced face runs wide), in the text's own tone on a faint
+            // wash, as desktop chat apps set it: file names and identifiers read as part of the sentence, not as alerts.
+            a[run.range].font = .system(.subheadline, design: .monospaced)
             a[run.range].backgroundColor = Theme.inlineCodeBg
             a[run.range].foregroundColor = Theme.inlineCode
         }

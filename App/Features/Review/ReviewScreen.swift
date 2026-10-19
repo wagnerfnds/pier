@@ -317,8 +317,9 @@ struct PlusMinus: View {
     var size: CGFloat = 13
     var body: some View {
         HStack(spacing: 6) {
-            Text("+\(added)").foregroundStyle(Theme.green)
-            Text("−\(removed)").foregroundStyle(Theme.red)
+            // A side that is zero says nothing, unless both are.
+            if added > 0 || removed == 0 { Text("+\(added)").foregroundStyle(Theme.green) }
+            if removed > 0 { Text("−\(removed)").foregroundStyle(Theme.red) }
         }
         .font(.mono(size, weight: .medium))
     }

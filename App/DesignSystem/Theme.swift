@@ -32,7 +32,7 @@ enum Theme {
     /// Code blocks, tool output and command previews (recessed from the card).
     static let codeBg = Color.adaptive(light: Color(hex: 0xF3F4F6), dark: .black.opacity(0.3))
     /// Inline `code` in Markdown.
-    static let inlineCode = Color(light: 0xA2470D, dark: 0xF0C987)
+    static let inlineCode = Color(light: 0x2F343A, dark: 0xDCDFE3)
     static let inlineCodeBg = Color.adaptive(light: .black.opacity(0.06), dark: .white.opacity(0.09))
     /// The raw terminal.
     static let terminalBg = Color.adaptive(light: Color(hex: 0xFBFBFC), dark: .black.opacity(0.4))

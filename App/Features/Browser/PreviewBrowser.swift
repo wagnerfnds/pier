@@ -469,8 +469,8 @@ struct PreviewBrowser: View {
             }
         }
         .padding(.horizontal, 6)
-        .frame(height: Platform.isMac ? 34 : 44)
-        .background(Theme.card)
+        .frame(height: Platform.isMac ? 38 : 46)
+        .background(Theme.bg)
         .overlay(alignment: .bottom) {
             ZStack(alignment: .leading) {
                 Rectangle().fill(Theme.stroke).frame(height: 1)
@@ -488,25 +488,49 @@ struct PreviewBrowser: View {
     private var field: some View {
         HStack(spacing: 6) {
             Image(systemName: shown?.scheme?.lowercased() == "https" ? "lock.fill" : "globe")
-                .font(.system(size: Density.small)).foregroundStyle(Theme.textFaint)
+                .font(.system(size: Density.small - 1)).foregroundStyle(Theme.textFaint)
                 .accessibilityHidden(true)
-            TextField(S("Endereço"), text: $address)
-                .textFieldStyle(.plain)
-                .font(.system(size: Density.small + 1))
-                .foregroundStyle(Theme.text)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.go)
-                .focused($editing)
-                .onSubmit(go)
-                .accessibilityIdentifier("browser-address")
+            ZStack(alignment: .leading) {
+                TextField(S("Endereço"), text: $address)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: Density.small + 1))
+                    .foregroundStyle(Theme.text)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .focused($editing)
+                    .onSubmit(go)
+                    .opacity(editing || compactAddress == nil ? 1 : 0)
+                    .accessibilityIdentifier("browser-address")
+                // Not editing: the page's host and path, as Safari shows them, the whole address a click away.
+                if !editing, let short = compactAddress {
+                    Text(verbatim: short).font(.system(size: Density.small + 1)).foregroundStyle(Theme.text)
+                        .lineLimit(1).truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { editing = true }
+                        .accessibilityHidden(true)
+                }
+            }
         }
-        .padding(.horizontal, 8)
-        .frame(height: Platform.isMac ? 24 : 32)
-        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(invalid ? Theme.red : Theme.stroke) }
+        .padding(.horizontal, 10)
+        .frame(height: Platform.isMac ? 26 : 34)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(invalid ? Theme.red : editing ? Theme.accent.opacity(0.5) : Theme.stroke)
+        }
         .frame(maxWidth: .infinity)
+    }
+
+    /// The address without its scheme and a lone trailing slash ("p-….docktopier.com/login"); nil when none shows.
+    private var compactAddress: String? {
+        guard let u = shown, Self.isWeb(u) else { return nil }
+        var s = u.absoluteString
+        for p in ["https://", "http://"] where s.hasPrefix(p) { s.removeFirst(p.count) }
+        if s.hasSuffix("/"), s.filter({ $0 == "/" }).count == 1 { s.removeLast() }
+        return s
     }
 
     private func barButton(_ symbol: String, _ label: String, id: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
@@ -578,10 +602,13 @@ struct PreviewBrowser: View {
     }
 
     private func notice(symbol: String, title: String, text: String, retry: @escaping () -> Void) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: symbol).font(.system(size: 28, weight: .light)).foregroundStyle(Theme.textFaint)
-            Text(title).font(.headline).foregroundStyle(Theme.text).multilineTextAlignment(.center)
-            Text(text).font(.callout).foregroundStyle(Theme.textDim).multilineTextAlignment(.center)
+        VStack(spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .medium)).foregroundStyle(Theme.textDim)
+                .frame(width: 44, height: 44)
+                .background(Theme.cardRaised, in: Circle())
+                .padding(.bottom, 2)
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).multilineTextAlignment(.center)
+            Text(text).font(.footnote).foregroundStyle(Theme.textDim).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button(action: retry) { Label("Tentar de novo", systemImage: "arrow.clockwise") }
@@ -594,9 +621,10 @@ struct PreviewBrowser: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .padding(.top, 4)
         }
         .padding(24)
-        .frame(maxWidth: 440)
+        .frame(maxWidth: 360)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
         .accessibilityElement(children: .contain)

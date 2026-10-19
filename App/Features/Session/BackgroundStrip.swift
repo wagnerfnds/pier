@@ -13,7 +13,7 @@ struct BackgroundStrip: View {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.mini).tint(Theme.accent)
                     Text(items.count == 1 ? S("1 tarefa em segundo plano") : S("\(items.count) tarefas em segundo plano"))
-                        .font(.footnote.weight(.semibold)).foregroundStyle(Theme.text)
+                        .font(.footnote.weight(.medium)).foregroundStyle(Theme.textDim)
                     if !open, let first = items.first {
                         Text(first.title).font(.mono(11)).foregroundStyle(Theme.textDim).lineLimit(1)
                     }
@@ -37,9 +37,11 @@ struct BackgroundStrip: View {
                 }
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.accent.opacity(0.35), lineWidth: 1))
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        // A quiet tray over the composer: the spinner says it runs, no colored frame around it.
+        .background(Theme.cardRaised.opacity(0.6), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.stroke))
+        .padding(.horizontal, 8)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("background-strip")
     }

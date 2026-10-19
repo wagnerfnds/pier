@@ -121,6 +121,7 @@ struct SessionScreen: View {
                         for st in steps { vm.expanded.insert(st.id); if let c = st.items, c.count == 1, let cid = c[0].id { vm.loadDetail(cid) } }
                     }
                     if case .item(let it) = b, it.type == .edit { vm.expanded.insert(it.id); if let t = it.tool { vm.loadDetail(t) } }
+                    if case .edits(let id, _) = b { vm.expanded.insert(id) }
                 }
             }
             if d.bool(forKey: "sessionDetails") { openDetails() }
@@ -225,33 +226,44 @@ struct SessionScreen: View {
         }
         }
         if Platform.isMac {
-            // The state line beside the window's title (which is the session's): the agent, the state, the time.
+            // The state line beside the window's title (which is the session's): the agent, the state, the time. Plain
+            // words with the state's dot, on no glass of their own: a status, not a button that looks like one.
             ToolbarItem(placement: .topBarTrailing) {
-                Button { toggleDetails() } label: {
-                    // Words only: the Mac's toolbar draws an item's symbol alone when it has one, and its own colors.
-                    Text(stateLine).font(.callout).lineLimit(1)
-                        .padding(.horizontal, 6)
-                        .contentShape(Rectangle())
+                // A view, not a button: the Mac's toolbar measures a button's label as an item title and cut it short.
+                HStack(spacing: 6) {
+                    Circle().fill(stateColor).frame(width: 7, height: 7)
+                    Text(stateLine).font(.callout).foregroundStyle(Theme.textDim).lineLimit(1)
                 }
-                .buttonStyle(.plain)
+                .fixedSize()
+                .padding(.horizontal, 6)
+                .contentShape(Rectangle())
+                .onTapGesture { toggleDetails() }
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(stateLine)
+                .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Mostra os detalhes da sessão")
             }
+            .noSharedBackground()
         }
-        ToolbarItem(placement: .topBarTrailing) { SessionTerminalButton(vm: vm) }
-        // Present for the whole width class, not only while the window is wide enough for the column (narrower, it opens
-        // the details as a sheet): on the Mac each item coming or going rebuilds the window's toolbar, and a tiling
-        // window manager resizes windows all the time.
-        if sizeClass == .regular {
-            ToolbarItem(placement: .topBarTrailing) {
+        // The session's tools share one glass capsule: the terminal, the details, the menu.
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            SessionTerminalButton(vm: vm)
+            // Present for the whole width class, not only while the window is wide enough for the column (narrower, it
+            // opens the details as a sheet): on the Mac each item coming or going rebuilds the window's toolbar, and a
+            // tiling window manager resizes windows all the time.
+            if sizeClass == .regular {
                 Button { toggleDetails() } label: {
                     Label(inspectorOpen && sidePanel ? "Ocultar detalhes" : "Mostrar detalhes", systemImage: "sidebar.trailing")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
                 .accessibilityIdentifier("session-inspector-toggle")
             }
+            moreMenu
         }
-        ToolbarItem(placement: .topBarTrailing) {
+        .noSharedBackground()
+    }
+
+    @ViewBuilder private var moreMenu: some View {
             Menu {
                 Button { openDetails() } label: { Label("Detalhes", systemImage: "info.circle") }
                 Button { renameText = title; showRename = true } label: { Label("Renomear", systemImage: "pencil") }
@@ -293,7 +305,6 @@ struct SessionScreen: View {
             } label: {
                 Image(systemName: "ellipsis.circle").accessibilityLabel("Mais ações")
             }
-        }
     }
 
     private var stateColor: Color {
@@ -522,10 +533,14 @@ struct SessionDetailsList: View {
                 Image(systemName: symbol).font(.caption).foregroundStyle(Theme.textFaint).frame(width: 18)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(label).font(.subheadline).foregroundStyle(Theme.textDim)
-                    Text(value).font(.mono(12)).foregroundStyle(Theme.text).lineLimit(3).truncationMode(.middle)
+                    // One line, its middle cut (the whole value on hover and in a copy): a path broken at its hyphens
+                    // read as two values.
+                    Text(value).font(.mono(11.5)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
                         .textSelection(.enabled)
+                        .help(value)
                 }
             }
+            .padding(.vertical, 2)
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: symbol).font(.caption).foregroundStyle(Theme.textFaint).frame(width: 18)
@@ -537,5 +552,12 @@ struct SessionDetailsList: View {
                     .textSelection(.enabled)
             }
         }
+    }
+}
+
+extension ToolbarContent {
+    /// An item drawn on the bar itself, without the glass capsule iOS 26 puts under each group.
+    @ToolbarContentBuilder func noSharedBackground() -> some ToolbarContent {
+        if #available(iOS 26, *) { sharedBackgroundVisibility(.hidden) } else { self }
     }
 }

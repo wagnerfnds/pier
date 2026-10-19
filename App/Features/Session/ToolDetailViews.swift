@@ -18,34 +18,20 @@ struct CodeBlock: View {
         let cut = !all && maxLines != nil && lines.count > maxLines!
         let shown = cut ? lines.prefix(maxLines!).joined(separator: "\n") : text
         VStack(alignment: .leading, spacing: 0) {
-            if !language.isEmpty || copyable {
+            if !language.isEmpty {
+                // One quiet line on the block's own color: its language and the icon that copies it.
                 HStack(spacing: 6) {
-                    Text(language.isEmpty ? S("código") : language).font(.caption2.weight(.medium)).foregroundStyle(Theme.textFaint)
+                    Text(language).font(.caption2.weight(.medium)).foregroundStyle(Theme.textFaint)
                     Spacer(minLength: 4)
-                    if copyable {
-                        Button {
-                            UIPasteboard.general.string = text
-                            Haptic.selection()
-                            withAnimation(.snappy) { copied = true }
-                            Task { try? await Task.sleep(for: .seconds(1.6)); withAnimation { copied = false } }
-                        } label: {
-                            Label(copied ? S("Copiado") : S("Copiar"), systemImage: copied ? "checkmark" : "doc.on.doc")
-                                .font(.caption2.weight(.medium)).foregroundStyle(copied ? Theme.green : Theme.textDim)
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Copiar código")
-                    }
+                    if copyable { copyButton }
                 }
-                .padding(.leading, 10).padding(.trailing, 4).padding(.vertical, 3)
-                .background(Theme.wash)
-                Divider().overlay(Theme.stroke)
+                .padding(.leading, 12).padding(.trailing, 6).padding(.top, 6)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 codeText(shown)
-                    .font(.mono(12.5)).lineSpacing(1.5).foregroundStyle(color).fixedSize().textSelection(.enabled)
-                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .font(.mono(12.5)).lineSpacing(2).foregroundStyle(color).fixedSize().textSelection(.enabled)
+                    .padding(.leading, 12).padding(.trailing, language.isEmpty && copyable ? 34 : 12)
+                    .padding(.top, language.isEmpty ? 10 : 2).padding(.bottom, 10)
                     .task(id: shown) { await highlightLate(shown) }
             }
             if cut {
@@ -54,13 +40,32 @@ struct CodeBlock: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.codeBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.stroke))
+        // No language: no line of its own, the copy icon sits in the corner.
+        .overlay(alignment: .topTrailing) { if language.isEmpty && copyable { copyButton.padding(.top, 6).padding(.trailing, 6) } }
+        .background(Theme.codeBg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.stroke.opacity(0.7)))
     }
 }
 
 extension CodeBlock {
     private var lang: SyntaxLanguage? { SyntaxLanguage.resolve(language) }
+
+    fileprivate var copyButton: some View {
+        Button {
+            UIPasteboard.general.string = text
+            Haptic.selection()
+            withAnimation(.snappy) { copied = true }
+            Task { try? await Task.sleep(for: .seconds(1.6)); withAnimation { copied = false } }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(copied ? Theme.green : Theme.textFaint)
+                .frame(width: 24, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(copied ? S("Copiado") : S("Copiar"))
+        .accessibilityLabel("Copiar código")
+    }
 
     /// Highlighted text: from the cache or computed inline when short; long blocks stay plain until `highlightLate` is done.
     fileprivate func codeText(_ shown: String) -> Text {

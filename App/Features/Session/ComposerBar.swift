@@ -24,41 +24,46 @@ struct ComposerBar: View {
         VStack(spacing: 8) {
             if vm.isClosed { closedBanner } else {
                 if !vm.held.isEmpty { queueChip }
-                if !vm.attachments.isEmpty { attachmentStrip }
-                HStack(alignment: .bottom, spacing: 8) {
-                    PhotosPicker(selection: $photo, matching: .images) {
-                        Image(systemName: "plus").font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Theme.textDim).frame(width: 36, height: 36)
-                            .background(Theme.card, in: Circle())
-                            .overlay(Circle().strokeBorder(Theme.stroke))
+                VStack(alignment: .leading, spacing: 0) {
+                    if !vm.attachments.isEmpty { attachmentStrip.padding(.horizontal, 8).padding(.top, 6) }
+                    TextField(placeholder, text: $text, axis: .vertical)
+                        .lineLimit(1...10)
+                        .focused($focused)
+                        .accessibilityIdentifier("composer-field")
+                        .font(.body)
+                        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 6)
+                        .onSubmit { if canSend { Task { await send() } } }
+                        // Esc right after sending takes the message back (the focused field gets the key first).
+                        .onKeyPress(.escape) { PendingActions.shared.undoLatest() ? .handled : .ignored }
+                        // Return sends on the Mac and from an iPad's keyboard, as Messages does; Shift- or Option-
+                        // Return writes a new line (and Return does on the on-screen keyboard).
+                        .returnSends(text: $text) { if canSend { Task { await send() } } }
+                    HStack(alignment: .center, spacing: 6) {
+                        PhotosPicker(selection: $photo, matching: .images) {
+                            Image(systemName: "plus").font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Theme.textDim).frame(width: 30, height: 30)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(ComposerIconStyle())    // no bezel around it on the Mac
+                        .accessibilityLabel("Anexar foto")
+                        agentLine
+                        Spacer(minLength: 6)
+                        if Platform.isMac || HardwareKeyboard.shared.connected, focused, hasText, !busy {
+                            Text("↩ envia · ⇧↩ nova linha").font(.caption2).foregroundStyle(Theme.textFaint).lineLimit(1)
+                                .transition(.opacity)
+                        }
+                        actionButton
                     }
-                    .buttonStyle(.plain)    // no bezel around the circle on the Mac
-                    .accessibilityLabel("Anexar foto")
-                    HStack(alignment: .bottom, spacing: 4) {
-                        TextField(placeholder, text: $text, axis: .vertical)
-                            .lineLimit(1...7)
-                            .focused($focused)
-                            .accessibilityIdentifier("composer-field")
-                            .font(.body)
-                            .padding(.leading, 14).padding(.vertical, 9)
-                            .onSubmit { if canSend { Task { await send() } } }
-                            // Esc right after sending takes the message back (the focused field gets the key first).
-                            .onKeyPress(.escape) { PendingActions.shared.undoLatest() ? .handled : .ignored }
-                            // Return sends on the Mac and from an iPad's keyboard, as Messages does; Shift- or Option-
-                            // Return writes a new line (and Return does on the on-screen keyboard).
-                            .returnSends(text: $text) { if canSend { Task { await send() } } }
-                        actionButton.padding(4)
-                    }
-                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).strokeBorder(focused ? Theme.accent.opacity(0.4) : Theme.stroke))
+                    .padding(.horizontal, 8).padding(.bottom, 8)
                 }
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(focused ? Theme.accent.opacity(0.35) : Theme.stroke))
+                .shadow(color: Theme.cardShadow, radius: 10, y: 3)
+                .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .onTapGesture { focused = true }
                 if busy, hasText {
                     Text("Será enviada quando o agente terminar a vez atual.").font(.caption2).foregroundStyle(Theme.textDim)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 48)
-                        .transition(.opacity)
-                } else if Platform.isMac || HardwareKeyboard.shared.connected, focused, hasText {
-                    Text("↩ envia · ⇧↩ nova linha").font(.caption2).foregroundStyle(Theme.textFaint)
-                        .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 14)
                         .transition(.opacity)
                 }
             }
@@ -94,15 +99,36 @@ struct ComposerBar: View {
 
     private var placeholder: String { S("Mensagem para \(session.agentShortName)") }
 
+    /// Who answers, quietly, beside the attach button: the agent's model, mode and effort, and how full its context is.
+    @ViewBuilder private var agentLine: some View {
+        let sig = vm.store.signals
+        let parts = [sig?.shortModel, sig?.mode, sig?.effort].compactMap { $0 }.filter { !$0.isEmpty }
+        HStack(spacing: 8) {
+            Text(parts.isEmpty ? session.agentLabel : parts.joined(separator: " · "))
+                .font(.caption.weight(.medium)).foregroundStyle(Theme.textFaint).lineLimit(1)
+            if let pct = sig?.contextPercent {
+                HStack(spacing: 4) {
+                    Gauge(value: Double(min(max(pct, 0), 100)), in: 0...100) { EmptyView() }
+                        .gaugeStyle(.accessoryCircularCapacity).scaleEffect(0.32).frame(width: 14, height: 14)
+                        .tint(pct >= 85 ? Theme.orange : Theme.textDim)
+                    Text("\(pct)%").font(.caption2.monospacedDigit()).foregroundStyle(Theme.textFaint)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(S("Contexto \(pct)% usado"))
+            }
+        }
+        .accessibilityIdentifier("composer-agent-line")
+    }
+
     @ViewBuilder private var actionButton: some View {
         if showsStop {
             Button { Task { await vm.interrupt() } } label: {
                 ZStack {
-                    if vm.interrupting { ProgressView().controlSize(.small).tint(.white) }
-                    else { Image(systemName: "stop.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.white) }
+                    if vm.interrupting { ProgressView().controlSize(.small).tint(Theme.onFill) }
+                    else { Image(systemName: "stop.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.onFill) }
                 }
                 .frame(width: 30, height: 30)
-                .background(Theme.red, in: Circle())
+                .background(Theme.text, in: Circle())
             }
             .buttonStyle(.plain)    // the Mac's bezel would make the field taller than one line
             .disabled(vm.interrupting)
@@ -111,9 +137,9 @@ struct ComposerBar: View {
         } else {
             Button { Task { await send() } } label: {
                 Image(systemName: busy && hasText ? "clock.arrow.circlepath" : "arrow.up")
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .font(.system(size: 14, weight: .bold)).foregroundStyle(canSend ? Theme.onFill : Theme.textFaint)
                     .frame(width: 30, height: 30)
-                    .background(canSend ? Theme.accent : Theme.textFaint, in: Circle())
+                    .background(canSend ? Theme.text : Theme.cardRaised, in: Circle())
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
@@ -230,5 +256,14 @@ struct ComposerBar: View {
                 }
             }.padding(.top, 5).padding(.horizontal, 4)
         }
+    }
+}
+
+/// The composer's small icon buttons: the system's pointer highlight, no bezel.
+private struct ComposerIconStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .hoverEffect(.highlight)
     }
 }

@@ -3985,6 +3985,16 @@
         }
       }
     },
+    "Contexto %lld%% usado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Context %lld%% used"
+          }
+        }
+      }
+    },
     "Continuar" : {
       "localizations" : {
         "en" : {
@@ -4841,6 +4851,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Edited %lld files"
+          }
+        }
+      }
+    },
+    "Editou %lld arquivos, %lld linhas adicionadas, %lld removidas" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edited %lld files, %lld lines added, %lld removed"
           }
         }
       }
@@ -7449,6 +7469,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show in the menu bar"
+          }
+        }
+      }
+    },
+    "Mostrar os arquivos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show the files"
           }
         }
       }

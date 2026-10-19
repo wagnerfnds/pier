@@ -17,6 +17,8 @@ struct NextStepChips: View {
     var heading: LocalizedStringKey? = nil
     /// Who gets the reply ("Claude"), for the receipt.
     var recipient: String = ""
+    /// Small rounded chips that wrap, under a conversation's last reply, instead of full-width rows.
+    var compact = false
     /// Sends the words; returns the undo window's token when one started (the row stays marked until it ends).
     let onPick: (String) -> PendingActions.Token?
 
@@ -33,7 +35,12 @@ struct NextStepChips: View {
                 headingView
                 HStack(spacing: 8) {
                     ForEach(0..<2, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardRaised).frame(height: 40)
+                        if compact {
+                            // Flexible: two fixed widths ran past a phone's column and pushed the whole tail wider.
+                            Capsule().fill(Theme.cardRaised).frame(maxWidth: i == 0 ? 220 : 160).frame(height: 32)
+                        } else {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardRaised).frame(height: 40)
+                        }
                     }
                 }
                 .overlay(alignment: .leading) {
@@ -43,8 +50,21 @@ struct NextStepChips: View {
                 .accessibilityIdentifier("next-steps-loading")
             case .ready(let replies)? where !replies.isEmpty:
                 headingView
-                VStack(spacing: 6) {
-                    ForEach(Array(replies.enumerated()), id: \.offset) { i, r in row(i, r) }
+                Group {
+                    if compact {
+                        // One row at a fixed height that scrolls sideways when it runs long: the end of a conversation
+                        // is measured to place it, so its height must not depend on a second layout pass.
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(Array(replies.enumerated()), id: \.offset) { i, r in chip(i, r) }
+                            }
+                        }
+                        .frame(height: 34)
+                    } else {
+                        VStack(spacing: 6) {
+                            ForEach(Array(replies.enumerated()), id: \.offset) { i, r in row(i, r) }
+                        }
+                    }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("next-steps")
@@ -119,6 +139,38 @@ struct NextStepChips: View {
         .accessibilityIdentifier("next-step-\(i + 1)")
     }
 
+    /// One suggestion as a chip: a reply arrow and the words, a check once picked.
+    private func chip(_ i: Int, _ text: String) -> some View {
+        let on = chosen == i
+        return Button {
+            guard chosen == nil else { return }
+            chosen = i
+            token = onPick(text)
+            if token == nil { chosen = nil }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: on ? "checkmark" : "arrow.turn.down.right")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(on ? Theme.green : Theme.textDim)
+                Text(text).font(.subheadline).foregroundStyle(on ? Theme.green : Theme.text)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(on ? Theme.green.opacity(0.12) : Theme.card, in: Capsule())
+            .overlay(Capsule().strokeBorder(on ? Theme.green.opacity(0.45) : Theme.stroke))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        // The system's pointer highlight (iPad, Mac): a style keeping its own hover state at the end of a conversation
+        // threw the conversation's opening position off.
+        .hoverEffect(.highlight)
+        .disabled(disabled || (chosen != nil && !on))
+        .opacity(disabled || (chosen != nil && !on) ? 0.55 : 1)
+        .accessibilityLabel(text)
+        .accessibilityValue(on ? Text("Escolhido") : Text(""))
+        .accessibilityHint("Envia esta resposta ao agente")
+        .accessibilityIdentifier("next-step-\(i + 1)")
+    }
+
     private var receiptPill: some View { NextStepReceipt(recipient: recipient) }
 }
 
@@ -162,7 +214,7 @@ struct SessionNextSteps: View {
             if s.agentState == .finished, !vm.isRunning, !vm.isWaiting, !vm.isClosed, vm.store.pending.isEmpty,
                let since = s.stateSince, let reply = Self.lastReply(vm.store.items) {
                 NextStepChips(key: NextSteps.Key(box: vm.box, session: vm.name, since: since), place: s.execPlace, reply: reply,
-                              task: s.title, client: vm.client, disabled: vm.sending, heading: "Próximos passos", recipient: s.agentShortName) { text in
+                              task: s.title, client: vm.client, disabled: vm.sending, recipient: s.agentShortName, compact: true) { text in
                     // The undo window, like the Inbox's chips and the composer: "Desfazer" and nothing goes out.
                     let t = PendingActions.shared.schedule(label: text, perform: { _ = await vm.send(text, when: .idle) })
                     token = t
