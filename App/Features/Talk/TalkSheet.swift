@@ -99,6 +99,8 @@ struct TalkSheet: View {
                 .transition(.opacity)
             } else if dictation.state == .denied {
                 deniedHint
+            } else if dictation.state == .systemOff {
+                DictationOffHint()
             } else if dictation.state == .unavailable {
                 Text("O ditado não está disponível agora. Escreva o pedido.").font(.caption).foregroundStyle(Theme.orange)
             }

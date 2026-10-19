@@ -224,6 +224,10 @@ final class AppModel {
                 if let c = boxes.first, let s = c.sessions.first(where: { $0.isAgent }) { openSession(box: c.name, name: s.name) }
             }
         }
+        // `-dictationProbe 1`: what dictation finds (permissions, the recognizer), on standard error; nothing is asked.
+        if UserDefaults.standard.bool(forKey: "dictationProbe") {
+            FileHandle.standardError.write(Data("DICTATION \(Dictation.status)\n".utf8))
+        }
         // Screenshot hooks: `-openTalk 1` the Falar sheet (with `-talkText "…"` typed and routed), `-openPalette 1` the
         // ⌘K palette (iPad, Mac), `-openFaxina 1` the Faxina screen.
         if UserDefaults.standard.bool(forKey: "openTalk") {
