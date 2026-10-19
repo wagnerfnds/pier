@@ -577,7 +577,7 @@ about the person) and deletes it. Nothing leaves the device unless the person sh
 
 `-pairLink <pier://…>`, `-openSession [<box>/]<name>` (with `-sessionNewTerminal 1`: a terminal tab opens beside it;
 `-sessionBrowser 1`: its browser tab; `-sessionSplit 1`: side by side, not kept; both a moment after launch, as a click
-would come), `-openBrowser <loc>[/<worktree>] [-browserURL <url>]` (the worktree's preview browser on a screen of its
+would come; `-sessionTerminalType <line>`: typed into that new terminal with Enter), `-openBrowser <loc>[/<worktree>] [-browserURL <url>]` (the worktree's preview browser on a screen of its
 own, as Abrir no Pier opens it),
 `-openFirstSession 1`, `-openCompose 1 -composeProject <loc>
 -composePrompt <text> -composeNoFocus 1 -composeOptions 1 -composeSheet project|worktree|base -composeSubmit 1`,
