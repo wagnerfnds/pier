@@ -233,6 +233,8 @@ struct ComposeScreenPlaceholder: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14).padding(.bottom, 8)
+        } else if dictation.state == .systemOff {
+            DictationOffHint().padding(.horizontal, 14).padding(.bottom, 8)
         } else if dictation.state == .unavailable {
             Text("O ditado não está disponível agora. Escreva o pedido.").font(.caption).foregroundStyle(Theme.orange)
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -1845,6 +1845,16 @@
         }
       }
     },
+    "Abrir Teclado nos Ajustes do Sistema" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Keyboard in System Settings"
+          }
+        }
+      }
+    },
     "Abrir no GitHub" : {
       "localizations" : {
         "en" : {
@@ -9129,6 +9139,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not saved"
+          }
+        }
+      }
+    },
+    "O Ditado está desligado neste Mac. Ligue em Ajustes do Sistema › Teclado › Ditado e toque no microfone de novo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation is off on this Mac. Turn it on in System Settings › Keyboard › Dictation, then tap the microphone again."
+          }
+        }
+      }
+    },
+    "O Ditado está desligado. Ligue em Ajustes › Geral › Teclado › Ditado e toque no microfone de novo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation is off. Turn it on in Settings › General › Keyboard › Dictation, then tap the microphone again."
           }
         }
       }
