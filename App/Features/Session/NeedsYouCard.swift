@@ -20,6 +20,8 @@ struct NeedsYouCard: View {
             if vm.answering {
                 HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Enviando resposta…").font(.subheadline).foregroundStyle(Theme.textDim) }
                     .padding(.vertical, 4)
+            } else if let q = vm.mcp, !q.servers.isEmpty {
+                MCPChoices(vm: vm, question: q).id(q)
             } else if session.needsYouKind == .question, let q = openQuestion {
                 QuestionForm(vm: vm, item: q).id("\(q.id)@\(session.stateSince?.timeIntervalSince1970 ?? 0)")
             } else if let perm = MenuParser.permissionChoices(choices) {
@@ -89,11 +91,63 @@ struct NeedsYouCard: View {
     }
 
     private func headline(_ wording: String) -> String {
+        if let q = vm.mcp, !q.servers.isEmpty {
+            return q.servers.count == 1 ? S("\(agent) quer usar o servidor MCP do projeto") : S("\(agent) quer usar os servidores MCP do projeto")
+        }
         if !session.needsYou { return S("\(agent) pergunta na tela") }
         if session.needsYouKind == .question, ask?.tool == "AskUserQuestion" || ask?.tool == "request_user_input" || ask?.tool == nil {
             return S("\(agent) tem uma pergunta")
         }
         return wording
+    }
+}
+
+/// Claude Code's question about the repository's MCP servers (`.mcp.json`) before it starts: each server with its switch
+/// (as ticked on screen), then "Recusar" (all down) and "Ativar" (the ones switched on). The box presses the dialog's keys.
+private struct MCPChoices: View {
+    let vm: SessionViewModel
+    let question: MCPQuestion
+    @State private var on: Set<String>
+
+    init(vm: SessionViewModel, question: MCPQuestion) {
+        self.vm = vm
+        self.question = question
+        _on = State(initialValue: Set(question.servers.filter(\.enabled).map(\.name)))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(spacing: 0) {
+                ForEach(question.servers) { s in
+                    HStack(spacing: 8) {
+                        Image(systemName: "puzzlepiece.extension").font(.caption).foregroundStyle(Theme.textDim)
+                        Text(s.name).font(.mono(13, weight: .medium)).foregroundStyle(Theme.text).lineLimit(1)
+                        Spacer(minLength: 8)
+                        // The name on the left and the switch on the right (the Mac's toggle centers its own label).
+                        Toggle(s.name, isOn: Binding(get: { on.contains(s.name) }, set: { v in if v { on.insert(s.name) } else { on.remove(s.name) } }))
+                            .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                            .accessibilityIdentifier("mcp-server-\(s.name)")
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    if s.id != question.servers.last?.id { Divider().overlay(Theme.stroke).padding(.leading, 10) }
+                }
+            }
+            .background(Theme.cardRaised.opacity(0.6), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text("Servidores MCP rodam código na box. Ative só os que você conhece.").font(.caption).foregroundStyle(Theme.textDim)
+            HStack(spacing: 10) {
+                Button { vm.scheduleAnswerMCP(enable: [], label: S("Recusar")) } label: { Text("Recusar") }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .accessibilityIdentifier("mcp-turn-down")
+                Button {
+                    let names = question.servers.map(\.name).filter { on.contains($0) }
+                    vm.scheduleAnswerMCP(enable: names, label: names.isEmpty ? S("Recusar") : S("Ativar \(names.joined(separator: ", "))"))
+                } label: {
+                    Text(on.count == question.servers.count ? S("Ativar todos") : on.isEmpty ? S("Recusar todos") : S("Ativar \(on.count)"))
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityIdentifier("mcp-enable")
+            }
+        }
     }
 }
 

@@ -117,6 +117,23 @@ final class MockBox: PierTransport, @unchecked Sendable {
     Enter to select · Tab/Arrow keys to navigate · Esc to cancel
     """
     private var mcpAnswered = false
+    // --- `-uiTestMCP 1`: an agent stopped at Claude Code's question about the repository's two MCP servers (a checkbox
+    // list, Claude Code 2.1.30x), answered through `POST …/mcp` as pierd answers it (box/mcpask.go). ---
+    static let mcpAskSession = "sandbox-mcpq-claude-m2"
+    static let mcpAskScreen = """
+    ────────────────────────────────────────────────────────────────────────
+      2 new MCP servers found in this project
+      Select any you wish to enable.
+
+      MCP servers may execute code or access system resources. All tool calls require approval.
+
+      ❯ [✔] laravel-boost
+        [✔] herd
+           Enable selected
+     Space to select · Esc to reject all
+    """
+    private var mcpAskEnabled: [String]?
+    // --- end `-uiTestMCP 1` ---
     /// `-uiTestChatLab 1`: the conversation built to strain the chat screen (UITestMockChatLab.swift).
     private var chatLab = MockChatLab()
     private var removedWorktrees: Set<String> = []
@@ -194,6 +211,14 @@ final class MockBox: PierTransport, @unchecked Sendable {
             form["state_since"] = Self.iso(Date().addingTimeInterval(-20))
             sessions.append(form)
             transcripts[Self.formSession] = [item("user", text: "Build the landing page")]
+        }
+        if UserDefaults.standard.bool(forKey: "uiTestMCP") {
+            var q = Self.session(Self.mcpAskSession, location: "sandbox", dir: "/home/ubuntu/code/sandbox", state: "waiting",
+                                 title: "Hoje temos a home do site")
+            q["state_since"] = Self.iso(Date().addingTimeInterval(-15))
+            q["fidelity"] = "screen"
+            sessions.append(q)
+            transcripts[Self.mcpAskSession] = []
         }
         if UserDefaults.standard.bool(forKey: "uiTestAsk") {
             var ask = Self.session(Self.askSession, location: "sandbox", dir: "/home/ubuntu/code/sandbox", state: "waiting",
@@ -474,7 +499,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
             // pierd with the file routes.
             var info = Self.fixtureObject(MockFixtures.info)
             info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["files", "projects", "environments", "accounts", "box.env", "shares", "prepare",
-                                                                                   "tools", "logins", "mcp"]
+                                                                                   "tools", "logins", "mcp", "answer.mcp"]
                 // Terminals stream (`-mockTTY 0`: a box before them, its screen read every second).
                 + (UserDefaults.standard.string(forKey: "mockTTY") == "0" ? [] : ["tty"])
             // Setup agents and previews (UITestMockProjects.swift).
@@ -757,6 +782,18 @@ final class MockBox: PierTransport, @unchecked Sendable {
         case (.get, "transcript") where p.count == 6: return (200, Self.fixture(MockFixtures.toolDetail))
         case (.get, "screen") where name == Self.mcpSession && !mcpAnswered:
             return (200, Self.json(["screen": Self.mcpScreen]))
+        case (.get, "screen") where name == Self.mcpAskSession && mcpAskEnabled == nil:
+            return (200, Self.json(["screen": Self.mcpAskScreen]))
+        case (.get, "mcp") where name == Self.mcpAskSession && mcpAskEnabled == nil:
+            return (200, Self.json(["servers": [["name": "laravel-boost", "enabled": true], ["name": "herd", "enabled": true]]]))
+        case (.get, "mcp"):
+            return (404, Self.json(["error": "Claude isn't asking about MCP servers"]))
+        case (.post, "mcp") where name == Self.mcpAskSession && mcpAskEnabled == nil:
+            let enable = (req["enable"] as? [String]) ?? []
+            mcpAskEnabled = enable
+            transcripts[name, default: []].append(item("user", text: "Hoje temos a home do site que tá só a logomarca"))
+            scheduleReply(name, text: enable.isEmpty ? "Started without the project's MCP servers." : "Started with \(enable.joined(separator: " and ")).", after: 0.8)
+            return (200, Self.json(["answered": true, "enabled": enable]))
         case (.get, "screen") where name == Self.askSession && (sessions[si]["agent_state"] as? String) == "waiting":
             return (200, Self.json(["screen": Self.askScreen]))
         case (.post, "send") where name == Self.askSession && (sessions[si]["agent_state"] as? String) == "waiting":

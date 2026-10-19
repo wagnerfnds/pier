@@ -294,6 +294,10 @@ enum ChoiceOptions {
         let name = session.name
         let permission = Ask.classify(session.ask) == .permission
         let found: [String]? = await BoxAccess.withTimeout(timeout) {
+            // Claude Code's question about the repository's MCP servers: all on, or all down (MCPAnswers knows the words).
+            if let q = try? await client.mcpQuestion(session: name), !q.servers.isEmpty {
+                return [String(localized: "Ativar todos"), String(localized: "Recusar")]
+            }
             if !permission, let page = try? await client.transcript(session: name, since: 0, gen: nil),
                let q = QuestionHelpers.openQuestion(in: page.items), let qs = q.questions, qs.count == 1, qs[0].multi != true {
                 let labels = qs[0].options.map(\.label).filter { !$0.isEmpty }

@@ -89,6 +89,7 @@ and Home widgets are shell strings run this way, so the box needs `git`, `gh` an
 | `POST /v1/sessions/{name}/tty?cols=&rows=&history=` (NDJSON frames in, raw terminal bytes out, full duplex) | `tty.go` `sessionTTY` (a tmux client on a pseudo-terminal: `pty_linux.go`, `pty_darwin.go`) | App `terminal()` (`TerminalStream`, over `BoxClient.duplex`): LiveTerminal (a shell's screen and the worktree's terminal tabs, drawn by libghostty) |
 | `POST /v1/sessions/{name}/interrupt` | `controls.go` `interruptSession` | App `interrupt()`: ComposerBar (Stop), SessionScreen |
 | `POST /v1/sessions/{name}/answer` | `answer.go` `answerSession` | App `answerQuestions()`: SessionViewModel (falls back to digit keys) |
+| `GET`/`POST /v1/sessions/{name}/mcp` | `mcpask.go` | App `mcpQuestion()` / `answerMCP()`: SessionViewModel (NeedsYouCard's MCP switches), SessionActions.answerChoice and ChoiceOptions (notification buttons) |
 | `GET /v1/sessions/{name}/controls` | `controls.go` `sessionControls` | pierctl selftest (the mode list; the app reads the mode from `mode`'s answer) |
 | `POST /v1/sessions/{name}/mode` | `controls.go` `setMode` | App `setMode()`: ConversationView, NeedsYouCard, SessionScreen |
 | `GET /v1/sessions/{name}/wait?for=&after=&timeout=` | `orchestrate.go` `waitForSession` | `pierd session send --wait`, `pierd session wait`; pierctl `wait` |

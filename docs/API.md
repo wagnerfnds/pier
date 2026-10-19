@@ -51,7 +51,8 @@ notifications).
 | Errors | Non-2xx: `{"error": "human text", "code": "..."}`. Branch on `code`, show `error` verbatim. Codes: `not_found` (404), `session_exited` (409), `session_exists` (409), `agent_waiting` (409), `not_submitted` (409, 4.3: the agent never took a prompt typed into it; the body also has `kept`), `refused` (403, a `before:` hook or a box rule said no), `unsupported` (501), `tmux_missing` (503), `git_failed`, `command_failed`, `too_many` (429), `file_changed` (409), `file_exists` (409), `unsaved_work` (409, 2.8), `space_not_empty`, `space_has_files` (409, 2.9), `docker_missing` (501), `gh_missing` (501), `gh_auth` (428), `tool_missing` (424, 2.10.1), `bad_request`, `internal`. Unknown routes answer Go's plain-text `404 page not found` (or 405 for a known path with another method), not JSON: fall back to the raw text. |
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
-| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `prepare.agent` (`prepare_with` and setup agents, 2.6.1), `preview` (a worktree's preview, 2.12.1), `tools` (2.13), `logins` (2.10.1) and `mcp` (2.14), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
+| Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `prepare.agent` (`prepare_with` and setup agents, 2.6.1), `preview` (a worktree's preview, 2.12.1), `answer.mcp` (Claude Code's question about a repository's MCP servers,
+5.4.1), `tools` (2.13), `logins` (2.10.1) and `mcp` (2.14), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
 
 ### 0.3 Naming and addressing
 
@@ -1124,6 +1125,23 @@ Always show `ask.tool` + `ask.input` (+ `why`), e.g. `Bash  rm -rf build`.
   `n+2. Chat about this`.
 * `ExitPlanMode` (plan approval) is a numbered menu: treat it like a permission (5.3); the plan is the preceding
   `text` item.
+
+#### 5.4.1 The repository's MCP servers (capability `answer.mcp`)
+
+Before it starts in a folder whose repository has a `.mcp.json`, Claude Code asks which of its servers to use: with
+several, a list of ticked rows ("2 new MCP servers found in this project · Select any you wish to enable", then
+"Enable selected"); with one, a menu ("New MCP server found in this project: echo-test", "Use this MCP server",
+"Use this and all future MCP servers in this project", "Continue without using this MCP server"). The session reads
+`waiting` from its screen (no `ask`).
+
+* `GET /v1/sessions/{name}/mcp` → `{"servers": [{"name": "laravel-boost", "enabled": true}, …]}` as ticked on
+  screen; 404 when the screen shows no such question.
+* `POST /v1/sessions/{name}/mcp {"enable": ["laravel-boost"]}`: the servers named are turned on and the others down
+  (`[]`: all down). pierd reads the dialog again, presses its keys (Space on a row whose tick must change, Enter on
+  "Enable selected"; Esc turns the list down; the one-server menu takes "Use this MCP server" or "Continue
+  without…"), and answers `{"answered": true, "enabled": [...]}` once the dialog is gone; 409 when it is still on
+  screen 4 s later, 404 when there is no question, 400 for a name not in it. Gate `before:session.send`.
+* The waiting alert names the servers and carries two buttons, `optionsKind: "mcp"` (docs/PUSH.md 4.3).
 
 ### 5.5 Notification text
 

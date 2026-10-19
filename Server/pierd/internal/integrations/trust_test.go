@@ -474,3 +474,51 @@ func TestParseTOMLKey(t *testing.T) {
 		}
 	}
 }
+
+// Claude Code 2.1.30x keeps the answer about a repository's MCP servers in
+// the folder's own .claude/settings.local.json: a new worktree gets the first
+// answer another folder of the project gave, its other settings kept, and a
+// folder that answered keeps its own.
+func TestCarryClaudeLocalMcpChoiceToANewWorktree(t *testing.T) {
+	main, other, fresh := t.TempDir(), t.TempDir(), t.TempDir()
+	write := func(dir, body string) {
+		os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
+		os.WriteFile(filepath.Join(dir, ".claude", "settings.local.json"), []byte(body), 0o644)
+	}
+	read := func(dir string) map[string]any {
+		m, err := readJSONObject(filepath.Join(dir, ".claude", "settings.local.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	write(main, `{"permissions":{"allow":["Bash(ls)"]}}`)
+	write(other, `{"enabledMcpjsonServers":["laravel-boost"],"disabledMcpjsonServers":["herd"]}`)
+	write(fresh, `{"permissions":{"allow":["Bash(pwd)"]}}`)
+	changed, err := CarryClaudeLocalMcpChoice(fresh, []string{main, other, fresh})
+	if err != nil || !changed {
+		t.Fatalf("changed %v err %v", changed, err)
+	}
+	got := read(fresh)
+	if en, _ := got["enabledMcpjsonServers"].([]any); len(en) != 1 || en[0] != "laravel-boost" {
+		t.Fatalf("enabled = %v", got)
+	}
+	if got["permissions"] == nil {
+		t.Fatal("the folder's own settings were lost")
+	}
+	// Answered already: left alone.
+	write(fresh, `{"disabledMcpjsonServers":["laravel-boost","herd"]}`)
+	if changed, _ := CarryClaudeLocalMcpChoice(fresh, []string{other}); changed {
+		t.Fatal("a folder's own answer was replaced")
+	}
+	// A folder with no settings yet gets the file.
+	empty := t.TempDir()
+	if changed, err := CarryClaudeLocalMcpChoice(empty, []string{main, other}); err != nil || !changed {
+		t.Fatalf("empty: %v %v", changed, err)
+	}
+	// Nobody answered: nothing written.
+	none := t.TempDir()
+	if changed, _ := CarryClaudeLocalMcpChoice(none, []string{main}); changed {
+		t.Fatal("wrote an answer nobody gave")
+	}
+}

@@ -230,6 +230,8 @@ func (b *Box) Mount(s *wire.Server) {
 	route("POST /v1/sessions/{name}/tty", b.sessionTTY)
 	route("POST /v1/sessions/{name}/interrupt", b.interruptSession)
 	route("POST /v1/sessions/{name}/answer", b.answerSession)
+	route("GET /v1/sessions/{name}/mcp", b.getMCPQuestion)
+	route("POST /v1/sessions/{name}/mcp", b.answerMCPQuestion)
 	route("GET /v1/sessions/{name}/controls", b.sessionControls)
 	route("POST /v1/sessions/{name}/mode", b.setMode)
 	route("GET /v1/sessions/{name}/wait", b.waitForSession)

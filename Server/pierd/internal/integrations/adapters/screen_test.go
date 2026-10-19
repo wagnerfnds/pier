@@ -9,7 +9,8 @@ func TestScreenStateSeesQuestionsThatWait(t *testing.T) {
 		"trust": " Quick safety check: Is this a project you created or one you trust?\n ❯ 1. Yes, I trust this folder\n   2. No, exit\n Enter to confirm · Esc to cancel\n",
 		"bypass": "  WARNING: Claude Code running in Bypass Permissions mode\n  By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.\n" +
 			"  ❯ No, exit\n    Yes, I accept\n  Enter to confirm · Esc to cancel\n",
-		"tool": " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n",
+		"tool":    " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n",
+		"mcp one": "  New MCP server found in this project: echo-test\n\n    Use this MCP server\n  ❯ Continue without using this MCP server\n\n  Enter to confirm · Esc to cancel\n",
 		"mcp": "  3 new MCP servers found in this project\n  Select any you wish to enable.\n  ❯ [✔] laravel-boost\n    [✔] herd\n" +
 			"       Enable selected\n Space to select · Esc to reject all\n",
 	} {

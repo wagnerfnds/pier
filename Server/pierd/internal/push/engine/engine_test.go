@@ -374,6 +374,22 @@ func TestWaitingQuestionReadsTheChoicesFromTheScreen(t *testing.T) {
 	}
 }
 
+func TestMCPQuestionCarriesItsButtonsInThePersonsLanguage(t *testing.T) {
+	// Claude Code asks about a repository's .mcp.json before it starts: a screen-only wait (no ask), a checkbox list.
+	r := newRig(t, dev("c1", "pt-BR"))
+	r.box.screen = "  2 new MCP servers found in this project\n  Select any you wish to enable.\n\n  ❯ [✔] laravel-boost\n    [✔] herd\n       Enable selected\n Space to select · Esc to reject all\n"
+	r.box.set(sess("running", time.Now().Add(-time.Minute)))
+	r.start()
+	r.change(sess("waiting", time.Now()))
+	p := r.firstAlertOptions(t)
+	if p.APS.Category != "NEEDS_YOU_CHOICE_2" || p.OptionsKind != "mcp" || !reflect.DeepEqual(p.Options, []string{"Ativar todos", "Recusar"}) {
+		t.Fatalf("%+v", p)
+	}
+	if body := string(r.snd.byType("alert")[0].Payload); !strings.Contains(body, "laravel-boost, herd") {
+		t.Fatalf("the body names no server: %s", body)
+	}
+}
+
 func TestPlanApprovalCarriesItsMenu(t *testing.T) {
 	r := newRig(t, dev("c1", "en"))
 	r.box.screen = "Ready to code?\n\n ❯ 1. Yes, and auto-accept edits\n   2. Yes, and manually approve edits\n   3. No, keep planning\n"

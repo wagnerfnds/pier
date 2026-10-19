@@ -100,7 +100,7 @@ func (b *Box) handleInfo(w http.ResponseWriter, r *http.Request) error {
 // (setupagent.go), and PUT …/locations/{name}/setup-agent, the person's
 // consent to them per project; preview: GET/PUT …/worktrees/{w}/preview.
 func (b *Box) Capabilities() []string {
-	caps := []string{"transcript", "history", "diff", "titles", "answer", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env", "prepare", "tools", "logins"}
+	caps := []string{"transcript", "history", "diff", "titles", "answer", "answer.mcp", "session.home", "session.chat", "draft", "journal", "touched", "files", "projects", "environments", "accounts", "box.env", "prepare", "tools", "logins"}
 	if b.StateDir != "" {
 		caps = append(caps, "mcp")
 	}

@@ -36,6 +36,7 @@ import Testing
             "prepare_skipped.json": d(PrepareStatus.self), "prepare_running.json": d(PrepareStatus.self),
             "prepare_failed.json": d(PrepareStatus.self), "prepare_unknown.json": d(PrepareStatus.self),
             "prepare_agent_running.json": d(PrepareStatus.self), "prepare_agent_failed.json": d(PrepareStatus.self),
+            "mcp_question.json": d(MCPQuestion.self),
             "preview.json": d(WorktreePreview.self), "preview_empty.json": d(WorktreePreview.self),
             "transcript.json": d(TranscriptPage.self), "transcript_poll_empty.json": d(TranscriptPage.self),
             "transcript_before.json": d(TranscriptPage.self), "transcript_reset.json": d(TranscriptPage.self),

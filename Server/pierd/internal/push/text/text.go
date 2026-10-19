@@ -268,6 +268,24 @@ func WaitingBody(l Lang, ask string) string {
 	return "The agent is waiting for your answer."
 }
 
+// MCPBody says which of a repository's MCP servers Claude Code asks about before it starts.
+func MCPBody(l Lang, servers []string) string {
+	names := Clip(strings.Join(servers, ", "), 120)
+	if l == PT {
+		return "O Claude quer usar os servidores MCP do projeto: " + names
+	}
+	return "Claude wants to use the project's MCP servers: " + names
+}
+
+// MCPOptions are the buttons that answer Claude Code's question about a repository's MCP servers: turn them all on,
+// or all down. The app knows both languages' words (MCPAnswer in PierKit).
+func MCPOptions(l Lang) []string {
+	if l == PT {
+		return []string{"Ativar todos", "Recusar"}
+	}
+	return []string{"Enable all", "Turn down"}
+}
+
 // ChoicesLine numbers a waiting agent's choices the way the alert's buttons are numbered: "1 Three tiers · 2 One plan".
 func ChoicesLine(options []string) string {
 	parts := make([]string, 0, len(options))

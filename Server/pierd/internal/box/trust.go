@@ -212,6 +212,12 @@ func (b *Box) carryMcpChoice(location, dir string, env []string) {
 			from = append(from, trustPaths(wt.Path)...)
 		}
 	}
+	// Claude Code 2.1.30x keeps the answer in the folder's .claude/settings.local.json; earlier ones in its config.
+	if changed, err := integrations.CarryClaudeLocalMcpChoice(dir, from); err != nil {
+		logf("pierd: Claude Code will ask about the MCP servers of %s: %v", dir, err)
+	} else if changed {
+		logf("pierd: Claude Code keeps the project's answer about its MCP servers in %s", dir)
+	}
 	config := integrations.ClaudeConfigFile(agentConfigDir(env, "claude"), home)
 	if changed, err := integrations.CarryClaudeMcpChoice(config, trustPaths(dir), from); err != nil {
 		logf("pierd: Claude Code will ask about the MCP servers of %s: %v", dir, err)
