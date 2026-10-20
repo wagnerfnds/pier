@@ -2,6 +2,8 @@ package box
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -416,6 +418,98 @@ func (p *PortAlloc) Release(dir string) {
 
 var nonIdent = regexp.MustCompile(`[^a-z0-9]+`)
 
+// worktreeSlug names a worktree safely in database, user and container
+// names: shop_fix_checkout. MySQL takes user names of at most 32 characters
+// (databases 64), so a longer slug keeps its start and ends in a hash of the
+// whole name, which keeps two long names that share a start apart.
+func worktreeSlug(location, worktree string) string {
+	s := wholeSlug(location, worktree)
+	if len(s) <= slugMax {
+		return s
+	}
+	sum := sha256.Sum256([]byte(location + "/" + worktree))
+	return strings.TrimRight(s[:25], "_") + "_" + hex.EncodeToString(sum[:3])
+}
+
+const slugMax = 32
+
+// wholeSlug is the slug before it was cut: the whole name.
+func wholeSlug(location, worktree string) string {
+	return strings.Trim(nonIdent.ReplaceAllString(strings.ToLower(location+"_"+worktree), "_"), "_")
+}
+
+// slug is wt's $PIER_WORKTREE_SLUG: the longer one it had if it was made
+// before slugs were cut.
+func (l *Locations) slug(location string, wt Worktree) string {
+	if s, err := l.saved(location); err == nil && s.Slugs[wt.Path] != "" {
+		return s.Slugs[wt.Path]
+	}
+	return worktreeSlug(location, wt.Name)
+}
+
+// KeepLongSlugs records, once per location, the worktrees already there
+// whose whole slug is longer than a cut one: they keep it, since their
+// recipes named a database or a cookie after it. pierd runs it as it starts,
+// before it makes any worktree.
+func (l *Locations) KeepLongSlugs(ctx context.Context) error {
+	saved, err := l.read()
+	if err != nil {
+		return err
+	}
+	found := map[string]map[string]string{}
+	for _, s := range saved {
+		if s.SlugsCut {
+			continue
+		}
+		if _, err := os.Stat(s.Path); err != nil {
+			// Unreachable now (an unmounted disk): looked for next time.
+			continue
+		}
+		kept := map[string]string{}
+		for _, w := range describe(ctx, s).Worktrees {
+			if whole := wholeSlug(s.Name, w.Name); len(whole) > slugMax {
+				kept[w.Path] = whole
+			}
+		}
+		found[s.Name] = kept
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	return l.update(func(all []savedLocation) ([]savedLocation, error) {
+		for i := range all {
+			kept, ok := found[all[i].Name]
+			if !ok || all[i].SlugsCut {
+				continue
+			}
+			if len(kept) > 0 {
+				all[i].Slugs = kept
+			}
+			all[i].SlugsCut = true
+		}
+		return all, nil
+	})
+}
+
+// forgetSlug drops a removed worktree's kept slug: a new worktree on its
+// path gets a cut one.
+func (l *Locations) forgetSlug(location, path string) {
+	if s, err := l.saved(location); err != nil || s.Slugs[path] == "" {
+		return
+	}
+	l.update(func(all []savedLocation) ([]savedLocation, error) {
+		for i := range all {
+			if all[i].Name == location {
+				delete(all[i].Slugs, path)
+				if len(all[i].Slugs) == 0 {
+					all[i].Slugs = nil
+				}
+			}
+		}
+		return all, nil
+	})
+}
+
 // WorktreeEnv is what everything run in a worktree gets: pierd's variables
 // for it (PIER_*), then the box's and the
 // location's env with those variables expanded.
@@ -434,8 +528,8 @@ func (b *Box) WorktreeEnv(ctx context.Context, location string, wt Worktree) ([]
 		"PIER_ROOT_PATH":     loc.Path,
 		"PIER_WORKTREE_PATH": wt.Path,
 		"PIER_WORKTREE_NAME": wt.Name,
-		// Safe in database and container names: shop_fix_checkout.
-		"PIER_WORKTREE_SLUG": strings.Trim(nonIdent.ReplaceAllString(strings.ToLower(loc.Name+"_"+wt.Name), "_"), "_"),
+		// Safe in database, user and container names: shop_fix_checkout.
+		"PIER_WORKTREE_SLUG": b.Locations.slug(loc.Name, wt),
 		"PIER_BRANCH":        wt.Branch,
 	}
 	if port, err := b.Locations.Ports.For(wt.Path); err != nil {

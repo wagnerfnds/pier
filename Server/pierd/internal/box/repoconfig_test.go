@@ -276,3 +276,94 @@ func TestAWorktreesTerminalsGetItsPortAsPORT(t *testing.T) {
 		t.Fatalf("the project's PORT was replaced: %q", e["PORT"])
 	}
 }
+
+// A worktree's slug names its database and database user: MySQL takes user
+// names of at most 32 characters, so a longer one is cut and keeps a hash of
+// the whole name, and two long names that start alike stay apart.
+func TestAWorktreeSlugFitsAMySQLUserName(t *testing.T) {
+	if got := worktreeSlug("shop", "fix-checkout"); got != "shop_fix_checkout" {
+		t.Fatalf("short slug = %q", got)
+	}
+	long := strings.Repeat("a", 40)
+	one, two := worktreeSlug("salesapp", long+"-one"), worktreeSlug("salesapp", long+"-two")
+	for _, s := range []string{one, two} {
+		if len(s) > 32 || !strings.HasPrefix(s, "salesapp_aaaa") {
+			t.Fatalf("long slug = %q (%d)", s, len(s))
+		}
+	}
+	if one == two {
+		t.Fatalf("two worktrees share the slug %q", one)
+	}
+	if worktreeSlug("salesapp", long+"-one") != one {
+		t.Fatal("a slug changed between calls")
+	}
+}
+
+// Worktrees made before slugs were cut keep the longer one their recipes
+// named a database or a cookie after; new ones get a cut one, and a kept
+// slug goes with its worktree.
+func TestWorktreesMadeBeforeTheCutKeepTheirSlug(t *testing.T) {
+	ctx := context.Background()
+	repo := gitRepo(t)
+	b := &Box{Name: "devbox", Locations: NewLocations(filepath.Join(t.TempDir(), "locations.json")), Events: &events.Bus{}}
+	if _, err := b.Locations.Add(ctx, "cal", repo); err != nil {
+		t.Fatal(err)
+	}
+	long := "fix-the-checkout-page-for-every-store"
+	old, err := b.Locations.CreateWorktree(ctx, "cal", long, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// As an older pierd left the location: its slugs never looked for.
+	b.Locations.update(func(all []savedLocation) ([]savedLocation, error) {
+		all[0].SlugsCut = false
+		return all, nil
+	})
+	if err := b.Locations.KeepLongSlugs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	slugOf := func(wt Worktree) string {
+		t.Helper()
+		env, err := b.WorktreeEnv(ctx, "cal", wt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, kv := range env {
+			if v, ok := strings.CutPrefix(kv, "PIER_WORKTREE_SLUG="); ok {
+				return v
+			}
+		}
+		t.Fatal("no PIER_WORKTREE_SLUG")
+		return ""
+	}
+	if got, want := slugOf(old), "cal_fix_the_checkout_page_for_every_store"; got != want {
+		t.Fatalf("an older worktree's slug = %q, want %q", got, want)
+	}
+	fresh, err := b.Locations.CreateWorktree(ctx, "cal", long+"-too", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := slugOf(fresh); len(got) > slugMax {
+		t.Fatalf("a new worktree's slug = %q", got)
+	}
+	// Looked for once: a second start keeps nothing more.
+	if err := b.Locations.KeepLongSlugs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := slugOf(fresh); len(got) > slugMax {
+		t.Fatalf("a new worktree's slug after a restart = %q", got)
+	}
+	if err := b.Locations.RemoveWorktree(ctx, "cal", long, true); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := b.Locations.saved("cal"); s.Slugs != nil {
+		t.Fatalf("a removed worktree's slug was kept: %v", s.Slugs)
+	}
+	again, err := b.Locations.CreateWorktree(ctx, "cal", long, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := slugOf(again); got != worktreeSlug("cal", long) {
+		t.Fatalf("a worktree made again on the path got %q", got)
+	}
+}

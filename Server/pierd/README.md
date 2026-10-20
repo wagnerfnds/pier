@@ -157,7 +157,8 @@ link by themselves.
 
 Everything run in a worktree (sessions, setup and archive scripts, services, `exec`, repository hooks) gets
 `PIER_BOX`, `PIER_LOCATION`, `PIER_ROOT_PATH`, `PIER_WORKTREE_PATH`, `PIER_WORKTREE_NAME`,
-`PIER_WORKTREE_SLUG`, `PIER_BRANCH`, `PIER_PORT`, `PIER_PORT_1`…, and `PORT`. Sessions also get
+`PIER_WORKTREE_SLUG` (safe in database and user names, at most 32 characters; a worktree made by an older pierd keeps
+the longer one it had), `PIER_BRANCH`, `PIER_PORT`, `PIER_PORT_1`…, and `PORT`. Sessions also get
 `PIER_SESSION`, `PIER_AGENT` and, in chats and home terminals too, the tokens Codex reads for the box's MCP servers
 (`PIER_MCP_<NAME>_TOKEN`, below); hooks get `PIER_EVENT` and `PIER_<KEY>` for the event's data.
 

@@ -325,6 +325,11 @@ func serve(b boxHome, args []string) error {
 		}
 		locations.Ports.First, locations.Ports.Last = first, last
 	}
+	// Before any worktree is made: the ones already here keep the slug
+	// their recipes named things after.
+	if err := locations.KeepLongSlugs(ctx); err != nil {
+		logger.Printf("keeping worktrees' slugs: %v", err)
+	}
 	watcher := &box.Watcher{Locations: locations, Events: bus, Box: hostname}
 	go watcher.Run(ctx)
 	turns := &box.Turns{

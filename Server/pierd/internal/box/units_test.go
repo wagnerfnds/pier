@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"pier/pierd/internal/service"
 )
@@ -262,5 +263,25 @@ func TestManagedUnitsComeBackFromACleanExit(t *testing.T) {
 	}
 	if !spec.RestartAlways {
 		t.Fatal("a managed unit must restart on a clean exit; an Orca runtime exited 0 and stayed dead")
+	}
+}
+
+// A unit asking to stay stopped after a clean exit and for time to shut down
+// gets both; every other unit keeps coming back, as before.
+func TestAUnitMayStayStoppedAndWaitForACleanShutdown(t *testing.T) {
+	u := &Units{Dir: t.TempDir()}
+	db, err := u.spec(UnitRequest{Name: "db-shop-main", Program: "/usr/sbin/mysqld", KeepStopped: true, StopTimeout: 5 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if db.RestartAlways || db.StopTimeout != 5*time.Minute {
+		t.Fatalf("database unit = %+v", db)
+	}
+	web, err := u.spec(UnitRequest{Name: "svc-shop-main-web", Program: "/bin/sh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !web.RestartAlways || web.StopTimeout != 0 {
+		t.Fatalf("service unit = %+v", web)
 	}
 }

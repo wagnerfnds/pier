@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func stub(t *testing.T, os_ string) (home string, calls *[]string) {
@@ -307,5 +308,50 @@ func TestPreflightOnAMacNeedsALoginSession(t *testing.T) {
 	}
 	if err := Preflight(); err == nil || !strings.Contains(err.Error(), "no login session") {
 		t.Errorf("without a GUI session: %v", err)
+	}
+}
+
+// A database stopped so its files can be copied must stay down, and must get
+// the minutes a clean shutdown takes before anything kills it.
+func TestAUnitCanWaitForACleanShutdownAndStayStopped(t *testing.T) {
+	db := Spec{Name: "db-shop-main", Program: "/usr/sbin/mysqld", StopTimeout: 5 * time.Minute}
+	stub(t, "linux")
+	unit, err := Render(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Restart=on-failure", "TimeoutStopSec=300\n"} {
+		if !strings.Contains(string(unit), want) {
+			t.Errorf("unit missing %q:\n%s", want, unit)
+		}
+	}
+	stub(t, "darwin")
+	plist, err := Render(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plist), "<key>ExitTimeOut</key><integer>300</integer>") {
+		t.Errorf("plist without the stop timeout:\n%s", plist)
+	}
+}
+
+// Units installed by an earlier pierd are compared byte for byte with what
+// this one renders (Installed): a unit that asks for nothing new must render
+// exactly as before, or every running service restarts after an upgrade.
+func TestAUnitAskingForNothingNewRendersAsBefore(t *testing.T) {
+	stub(t, "linux")
+	unit, err := Render(Spec{Name: "svc-shop-main-web", Description: "pier managed unit svc-shop-main-web",
+		Program: "/bin/sh", Args: []string{"-c", "npm run dev"}, Env: map[string]string{"PIER_PORT": "41000"},
+		LogPath: "/home/octocat/.config/pier/box/units/svc-shop-main-web.log", RestartAlways: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[Unit]\nDescription=pier managed unit svc-shop-main-web\nAfter=network-online.target\n\n" +
+		"[Service]\nType=simple\nExecStart=/bin/sh -c \"npm run dev\"\nEnvironment=PIER_PORT=41000\n" +
+		"StandardOutput=append:/home/octocat/.config/pier/box/units/svc-shop-main-web.log\n" +
+		"StandardError=append:/home/octocat/.config/pier/box/units/svc-shop-main-web.log\n" +
+		"Restart=always\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n"
+	if string(unit) != want {
+		t.Fatalf("unit changed:\n%s\nwant:\n%s", unit, want)
 	}
 }

@@ -108,6 +108,12 @@ type savedLocation struct {
 	Environment *Environment `json:"environment,omitempty"`
 	// Accounts are the agent accounts it uses (accounts.go).
 	Accounts map[string]string `json:"accounts,omitempty"`
+	// Slugs keeps, by path, the longer $PIER_WORKTREE_SLUG of the worktrees
+	// that were already here when slugs were cut to 32 characters, so what
+	// a recipe named after one (a database, a cookie) keeps its name.
+	// SlugsCut says they were looked for (KeepLongSlugs).
+	Slugs    map[string]string `json:"slugs,omitempty"`
+	SlugsCut bool              `json:"slugs_cut,omitempty"`
 }
 
 func (l *Locations) Add(ctx context.Context, name, path string) (Location, error) {
@@ -133,7 +139,7 @@ func (l *Locations) Add(ctx context.Context, name, path string) (Location, error
 			}
 			out = append(out, s)
 		}
-		return append(out, savedLocation{Name: name, Path: abs}), nil
+		return append(out, savedLocation{Name: name, Path: abs, SlugsCut: true}), nil
 	})
 	if err != nil {
 		return Location{}, err
@@ -237,13 +243,13 @@ func (l *Locations) CreateWorktreeFrom(ctx context.Context, location string, req
 	path := filepath.Join(filepath.Dir(loc.Path), filepath.Base(loc.Path)+"-"+name)
 	if !branchExists(ctx, loc.Path, "refs/heads/"+branch) && (req.PR > 0 || req.Ref != "" || branchExists(ctx, loc.Path, "refs/remotes/origin/"+branch)) {
 		// Bring origin's branch up to date; a PR's own branch may live there.
-		git(ctx, "-C", loc.Path, "fetch", "--quiet", "origin", branch)
+		gitWithin(ctx, gitCheckoutTimeout, "-C", loc.Path, "fetch", "--quiet", "origin", branch)
 		if !branchExists(ctx, loc.Path, "refs/remotes/origin/"+branch) && (req.PR > 0 || req.Ref != "") {
 			ref := req.Ref
 			if ref == "" {
 				ref = fmt.Sprintf("pull/%d/head", req.PR)
 			}
-			if out, err := git(ctx, "-C", loc.Path, "fetch", "--quiet", "origin", ref+":"+branch); err != nil {
+			if out, err := gitWithin(ctx, gitCheckoutTimeout, "-C", loc.Path, "fetch", "--quiet", "origin", ref+":"+branch); err != nil {
 				return Worktree{}, fmt.Errorf("git fetch %s: %s", ref, strings.TrimSpace(string(out)))
 			}
 		}
@@ -266,7 +272,7 @@ func (l *Locations) CreateWorktreeFrom(ctx context.Context, location string, req
 	_, statErr := os.Stat(path)
 	hadPath := statErr == nil
 	hadBranch := branchExists(ctx, loc.Path, "refs/heads/"+branch)
-	if out, err := git(context.WithoutCancel(ctx), args...); err != nil {
+	if out, err := gitWithin(context.WithoutCancel(ctx), gitCheckoutTimeout, args...); err != nil {
 		cleanUpFailedAdd(loc.Path, path, branch, hadPath, hadBranch)
 		return Worktree{}, fmt.Errorf("git worktree add: %s", strings.TrimSpace(string(out)))
 	}
@@ -285,7 +291,7 @@ func cleanUpFailedAdd(repo, path, branch string, hadPath, hadBranch bool) {
 	ctx := context.Background()
 	if !hadPath {
 		git(ctx, "-C", repo, "worktree", "unlock", path)
-		git(ctx, "-C", repo, "worktree", "remove", "--force", "--force", path)
+		gitWithin(ctx, gitCheckoutTimeout, "-C", repo, "worktree", "remove", "--force", "--force", path)
 		os.RemoveAll(path)
 	}
 	git(ctx, "-C", repo, "worktree", "prune")
@@ -347,9 +353,11 @@ func (l *Locations) RemoveWorktree(ctx context.Context, location, name string, f
 		if force {
 			args = append(args, "--force")
 		}
-		if out, err := git(ctx, args...); err != nil {
+		// Removing deletes the folder, vendor and node_modules with it.
+		if out, err := gitWithin(ctx, gitCheckoutTimeout, args...); err != nil {
 			return fmt.Errorf("git worktree remove: %s", strings.TrimSpace(string(out)))
 		}
+		l.forgetSlug(location, w.Path)
 		return nil
 	}
 	return ErrUnknownWorktree
@@ -434,15 +442,34 @@ func unquoteGit(v string) string {
 	return v
 }
 
+// gitTimeout bounds an ordinary git call; gitCheckoutTimeout a fetch, the
+// checkout of a new worktree and its removal, which in a large repository
+// take minutes.
+var (
+	gitTimeout         = 60 * time.Second
+	gitCheckoutTimeout = 15 * time.Minute
+)
+
 func git(ctx context.Context, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	return gitWithin(ctx, gitTimeout, args...)
+}
+
+// gitWithin runs git for at most d. Output cut short by the deadline says
+// so: what git printed until then ("Preparing worktree (new branch …)")
+// reads like it went well.
+func gitWithin(ctx context.Context, d time.Duration, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, d)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	// A fetch's ssh keeps the output open after git itself is killed at
 	// the deadline: give up on it rather than wait for it.
 	cmd.WaitDelay = 5 * time.Second
-	return cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		out = append(bytes.TrimRight(out, "\n"), fmt.Sprintf("\ngit stopped: it took longer than %s", d)...)
+	}
+	return out, err
 }
 
 func expandHome(path string) string {

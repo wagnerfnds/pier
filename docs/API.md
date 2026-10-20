@@ -259,14 +259,17 @@ Two ways to prepare a worktree:
   everything goes in user space: mise, `uv python install`, prebuilt binaries), the box's **preparation rules**
   (2.9; by default no Docker or LXD, no networking or firewall changes) and its goals: understand the project; install
   missing runtimes and system packages; dependencies; the database it expects (one per worktree, named after
-  `$PIER_WORKTREE_SLUG`; SQLite as a fallback); `.env` from `.env.example`; migrations and seeders; a test login for a
+  `$PIER_WORKTREE_SLUG`, at most 32 characters so it also fits a MySQL user name; SQLite as a fallback); `.env` from
+  `.env.example`; migrations and seeders; a test login for a
   web app; a dev server as a Pier service on `$PIER_PORT` that works behind the public link (on the relay's link
   domain once the box made a link, else "the box's public link domain"; assets a second dev server would serve on
   another port are built, a dev server serving the whole page keeps its hot reload) with every interactive debug
   console off (Rails' web-console, the Werkzeug debugger, Django's debug toolbar, Laravel Ignition's runnable
-  solutions; errors may still show); **a recipe** saved with `pierd location config <loc> --merge` (`setup`, `services`, `preview`,
-  marked `"by": "setup"`: the next worktrees replay it by script; its `setup` is POSIX sh,
-  since pierd runs scripts with `/bin/sh`, dash on Debian and Ubuntu); then report with `pierd preview set` and `pierd
+  solutions; errors may still show); **a recipe** saved with `pierd location config <loc> --merge` (`setup`, `archive`,
+  `services`, `preview`, marked `"by": "setup"`: the next worktrees replay it by script; its `setup` is POSIX sh,
+  since pierd runs scripts with `/bin/sh`, dash on Debian and Ubuntu; its `archive` drops what `setup` made for a
+  worktree outside its folder, its database and database user, and never fails, since a failing archive keeps the
+  worktree, 2.5); then report with `pierd preview set` and `pierd
   prepare done`, touching no tracked file it can avoid. A recipe someone wrote (the repository's, a person's on the
   box) is theirs: the agent is told to use it and fix only what the worktree lacks around it, saving none over it.
 
@@ -518,8 +521,8 @@ never move out of a space. The projects folder cannot be the home folder or one 
   Redis and Mongo are known: their port and data folder, root password `pier`, database `app`, and the variables the
   worktrees get (`DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `DATABASE_URL`;
   `REDIS_HOST`/`REDIS_PORT`/`REDIS_URL`; `MONGODB_URI`). Every container also gives `PIER_<NAME>_HOST` and
-  `PIER_<NAME>_PORT`. The project's and the box's own env win over these. Container variables reach Docker through a
-  0600 env file, never its command line.
+  `PIER_<NAME>_PORT`. These win over the box's variables (2.11), and the project's own env wins over them. Container
+  variables reach Docker through a 0600 env file, never its command line.
 * `compose: true` adds the service `compose` to every worktree: `docker compose -p "$PIER_COMPOSE_PROJECT" up` with
   the project's own compose file (a name unique to the worktree). Environment names (folders, images, units, volumes)
   carry a hash of the project's exact name, so `my-app` and `my_app` never share one.
