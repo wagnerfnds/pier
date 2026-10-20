@@ -127,7 +127,7 @@ func (b *Box) carryEntries(ctx context.Context, loc Location, wt Worktree) []str
 	}
 	if key, err := b.Locations.BaseKey(ctx, loc.Name); err == nil {
 		files := map[string]bool{}
-		for _, f := range b.baseFiles(key) {
+		for _, f := range b.lockedBaseFiles(key) {
 			files[f.Path] = true
 		}
 		kept := out[:0]
@@ -160,8 +160,19 @@ func carryOne(ctx context.Context, main, wt, p string) BaseResult {
 		res.Action, res.Reason = "skipped", "git does not ignore it"
 		return res
 	}
-	if info.IsDir() && gitTracks(ctx, main, p) {
-		res.Action, res.Reason = "skipped", "git tracks files in it"
+	if info.IsDir() {
+		if tracked, err := gitTracks(ctx, main, p); err != nil {
+			res.Action, res.Reason = "skipped", "git could not say whether it tracks files in it: "+err.Error()
+			return res
+		} else if tracked {
+			res.Action, res.Reason = "skipped", "git tracks files in it"
+			return res
+		}
+	}
+	// A link on the way (a folder of the worktree that is a link to
+	// somewhere else) would take the copy out of the worktree.
+	if !staysIn(wt, filepath.Dir(dst)) {
+		res.Action, res.Reason = "skipped", "a link on its way leads out of this worktree"
 		return res
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -179,6 +190,31 @@ func carryOne(ctx context.Context, main, wt, p string) BaseResult {
 	relinkInto(dst, main, wt)
 	res.Action, res.MS = "carried", time.Since(start).Milliseconds()
 	return res
+}
+
+// staysIn says dir, once its links are followed, is root or inside it. A
+// folder still to be made counts by the deepest part of it already there.
+func staysIn(root, dir string) bool {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	for {
+		if _, err := os.Lstat(dir); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return false
+	}
+	_, inside := relInside(realRoot, real)
+	return real == realRoot || inside
 }
 
 // relinkInto points links copied from the main checkout that lead into it

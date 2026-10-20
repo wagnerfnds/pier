@@ -3,10 +3,10 @@ package box
 import "testing"
 
 func TestEnvFileReadsValuesTheWayDotenvDoes(t *testing.T) {
-	f := parseEnvFile([]byte("# app\nAPP_NAME=\"Brokerfy CRM\"\nexport DB_HOST=127.0.0.1 # the box's\n" +
+	f := parseEnvFile([]byte("# app\nAPP_NAME=\"Acme CRM\"\nexport DB_HOST=127.0.0.1 # the box's\n" +
 		"DB_PASSWORD='p$ss#word'\nEMPTY=\nDB_PORT=3306\nDB_PORT=3307\nPRIVATE_KEY=\"-----BEGIN\nabc\n-----END\"\nnot a line\n"))
 	for key, want := range map[string]string{
-		"APP_NAME":    "Brokerfy CRM",
+		"APP_NAME":    "Acme CRM",
 		"DB_HOST":     "127.0.0.1",
 		"DB_PASSWORD": "p$ss#word",
 		"EMPTY":       "",

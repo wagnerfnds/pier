@@ -38,12 +38,20 @@ type teamSettings struct {
 	Group string `json:"group,omitempty"`
 }
 
-func readTeamSettings() (teamSettings, bool) {
-	var s teamSettings
-	if loadJSON(teamSettingsPath, &s) != nil || !filepath.IsAbs(s.Dir) {
-		return teamSettings{}, false
+// readTeamSettings reads the machine's team settings: ok is false when the
+// machine has none. Settings that are there but cannot be read (being
+// written, mistyped) are an error, which keeps what was copied.
+func readTeamSettings() (s teamSettings, ok bool, err error) {
+	err = loadJSON(teamSettingsPath, &s)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return teamSettings{}, false, nil
+	case err != nil:
+		return teamSettings{}, false, err
+	case !filepath.IsAbs(s.Dir):
+		return teamSettings{}, false, fmt.Errorf("%s: the team's folder %q is not an absolute path", teamSettingsPath, s.Dir)
 	}
-	return s, true
+	return s, true, nil
 }
 
 // teamPublished is a team project's published.json, written last by root
@@ -108,23 +116,34 @@ func teamStrip(c RepoConfig) RepoConfig {
 // syncTeam brings the box's copy of the team's base for location up to what
 // root published last (at most every few seconds), and says how the team's
 // base stands: nil when the machine has no team or the team no base for the
-// project.
+// project. Locations that share a base (two clones of one repository) share
+// the copy; each takes the team's config from it.
 func (b *Box) syncTeam(ctx context.Context, location string) *TeamView {
-	set, ok := readTeamSettings()
 	key, err := b.Locations.BaseKey(ctx, location)
 	if err != nil {
 		return nil
 	}
+	// One copy at a time, and nobody reads it halfway (baseFiles' callers
+	// hold the same lock).
+	mu := b.baseLock(key)
+	mu.Lock()
+	defer mu.Unlock()
 	mirror := filepath.Join(b.baseDir(key), "team")
+	set, ok, err := readTeamSettings()
+	if err != nil {
+		b.applyTeam(location, mirror)
+		return b.teamViewFromMirror(&TeamView{Error: "the machine's team settings cannot be read: " + err.Error()}, mirror)
+	}
 	if !ok {
 		b.dropTeam(location, mirror)
 		return nil
 	}
 	view := &TeamView{Dir: filepath.Join(set.Dir, "projects", key)}
-	if last, ok := b.teamSynced.Load(location); ok && time.Since(last.(time.Time)) < 5*time.Second {
+	if last, ok := b.teamSynced.Load(key); ok && time.Since(last.(time.Time)) < 5*time.Second {
+		b.applyTeam(location, mirror)
 		return b.teamViewFromMirror(view, mirror)
 	}
-	b.teamSynced.Store(location, time.Now())
+	b.teamSynced.Store(key, time.Now())
 	pub, err := teamRead(ctx, filepath.Join(view.Dir, "published.json"))
 	if errors.Is(err, fs.ErrNotExist) {
 		b.dropTeam(location, mirror)
@@ -132,14 +151,12 @@ func (b *Box) syncTeam(ctx context.Context, location string) *TeamView {
 	}
 	if err != nil {
 		view.Error = "the team's folder cannot be read: " + err.Error()
-		return b.teamViewFromMirror(view, mirror)
+	} else if have, _ := os.ReadFile(filepath.Join(mirror, "published.json")); !bytes.Equal(have, pub) {
+		if err := copyTeam(ctx, view.Dir, mirror, pub); err != nil {
+			view.Error = "the team's base could not be copied: " + err.Error()
+		}
 	}
-	if have, _ := os.ReadFile(filepath.Join(mirror, "published.json")); bytes.Equal(have, pub) {
-		return b.teamViewFromMirror(view, mirror)
-	}
-	if err := b.copyTeam(ctx, location, view.Dir, mirror, pub); err != nil {
-		view.Error = "the team's base could not be copied: " + err.Error()
-	}
+	b.applyTeam(location, mirror)
 	return b.teamViewFromMirror(view, mirror)
 }
 
@@ -154,18 +171,30 @@ func (b *Box) teamViewFromMirror(view *TeamView, mirror string) *TeamView {
 
 // copyTeam takes the team's published config and files into mirror, whole
 // or not at all: each file is checked against the hash published with it.
-func (b *Box) copyTeam(ctx context.Context, location, dir, mirror string, pubData []byte) error {
+// The config goes in as a member applies it (teamStrip). The caller holds
+// the base's lock.
+func copyTeam(ctx context.Context, dir, mirror string, pubData []byte) error {
 	var pub teamPublished
 	if err := json.Unmarshal(pubData, &pub); err != nil {
 		return fmt.Errorf("published.json: %w", err)
 	}
-	next := mirror + ".new"
-	os.RemoveAll(next)
-	if err := os.MkdirAll(filepath.Join(next, "files"), 0o700); err != nil {
+	// What a copy cut short (pierd stopped halfway) left.
+	if stale, _ := filepath.Glob(mirror + ".new-*"); len(stale) > 0 {
+		for _, p := range stale {
+			os.RemoveAll(p)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(mirror), 0o700); err != nil {
+		return err
+	}
+	next, err := os.MkdirTemp(filepath.Dir(mirror), filepath.Base(mirror)+".new-")
+	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(next)
-	var cfg *RepoConfig
+	if err := os.MkdirAll(filepath.Join(next, "files"), 0o700); err != nil {
+		return err
+	}
 	if pub.Config != "" {
 		data, err := teamRead(ctx, filepath.Join(dir, "config.json"))
 		if err != nil {
@@ -182,7 +211,9 @@ func (b *Box) copyTeam(ctx context.Context, location, dir, mirror string, pubDat
 		if err := c.validate(); err != nil {
 			return fmt.Errorf("config.json: %w", err)
 		}
-		cfg = &c
+		if err := saveJSON(filepath.Join(next, "config.json"), c); err != nil {
+			return err
+		}
 	}
 	for p, meta := range pub.Files {
 		clean, err := cleanBasePath(p)
@@ -207,8 +238,7 @@ func (b *Box) copyTeam(ctx context.Context, location, dir, mirror string, pubDat
 	if err := os.WriteFile(filepath.Join(next, "published.json"), pubData, 0o600); err != nil {
 		return err
 	}
-	old := mirror + ".old"
-	os.RemoveAll(old)
+	old := next + ".old"
 	if err := os.Rename(mirror, old); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -217,8 +247,36 @@ func (b *Box) copyTeam(ctx context.Context, location, dir, mirror string, pubDat
 		return err
 	}
 	os.RemoveAll(old)
+	return nil
+}
+
+// applyTeam gives location the team's config from the copy in mirror,
+// unless it has that one already.
+func (b *Box) applyTeam(location, mirror string) {
+	saved, err := b.Locations.saved(location)
+	if err != nil {
+		return
+	}
+	var pub teamPublished
+	if loadJSON(filepath.Join(mirror, "published.json"), &pub) != nil {
+		if saved.Team != nil || saved.TeamAt != nil {
+			b.Locations.SetTeam(location, nil, nil)
+		}
+		return
+	}
+	if saved.TeamAt != nil && saved.TeamAt.Equal(pub.At) {
+		return
+	}
+	var cfg *RepoConfig
+	if pub.Config != "" {
+		var c RepoConfig
+		if loadJSON(filepath.Join(mirror, "config.json"), &c) != nil {
+			return
+		}
+		cfg = &c
+	}
 	at := pub.At
-	return b.Locations.SetTeam(location, cfg, &at)
+	b.Locations.SetTeam(location, cfg, &at)
 }
 
 // dropTeam forgets the team's base for location: the machine has no team any

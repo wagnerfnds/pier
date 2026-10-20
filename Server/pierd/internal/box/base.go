@@ -211,7 +211,8 @@ type baseFile struct {
 }
 
 // baseFiles are a project's base files: the team's, and the box's own over
-// them by path.
+// them by path. The caller holds the base's lock, or the team's copy could
+// be read halfway through being replaced (lockedBaseFiles).
 func (b *Box) baseFiles(key string) []baseFile {
 	byPath := map[string]baseFile{}
 	var pub teamPublished
@@ -233,16 +234,31 @@ func (b *Box) baseFiles(key string) []baseFile {
 	return out
 }
 
+// lockedBaseFiles is baseFiles for a caller that does not hold the lock.
+func (b *Box) lockedBaseFiles(key string) []baseFile {
+	mu := b.baseLock(key)
+	mu.Lock()
+	defer mu.Unlock()
+	return b.baseFiles(key)
+}
+
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
 
 // gitTracks says git tracks rel (or, for a folder, something in it) in the
-// checkout at dir.
-func gitTracks(ctx context.Context, dir, rel string) bool {
+// checkout at dir. When git cannot tell (a request cancelled), callers leave
+// the path alone rather than write secrets into a file a commit takes.
+func gitTracks(ctx context.Context, dir, rel string) (bool, error) {
 	out, err := git(ctx, "-C", dir, "ls-files", "-z", "--", rel)
-	return err == nil && len(bytes.TrimSpace(out)) > 0
+	if err != nil {
+		if msg := strings.TrimSpace(string(out)); msg != "" {
+			return false, fmt.Errorf("git ls-files: %s", msg)
+		}
+		return false, fmt.Errorf("git ls-files: %w", err)
+	}
+	return len(bytes.TrimSpace(out)) > 0, nil
 }
 
 // gitIgnores says git ignores rel in the checkout at dir.
@@ -255,6 +271,12 @@ func gitIgnores(ctx context.Context, dir, rel string) bool {
 // of the repository (the app commits with `git add -A`): an anchored line in
 // the shared info/exclude, the repository's own ignore file left as it is.
 func excludeLocally(ctx context.Context, dir, rel string) error {
+	return excludeLine(ctx, dir, "/"+rel)
+}
+
+// excludeLine adds line to the repository's shared info/exclude, under a
+// comment that says it is Pier's.
+func excludeLine(ctx context.Context, dir, line string) error {
 	out, err := git(ctx, "-C", dir, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return fmt.Errorf("git rev-parse: %s", strings.TrimSpace(string(out)))
@@ -264,7 +286,6 @@ func excludeLocally(ctx context.Context, dir, rel string) error {
 		common = filepath.Join(dir, common)
 	}
 	exclude := filepath.Join(common, "info", "exclude")
-	line := "/" + rel
 	have, _ := os.ReadFile(exclude)
 	header := false
 	for _, l := range strings.Split(string(have), "\n") {
@@ -301,16 +322,19 @@ const excludeHeader = "# Files the project's base writes into its checkouts (Pie
 
 // writeInRoot writes data to rel inside root, whole or not at all: a
 // temporary file beside it, renamed over it. Nothing is written through a
-// link: the rename replaces the name itself.
+// link: the rename replaces the name itself. The temporary file's name is
+// one git is told to ignore (tempExclude), so one left by a crash is never
+// committed.
 func writeInRoot(root *os.Root, rel string, data []byte) error {
-	if dir := filepath.Dir(rel); dir != "." {
+	dir := filepath.Dir(rel)
+	if dir != "." {
 		if err := root.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 	}
 	var suffix [4]byte
 	rand.Read(suffix[:])
-	tmp := rel + ".pier-" + hex.EncodeToString(suffix[:])
+	tmp := filepath.Join(dir, tempPrefix+hex.EncodeToString(suffix[:]))
 	if err := root.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
@@ -320,6 +344,13 @@ func writeInRoot(root *os.Root, rel string, data []byte) error {
 	}
 	return nil
 }
+
+// tempPrefix starts the name of a file writeInRoot is writing, and
+// tempExclude is the info/exclude line that matches it anywhere.
+const (
+	tempPrefix  = ".pier-write-"
+	tempExclude = tempPrefix + "*"
+)
 
 // applyBaseFiles writes the project's base files into the checkout at wt: a
 // missing one is written; one the checkout still has as pierd wrote it is
@@ -333,13 +364,16 @@ func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []B
 	if err != nil {
 		return nil
 	}
+	mu := b.baseLock(key)
+	mu.Lock()
+	defer mu.Unlock()
 	files := b.baseFiles(key)
 	if len(files) == 0 {
 		return nil
 	}
-	mu := b.baseLock(key)
-	mu.Lock()
-	defer mu.Unlock()
+	if err := excludeLine(ctx, wt.Path, tempExclude); err != nil {
+		return []BaseResult{{Path: ".", Action: "failed", Reason: "adding pierd's temporary files to .git/info/exclude failed: " + err.Error()}}
+	}
 	writtenPath := filepath.Join(b.baseDir(key), "written.json")
 	written := map[string]map[string]writtenFile{}
 	loadJSON(writtenPath, &written)
@@ -372,7 +406,10 @@ func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []B
 func (b *Box) applyBaseFile(ctx context.Context, root *os.Root, wt Worktree, f baseFile, mine map[string]writtenFile) BaseResult {
 	res := BaseResult{Path: f.Path}
 	rel := filepath.FromSlash(f.Path)
-	if gitTracks(ctx, wt.Path, f.Path) {
+	if tracked, err := gitTracks(ctx, wt.Path, f.Path); err != nil {
+		res.Action, res.Reason = "skipped", "git could not say whether it tracks it: "+err.Error()
+		return res
+	} else if tracked {
 		res.Action, res.Reason = "skipped", "git tracks it in this checkout"
 		return res
 	}
@@ -529,7 +566,9 @@ func (b *Box) addBaseFile(ctx context.Context, loc Location, dir, from, rel stri
 	if err != nil {
 		return err
 	}
-	if gitTracks(ctx, dir, p) {
+	if tracked, err := gitTracks(ctx, dir, p); err != nil {
+		return fmt.Errorf("git could not say whether it tracks %s: %w", p, err)
+	} else if tracked {
 		return badRequest("git tracks %s: the base is for files the repository leaves out", p)
 	}
 	root, err := os.OpenRoot(dir)
@@ -651,13 +690,13 @@ type BaseRecipe struct {
 
 var keyPart = regexp.MustCompile(`[^a-z0-9._-]+`)
 
-func (b *Box) baseView(ctx context.Context, loc Location) (BaseView, error) {
-	key, err := b.Locations.BaseKey(ctx, loc.Name)
-	if err != nil {
-		return BaseView{}, err
-	}
-	view := BaseView{Key: key, Files: []BaseFileView{}, Carry: []BaseCarryView{}, Warnings: []string{}}
-	view.Team = b.syncTeam(ctx, loc.Name)
+// baseFileViews are the base's files as GET …/base shows them: a dotenv
+// file's keys, never a value.
+func (b *Box) baseFileViews(key string) []BaseFileView {
+	mu := b.baseLock(key)
+	mu.Lock()
+	defer mu.Unlock()
+	var out []BaseFileView
 	for _, f := range b.baseFiles(key) {
 		fv := BaseFileView{Path: f.Path, Kind: "file", Size: f.Size, SHA: f.SHA, From: f.Layer}
 		if len(fv.SHA) > 8 {
@@ -673,8 +712,19 @@ func (b *Box) baseView(ctx context.Context, loc Location) (BaseView, error) {
 				fv.Keys = parseEnvFile(data).keys()
 			}
 		}
-		view.Files = append(view.Files, fv)
+		out = append(out, fv)
 	}
+	return out
+}
+
+func (b *Box) baseView(ctx context.Context, loc Location) (BaseView, error) {
+	key, err := b.Locations.BaseKey(ctx, loc.Name)
+	if err != nil {
+		return BaseView{}, err
+	}
+	view := BaseView{Key: key, Files: []BaseFileView{}, Carry: []BaseCarryView{}, Warnings: []string{}}
+	view.Team = b.syncTeam(ctx, loc.Name)
+	view.Files = append(view.Files, b.baseFileViews(key)...)
 	cfg, err := b.Locations.Config(ctx, loc.Name)
 	if err != nil {
 		return view, err

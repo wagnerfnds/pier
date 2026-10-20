@@ -80,7 +80,7 @@ type Box struct {
 	// envLocks keeps one environment apply per location at a time.
 	envLocks sync.Map
 	// baseLocks keeps one change to a project's base at a time (base.go),
-	// and teamSynced when each location last copied the team's (team.go).
+	// and teamSynced when each base last copied the team's (team.go).
 	baseLocks  sync.Map
 	teamSynced sync.Map
 	// prep is how each worktree's preparation went (prepare.go).

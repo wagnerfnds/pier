@@ -3,10 +3,12 @@ package box
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -312,7 +314,7 @@ func TestTheTeamsBaseLiesUnderTheBoxsOwn(t *testing.T) {
 		}
 		data, _ := json.Marshal(pub)
 		os.WriteFile(filepath.Join(proj, "published.json"), data, 0o640)
-		bx.teamSynced.Delete("cal")
+		bx.teamSynced.Delete(key)
 	}
 	publish(map[string]string{".env": "APP_KEY=team\n", "storage/oauth-private.key": "KEY"},
 		`{"setup": "echo team > recipe.txt", "base": {"carry": ["vendor"]}, "prepare_with": "agent", "hooks": [{"on": "worktree.created", "run": "touch /tmp/x"}]}`)
@@ -347,7 +349,7 @@ func TestTheTeamsBaseLiesUnderTheBoxsOwn(t *testing.T) {
 	}
 	// Root takes the project's base away: the box forgets it.
 	os.RemoveAll(proj)
-	bx.teamSynced.Delete("cal")
+	bx.teamSynced.Delete(key)
 	view = BaseView{}
 	do("GET", "/v1/locations/cal/base", nil, &view)
 	if view.Team != nil || len(view.Files) != 1 {
@@ -400,7 +402,7 @@ func TestASetupAgentPuttingTheBaseInPlaceIsNotTakenForAVanishedOne(t *testing.T)
 
 func TestABaseKeyIsTheRepositorysOwnerAndName(t *testing.T) {
 	for slug, want := range map[string]string{
-		"WagnerFnds/777leads":  "wagnerfnds__777leads",
+		"Acme-Corp/Sales42":    "acme-corp__sales42",
 		"octo-org/shop.api":    "octo-org__shop.api",
 		"":                     "local-" + envKey("shop"),
 		"weird/name/with/more": "local-" + envKey("shop"),
@@ -449,5 +451,191 @@ func TestTheSetupAgentHearsWhatTheBasePutInPlace(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("prompt lacks %q", want)
 		}
+	}
+}
+
+// useTeam points the box at a team folder of its own and returns what
+// publishes a project's base in it as root does: files, a config, then
+// published.json last.
+func useTeam(t *testing.T) (dir string, publish func(key string, files map[string]string, cfg string)) {
+	t.Helper()
+	dir = t.TempDir()
+	settings := filepath.Join(t.TempDir(), "team.json")
+	os.WriteFile(settings, []byte(`{"dir":"`+dir+`","group":"pier"}`), 0o644)
+	old := teamSettingsPath
+	teamSettingsPath = settings
+	t.Cleanup(func() { teamSettingsPath = old })
+	return dir, func(key string, files map[string]string, cfg string) {
+		proj := filepath.Join(dir, "projects", key)
+		os.RemoveAll(proj)
+		os.MkdirAll(filepath.Join(proj, "files"), 0o755)
+		pub := teamPublished{At: time.Now().UTC(), Files: map[string]teamFileMeta{}}
+		for p, content := range files {
+			os.MkdirAll(filepath.Dir(filepath.Join(proj, "files", p)), 0o755)
+			os.WriteFile(filepath.Join(proj, "files", p), []byte(content), 0o640)
+			pub.Files[p] = teamFileMeta{SHA: sha256Hex([]byte(content)), Size: int64(len(content))}
+		}
+		if cfg != "" {
+			os.WriteFile(filepath.Join(proj, "config.json"), []byte(cfg), 0o640)
+			pub.Config = sha256Hex([]byte(cfg))
+		}
+		data, _ := json.Marshal(pub)
+		os.WriteFile(filepath.Join(proj, "published.json"), data, 0o640)
+	}
+}
+
+// Two clones of one repository share its base and the box's copy of the
+// team's: each takes the team's config, not only the first to copy it.
+func TestTwoClonesOfOneRepositoryBothTakeTheTeamsBase(t *testing.T) {
+	repo := baseRepo(t)
+	other := filepath.Join(filepath.Dir(repo), "cal-clone")
+	for _, args := range [][]string{
+		{"-C", repo, "remote", "add", "origin", "https://github.com/acme/cal.git"},
+		{"clone", "-q", repo, other},
+		{"-C", other, "remote", "set-url", "origin", "https://github.com/acme/cal.git"},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	bx, do, _ := baseBox(t)
+	do("POST", "/v1/locations", map[string]string{"name": "cal", "path": repo}, nil)
+	do("POST", "/v1/locations", map[string]string{"name": "cal2", "path": other}, nil)
+	ctx := context.Background()
+	k1, _ := bx.Locations.BaseKey(ctx, "cal")
+	k2, _ := bx.Locations.BaseKey(ctx, "cal2")
+	if k1 != "acme__cal" || k2 != k1 {
+		t.Fatalf("keys = %q, %q", k1, k2)
+	}
+	_, publish := useTeam(t)
+	publish(k1, map[string]string{".env": "APP_KEY=team\n"}, `{"setup": "echo team"}`)
+	for _, loc := range []string{"cal", "cal2"} {
+		var view BaseView
+		do("GET", "/v1/locations/"+loc+"/base", nil, &view)
+		cfg, _ := bx.Locations.Config(ctx, loc)
+		if view.Team == nil || cfg.Team == nil || cfg.Effective.Setup != "echo team" {
+			t.Fatalf("%s did not take the team's base: %+v, config %+v", loc, view.Team, cfg.Team)
+		}
+	}
+}
+
+// Syncs of one base that run at once (a worktree made while the app reads
+// the base) never leave the copy missing a file.
+func TestSyncsOfOneBaseAtOnceLeaveAWholeCopy(t *testing.T) {
+	repo := baseRepo(t)
+	bx, do, _ := baseBox(t)
+	do("POST", "/v1/locations", map[string]string{"name": "cal", "path": repo}, nil)
+	ctx := context.Background()
+	key, _ := bx.Locations.BaseKey(ctx, "cal")
+	_, publish := useTeam(t)
+	files := map[string]string{}
+	for i := range 30 {
+		files[fmt.Sprintf("storage/keys/k%02d.key", i)] = strings.Repeat("k", 2000+i)
+	}
+	for round := range 5 {
+		files[".env"] = fmt.Sprintf("ROUND=%d\n", round)
+		publish(key, files, "")
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				bx.teamSynced.Delete(key)
+				bx.syncTeam(ctx, "cal")
+			}()
+		}
+		wg.Wait()
+		got := bx.lockedBaseFiles(key)
+		if len(got) != len(files) {
+			t.Fatalf("round %d: the copy has %d files, want %d", round, len(got), len(files))
+		}
+		for _, f := range got {
+			if data, err := os.ReadFile(f.Source); err != nil || string(data) != files[f.Path] {
+				t.Fatalf("round %d: %s = %q, %v", round, f.Path, data, err)
+			}
+		}
+	}
+	if stale, _ := filepath.Glob(filepath.Join(bx.baseDir(key), "team.*")); len(stale) > 0 {
+		t.Fatalf("copies left behind: %v", stale)
+	}
+}
+
+// Team settings that cannot be read (root writing them, a typo) keep what
+// was copied: only a machine with no settings has no team.
+func TestUnreadableTeamSettingsKeepTheCopy(t *testing.T) {
+	repo := baseRepo(t)
+	bx, do, _ := baseBox(t)
+	do("POST", "/v1/locations", map[string]string{"name": "cal", "path": repo}, nil)
+	ctx := context.Background()
+	key, _ := bx.Locations.BaseKey(ctx, "cal")
+	_, publish := useTeam(t)
+	publish(key, map[string]string{".env": "APP_KEY=team\n"}, `{"setup": "echo team"}`)
+	var view BaseView
+	do("GET", "/v1/locations/cal/base", nil, &view)
+	if view.Team == nil || len(view.Files) != 1 {
+		t.Fatalf("before = %+v", view)
+	}
+	os.WriteFile(teamSettingsPath, []byte(`{"dir": `), 0o644)
+	bx.teamSynced.Delete(key)
+	view = BaseView{}
+	do("GET", "/v1/locations/cal/base", nil, &view)
+	if view.Team == nil || !strings.Contains(view.Team.Error, "settings cannot be read") || len(view.Files) != 1 {
+		t.Fatalf("with unreadable settings = %+v (team %+v)", view, view.Team)
+	}
+	if cfg, _ := bx.Locations.Config(ctx, "cal"); cfg.Team == nil {
+		t.Fatal("the team's config was dropped")
+	}
+	os.Remove(teamSettingsPath)
+	view = BaseView{}
+	do("GET", "/v1/locations/cal/base", nil, &view)
+	if view.Team != nil || len(view.Files) != 0 {
+		t.Fatalf("with no settings = %+v", view)
+	}
+}
+
+// A folder carried into a worktree never lands outside it through a link
+// someone made there.
+func TestACarriedFolderNeverFollowsALinkOutOfTheWorktree(t *testing.T) {
+	repo := baseRepo(t)
+	wt := filepath.Join(filepath.Dir(repo), "cal-linked")
+	if out, err := exec.Command("git", "-C", repo, "worktree", "add", "-q", "-b", "linked", wt).CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add: %s", out)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(wt, "vendor")); err != nil {
+		t.Fatal(err)
+	}
+	res := carryOne(context.Background(), repo, wt, "vendor/acme")
+	if res.Action != "skipped" || !strings.Contains(res.Reason, "leads out of this worktree") {
+		t.Fatalf("carried through a link: %+v", res)
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("written outside the worktree: %v", entries)
+	}
+}
+
+// A file pierd was writing when it stopped is never offered for a commit,
+// and a checkout git cannot read gets no base file.
+func TestPierdsTemporaryFilesStayOutOfCommits(t *testing.T) {
+	repo := baseRepo(t)
+	bx, do, _ := baseBox(t)
+	do("POST", "/v1/locations", map[string]string{"name": "cal", "path": repo}, nil)
+	do("POST", "/v1/locations/cal/base/files", map[string]string{"path": ".env"}, nil)
+	os.Remove(filepath.Join(repo, ".env"))
+	loc, _ := bx.Locations.Get(context.Background(), "cal")
+	main := loc.Worktrees[0]
+	for _, r := range bx.applyBaseFiles(context.Background(), loc, main) {
+		if r.Action != "written" {
+			t.Fatalf("applied = %+v", r)
+		}
+	}
+	os.MkdirAll(filepath.Join(repo, "config"), 0o755)
+	os.WriteFile(filepath.Join(repo, "config", tempPrefix+"0badf00d"), []byte("SECRET=1"), 0o600)
+	out, err := exec.Command("git", "-C", repo, "status", "--porcelain", "--untracked-files=all").CombinedOutput()
+	if err != nil || strings.Contains(string(out), tempPrefix) {
+		t.Fatalf("git status = %s %v", out, err)
+	}
+	if _, err := gitTracks(context.Background(), t.TempDir(), ".env"); err == nil {
+		t.Fatal("git answered outside a repository")
 	}
 }

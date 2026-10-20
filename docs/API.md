@@ -785,10 +785,11 @@ What every new worktree of a project gets that git does not bring, configured on
 * **Files** the box keeps for the project, untracked in it (`.env`, `.env.testing`, `auth.json`, keys). They go into
   each checkout as it is made (with `prepare: false` too; never into a pull request's made from `pr`/`ref` unless
   asked with `…/base/apply`), through the checkout's own folder (never through a link: a temporary file renamed into
-  place, mode 0600). A missing file is written; one the checkout still has as pierd wrote it is updated when the base
-  changes; one someone changed there stays. A dotenv file (`.env`, `.env.*`) goes the same way key by key. A path
-  git tracks in that checkout is skipped, and one git does not ignore is added to the repository's
-  `.git/info/exclude` (the app commits with `git add -A`). pierd keeps the files in `$PIER_HOME/box/base/<key>/`
+  place, mode 0600, named `.pier-write-*`, which pierd adds to `.git/info/exclude` first). A missing file is written;
+  one the checkout still has as pierd wrote it is updated when the base changes; one someone changed there stays. A
+  dotenv file (`.env`, `.env.*`) goes the same way key by key. A path git tracks in that checkout is skipped (so is
+  one git cannot say about), and one git does not ignore is added to the repository's `.git/info/exclude` (the app
+  commits with `git add -A`). pierd keeps the files in `$PIER_HOME/box/base/<key>/`
   (0600) and, of what it wrote into each checkout, only hashes.
 * **Carried folders**: ignored folders or files of the main checkout (`vendor`, `node_modules`, a downloaded binary)
   copied into each new worktree before its recipe runs or its setup agent starts (`cp -a --reflink=auto` on Linux,
@@ -796,7 +797,7 @@ What every new worktree of a project gets that git does not bring, configured on
   install only brings them up to date. They come from the config's `base.carry` (the repository's, the team's and
   the box's add up) and the repository's `.worktreeinclude` (Claude Code's file: gitignore patterns, only what git
   ignores). Never carried: `storage`, `storage/framework`, `storage/logs`, `bootstrap/cache`, `public/hot`, `.venv`,
-  `venv`, a base file. A link copied from the main checkout that points into it (Laravel's `public/storage`) is
+  `venv`, a base file, a path a link in the worktree would take outside it. A link copied from the main checkout that points into it (Laravel's `public/storage`) is
   pointed at the worktree's own place. A failure is reported, never fatal: the recipe can still install from
   scratch.
 
@@ -808,7 +809,8 @@ the team's folder (`/etc/pier/team.json` names it; `projects/<key>/` in it, read
 agents), its `files/`, and `published.json`, written last, with each file's sha256. Each member's pierd copies them,
 checked against those hashes, into `$PIER_HOME/box/base/<key>/team/` when a worktree is made or prepared and when
 `GET …/base` is read (at most every 5 s), through a child given the group by `sg` when pierd started before its user
-joined the group. The team's config lies between the repository's and the box's own (2.6), its files under the box's
+joined the group. Projects of the box with the same `origin` share the copy and each takes the team's config from it.
+Team settings that cannot be read keep the last copy; only a machine without them has no team. The team's config lies between the repository's and the box's own (2.6), its files under the box's
 own by path. A clone of a project the team has a recipe for runs it (2.8, `setup: "team"`).
 
 `GET /v1/locations/{loc}/base` (never a file's content):
