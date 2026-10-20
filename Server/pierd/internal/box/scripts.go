@@ -50,6 +50,9 @@ type RepoConfig struct {
 	Services []WorktreeService `json:"services,omitempty"`
 	// Hooks run for this repository's events only, in the worktree.
 	Hooks []hooks.Hook `json:"hooks,omitempty"`
+	// Base is what each new worktree gets from the project's base (base.go)
+	// besides its files: the folders carried from the main checkout.
+	Base *BaseConfig `json:"base,omitempty"`
 	// Preview is what each prepared worktree's page is (preview.go): its
 	// path and a test login, on the worktree's $PIER_PORT. A worktree
 	// prepared by the setup script gets it as its preview.
@@ -81,15 +84,21 @@ type RepoConfig struct {
 // repository's.
 func scriptsFor(saved savedLocation) Scripts {
 	repo, _, _ := repoLayer(saved)
+	team := RepoConfig{}
+	if saved.Team != nil {
+		team = *saved.Team
+	}
 	local := RepoConfig{Setup: saved.Setup, Archive: saved.Archive}
 	if saved.Config != nil {
 		local = merge(local, *saved.Config)
 	}
-	c := merge(repo, local)
+	c := merge(merge(repo, team), local)
 	from := ""
 	switch {
 	case local.Setup != "" || local.Archive != "":
 		from = "box"
+	case team.Setup != "" || team.Archive != "":
+		from = "team"
 	case repo.Setup != "" || repo.Archive != "":
 		from = "repo"
 	}

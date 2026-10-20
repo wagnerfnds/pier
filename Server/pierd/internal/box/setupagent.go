@@ -236,6 +236,20 @@ func (b *Box) putSetupAgent(w http.ResponseWriter, r *http.Request) error {
 // after the previous run's; a start that fails ends the preparation, saying
 // why. failure is what a recipe that ran first said.
 func (b *Box) runSetupAgent(from, gateFrom string, loc Location, wt Worktree, name, previous, failure string) {
+	// A fresh run puts the project's base in place first; one taking over
+	// a recipe that failed has it already.
+	if failure == "" {
+		b.prepareBase(from, loc, wt)
+	}
+	// Its session's grace (settleVanished) starts now that it is about to
+	// start.
+	b.preps().update(prepKey(loc.Name, wt.Name), func(r *prepRecord) {
+		if r.State == "running" {
+			now := time.Now()
+			r.Since = &now
+		}
+	})
+	b.prepareStep(from, loc, wt, "agent")
 	if err := b.startSetupAgent(context.Background(), from, gateFrom, loc, wt, name, previous, failure); err != nil {
 		b.finishPrepare(from, loc, wt, fmt.Errorf("the setup agent could not start: %w", err))
 	}
@@ -567,6 +581,10 @@ type setupPromptData struct {
 	// Failure is what the setup script a setup agent saved said as it
 	// failed here.
 	Failure string
+	// BaseFiles are the untracked files the project's base put in the
+	// worktree, and Carried the folders it copied from the main checkout.
+	BaseFiles []string
+	Carried   []string
 }
 
 const setupPromptText = `You are the setup agent of a Pier box: you prepare a fresh checkout of the project {{.Location}} so that it runs, alone and unattended. Nobody is watching and nobody will answer a question, so never ask one: decide, act, and say what you did. Work on the box's environment only: another agent may be changing the project's code in this folder at the same time.
@@ -585,6 +603,12 @@ const setupPromptText = `You are the setup agent of a Pier box: you prepare a fr
 - Your environment already has ` + "`PIER_PORT`, `PIER_LOCATION`, `PIER_WORKTREE_NAME`, `PIER_WORKTREE_PATH`, `PIER_ROOT_PATH`, `PIER_BRANCH` and `PIER_WORKTREE_SLUG`" + ` (safe in database and user names, at most 32 characters).
 {{- if .Isolated}}
 - This project has an isolated environment: its language runs from launchers in ` + "`$PIER_ENV_BIN`" + ` (first on PATH), and its databases are reached through ` + "`DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` and `DATABASE_URL`" + `. Use them: do not install another runtime or database for it.
+{{- end}}
+{{- if .BaseFiles}}
+- The project's base already put these untracked files here: {{range $i, $f := .BaseFiles}}{{if $i}}, {{end}}` + "`{{$f}}`" + `{{end}}. They are the project's own: use them as they are, never write them again (no .env from .env.example), and change only a value this worktree alone needs.
+{{- end}}
+{{- if .Carried}}
+- These ignored folders were copied from the main checkout: {{range $i, $f := .Carried}}{{if $i}}, {{end}}` + "`{{$f}}`" + `{{end}}. Bring them up to date with the project's install (composer install, npm install --prefer-offline --no-audit --no-fund, bundle install, uv sync), never a clean one: no npm ci (it deletes node_modules first), and never delete them.
 {{- end}}
 - ` + "`{{.Pierd}}`" + ` is Pier's own command on this box; the steps below use it.
 
@@ -611,7 +635,7 @@ const setupPromptText = `You are the setup agent of a Pier box: you prepare a fr
         "preview": {"path": "/login", "login": {"user": "<test user>", "password": "<its password>"}}}
        JSON
 
-   The setup script runs in each new worktree's folder with that worktree's own ` + "`$PIER_*`" + ` variables: use them, never this worktree's values. It must work on a fresh checkout and when run twice, and hold only what each worktree needs (dependencies, .env, its database, migrations, seeders, the asset build), not what you installed once for the box. pierd runs it with /bin/sh (dash on Debian and Ubuntu), not bash: write POSIX sh (` + "`set -eu`" + `, no ` + "`pipefail`" + `, arrays, ` + "`[[ ]]`" + ` or ` + "`source`" + `; call ` + "`bash -c`" + ` for a part that needs bash). Run it here once with ` + "`sh`" + ` to check it. The archive script runs the same way in a worktree's folder just before the worktree is removed: it drops only that worktree's own database and database user (by its ` + "`$PIER_WORKTREE_SLUG`" + `) and never fails (end each command with ` + "`|| true`" + `), since a failing archive keeps the worktree. Leave "archive" out when setup makes nothing outside the folder, and "preview" when the app has no page.
+   The setup script runs in each new worktree's folder with that worktree's own ` + "`$PIER_*`" + ` variables: use them, never this worktree's values.{{if or .BaseFiles .Carried}} pierd puts the project's base in place before it runs (the files and folders above), so the script only brings what is there up to date: the install, migrations, the build; it never writes those files.{{end}} It must work on a fresh checkout and when run twice, and hold only what each worktree needs (dependencies, .env, its database, migrations, seeders, the asset build), not what you installed once for the box. pierd runs it with /bin/sh (dash on Debian and Ubuntu), not bash: write POSIX sh (` + "`set -eu`" + `, no ` + "`pipefail`" + `, arrays, ` + "`[[ ]]`" + ` or ` + "`source`" + `; call ` + "`bash -c`" + ` for a part that needs bash). Run it here once with ` + "`sh`" + ` to check it. The archive script runs the same way in a worktree's folder just before the worktree is removed: it drops only that worktree's own database and database user (by its ` + "`$PIER_WORKTREE_SLUG`" + `) and never fails (end each command with ` + "`|| true`" + `), since a failing archive keeps the worktree. Leave "archive" out when setup makes nothing outside the folder, and "preview" when the app has no page.
 {{- end}}
 9. Report:
    - for a web app: ` + "`{{.Pierd}} preview set {{.Ref}} --port $PIER_PORT --path /login --user <test user> --password <its password>`" + ` (leave out what does not apply);
@@ -684,6 +708,9 @@ func (b *Box) setupPrompt(ctx context.Context, loc Location, wt Worktree, failur
 	}
 	if failure != "" {
 		d.Failure, d.OwnRecipe = clip(strings.TrimSpace(failure), 4000), false
+	}
+	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && r.Base != nil {
+		d.BaseFiles, d.Carried = writtenPaths(r.Base.Files), carriedPaths(r.Base.Carried)
 	}
 	return renderSetupPrompt(d)
 }

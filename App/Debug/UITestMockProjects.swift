@@ -206,6 +206,7 @@ struct MockProjects {
             guard mcp.contains(where: { $0["name"] as? String == p[2] }) else { return (404, Self.json(["error": "no MCP server named \(p[2])", "code": "not_found"])) }
             mcp.removeAll { $0["name"] as? String == p[2] }
             return (200, Self.json(["removed": p[2]]))
+        case (.get, 4, "locations") where p[3] == "base": return (200, baseJSON(p[2]))
         case (.get, 4, "locations") where p[3] == "environment": return (200, environmentJSON(p[2]))
         case (.put, 4, "locations") where p[3] == "environment":
             let empty = (req["runtime"] == nil) && ((req["containers"] as? [Any])?.isEmpty ?? true) && (req["compose"] as? Bool) != true
@@ -446,9 +447,45 @@ struct MockProjects {
         return (Date().timeIntervalSince(at) < 2 ? "running" : "ready", at)
     }
 
+    /// The project's base: sandbox has the team's (its .env and auth.json, vendor and node_modules carried, the team's
+    /// recipe); every other project has none yet.
+    func baseJSON(_ location: String) -> Data {
+        guard location == "sandbox" else {
+            return Self.json(["key": "local-\(location)-1a2b3c", "files": [] as [Any], "carry": [] as [Any], "warnings": [] as [Any]])
+        }
+        let at = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3 * 3600))
+        return Self.json([
+            "key": "octocat__sandbox",
+            "files": [
+                ["path": ".env", "kind": "env", "size": 2310, "sha": "279c46ad", "keys": ["APP_KEY", "DB_HOST", "DB_PASSWORD", "MAIL_MAILER"], "from": "team", "added": at],
+                ["path": "auth.json", "kind": "file", "size": 120, "sha": "9f2b11c0", "from": "box", "added": at],
+            ] as [Any],
+            "carry": [
+                ["path": "node_modules", "from": "worktreeinclude", "in_main": true],
+                ["path": "vendor", "from": "team", "in_main": true],
+            ] as [Any],
+            "team": ["dir": "/srv/pier/team/projects/octocat__sandbox", "published": at],
+            "recipe": ["setup": "composer install && npm install --prefer-offline && php artisan migrate --force", "services": ["dev"], "from": "team"],
+            "copy": "reflink",
+            "warnings": [] as [Any],
+        ])
+    }
+
+    /// How sandbox's base went into a worktree it prepared.
+    private static var sandboxBaseReport: JSON { [
+        "files": [["path": ".env", "action": "written"], ["path": "auth.json", "action": "written"]] as [Any],
+        "carried": [["path": "node_modules", "action": "carried", "ms": 1830], ["path": "vendor", "action": "carried", "ms": 412]] as [Any],
+    ] }
+
     func prepareJSON(_ location: String, _ worktree: String) -> Data {
         let key = "\(location)/\(worktree)"
         var out: JSON = ["setup": "npm ci && cp ../.env.local .env", "services": ["dev"], "prepare_with": prepareWith(location, nil)]
+        // The base's files go in as a worktree is made; its folders only once it is prepared.
+        if location == "sandbox" {
+            var report = Self.sandboxBaseReport
+            if case .some(nil) = prepared[key] { report["carried"] = nil }
+            out["base"] = report
+        }
         if let run = agentRuns[key] {
             // A setup agent: at work for a few seconds, then done.
             let working = Date().timeIntervalSince(run.at) < Self.agentWork
@@ -460,6 +497,7 @@ struct MockProjects {
         }
         let (state, at) = prepareState(key)
         out["state"] = state
+        if state == "running" { out["step"] = "setup" }
         if state != "skipped" { out["kind"] = "script" }
         if let at { out["since"] = ISO8601DateFormatter().string(from: at) }
         return Self.json(out)

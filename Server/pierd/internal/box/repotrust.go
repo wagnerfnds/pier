@@ -73,7 +73,7 @@ func readRepoFile(repo string) (c RepoConfig, hash string, ok bool, err error) {
 // login, and a worktree's preview can get a public link.
 func (c RepoConfig) runsAnything() bool {
 	return c.Setup != "" || c.Archive != "" || len(c.Env) > 0 || len(c.Services) > 0 ||
-		len(c.Hooks) > 0 || len(c.Agents) > 0 || c.Preview != nil
+		len(c.Hooks) > 0 || len(c.Agents) > 0 || c.Preview != nil || c.Base != nil && len(c.Base.Carry) > 0
 }
 
 // repoLayer is the part of a location's repository config the box applies,

@@ -52,7 +52,7 @@ notifications).
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
 | Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `prepare.agent` (`prepare_with` and setup agents, 2.6.1), `preview` (a worktree's preview, 2.12.1), `answer.mcp` (Claude Code's question about a repository's MCP servers,
-5.4.1), `tools` (2.13), `logins` (2.10.1) and `mcp` (2.14), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
+5.4.1), `tools` (2.13), `logins` (2.10.1) and `mcp` (2.14), `base` (the project's base, 2.15), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
 
 ### 0.3 Naming and addressing
 
@@ -203,6 +203,8 @@ recent commit first; a branch that exists locally and on origin appears once wit
   (where Claude Code refuses to run unattended), is 400. The app sends the way the person picked; it leaves the field
   out only for the project's default left as it was. An older pierd ignores the field (it never refuses unknown keys)
   and prepares by script.
+* The project's base files (2.15) go into it as it is made, with `prepare: false` too (a quick fix still runs the
+  app), never into one made from a pull request (`pr`, `ref`).
 * Answer: the `Worktree`, with its `port`. The worktree is then prepared in the background (`worktree.prepare.started |
   finished | failed`): by script, the location's setup script runs (`worktree.setup.started | finished | failed`), and
   services marked `autostart` start after it; by agent, a setup agent works in a session of its own (2.6.1).
@@ -231,6 +233,7 @@ recent commit first; a branch that exists locally and on origin appears once wit
 | `GET /v1/locations/{loc}/worktrees/{wt}/services` | `[{name, run, autostart?, state, unit, port?}]` |
 | `POST .../services/{service}/{start\|stop\|restart}` | run as systemd user units named `svc-<location>-<worktree>-<service>` |
 | `GET`/`POST /v1/locations/{loc}/worktrees/{wt}/prepare` | the worktree's preparation, and preparing it now (2.6.1) |
+| `GET`/`PUT /v1/locations/{loc}/base`, `POST`/`DELETE …/base/files`, `POST …/base/apply` | the project's base: files every worktree gets, folders carried from the main checkout (2.15) |
 | `POST /v1/locations/{loc}/worktrees/{wt}/prepare/done` | a setup agent says it is done, or why it could not finish (2.6.1) |
 | `PUT /v1/locations/{name}/setup-agent` | the person's consent to setup agents for the project, `{"allowed": true\|false}` (2.6.1) |
 | `GET`/`PUT /v1/locations/{loc}/worktrees/{wt}/preview` | the worktree's preview: its page, a test login, its public link (2.12.1) |
@@ -273,6 +276,12 @@ Two ways to prepare a worktree:
   prepare done`, touching no tracked file it can avoid. A recipe someone wrote (the repository's, a person's on the
   box) is theirs: the agent is told to use it and fix only what the worktree lacks around it, saving none over it.
 
+Either way the project's base (2.15) is in place first: its files went in as the worktree was made, and its carried
+folders are copied from the main checkout as the preparation starts (`step` `carry`), before the setup script runs or
+the setup agent starts. A setup agent is told what the base put there and that its recipe only brings that up to
+date (the install, migrations, the build), and its session's 20 seconds to appear count from when it starts, after
+the folders.
+
 A new worktree is prepared as it is made, the way the request says (`prepare_with`, 2.4, 3.3), else by the location's
 default (`Location.prepare_with`): **agent** only where the person allowed setup agents for the project
 (`Location.setup_agent`, below), while it has no recipe (no setup script nor autostart service, from the repository
@@ -299,7 +308,8 @@ name (`prepare_with: "agent"`) works without it: the app asks for the consent fi
 
 ```json
 {"state": "running", "since": "2026-10-17T09:14:31.002117907-03:00", "kind": "agent", "session": "shop-login-setup",
- "waiting": true, "setup": "composer install && php artisan migrate --seed", "services": ["web"], "prepare_with": "script"}
+ "waiting": true, "setup": "composer install && php artisan migrate --seed", "services": ["web"], "prepare_with": "script",
+ "step": "agent", "base": {"files": [{"path": ".env", "action": "written"}], "carried": [{"path": "vendor", "action": "carried", "ms": 2140}]}}
 ```
 
 * `state`: `running`, `ready`, `failed` (`error` says why: the setup log's path and its last lines, or what the setup
@@ -313,6 +323,9 @@ name (`prepare_with: "agent"`) works without it: the app asks for the consent fi
 * A setup agent's preparation is `running` while its turn runs. When the turn ends it is `ready` if the agent said it
   was done (`prepare/done`) or recorded a preview with a port during it, `failed` otherwise, and when its turn ended
   on an error or its session went. A person writing to it again starts a new turn: `running` again until it ends.
+* `step` (while `running`): what it does now, `carry` (the base's folders), `setup` (the setup script), `agent` (the
+  setup agent's session) or `services`; each change is published as `worktree.prepare.step {location, name, path,
+  step}`. `base`: how the project's base went into the worktree (2.15), kept after it ends.
 * `setup`: the script that runs (absent when there is none); `services`: the autostart services; `prepare_with`: how
   preparing it now goes by default (`script` for a pull request's worktree). An older box sends none of `kind`,
   `session`, `waiting`, `prepare_with`: with no `setup` and no `services` there is nothing to show.
@@ -443,7 +456,8 @@ owner/repo). Errors: `gh_missing` (501, gh not installed), `gh_auth` (428, `gh a
 ```
 
 `state`: `cloning`, `setting_up`, `ready`, `failed` (`error` holds git's or the setup's last lines, `log` the log
-file). `setup`: `repo`, `detected` or `none`. `DELETE /v1/clones/{id}` forgets a finished one. Events: `clone.started`,
+file). `setup`: `repo`, `team` (the team's recipe on this machine, 2.15: nothing pierd guesses is saved over it),
+`detected` or `none`. The project's base files go into the main checkout before any of them. `DELETE /v1/clones/{id}` forgets a finished one. Events: `clone.started`,
 `clone.finished {id, location, path, repo, setup}`, `clone.failed` (envelope `error`), plus `location.added`.
 
 **Disk**: `GET /v1/locations/{loc}/disk`:
@@ -763,6 +777,73 @@ cannot read is kept as `mcp-written.json.bad` and said in pierd's log).
 * The app's quick helpers (titles, commit and PR drafts, next steps, Falar's router: `claude -p --model haiku` through
   `exec`, `AIDraft.claudeArgs`) run with `--strict-mcp-config` when the box's Claude Code knows the flag
   (`AIDraft.strictMCPProbe`), so none of them starts the account's MCP servers.
+
+### 2.15 The project's base (capability `base`)
+
+What every new worktree of a project gets that git does not bring, configured once:
+
+* **Files** the box keeps for the project, untracked in it (`.env`, `.env.testing`, `auth.json`, keys). They go into
+  each checkout as it is made (with `prepare: false` too; never into a pull request's made from `pr`/`ref` unless
+  asked with `…/base/apply`), through the checkout's own folder (never through a link: a temporary file renamed into
+  place, mode 0600, named `.pier-write-*`, which pierd adds to `.git/info/exclude` first). A missing file is written;
+  one the checkout still has as pierd wrote it is updated when the base changes; one someone changed there stays. A
+  dotenv file (`.env`, `.env.*`) goes the same way key by key. A path git tracks in that checkout is skipped (so is
+  one git cannot say about), and one git does not ignore is added to the repository's `.git/info/exclude` (the app
+  commits with `git add -A`). pierd keeps the files in `$PIER_HOME/box/base/<key>/`
+  (0600) and, of what it wrote into each checkout, only hashes.
+* **Carried folders**: ignored folders or files of the main checkout (`vendor`, `node_modules`, a downloaded binary)
+  copied into each new worktree before its recipe runs or its setup agent starts (`cp -a --reflink=auto` on Linux,
+  `cp -a -c` on macOS: on btrfs and APFS a copy shares the main checkout's blocks and takes seconds), so the recipe's
+  install only brings them up to date. They come from the config's `base.carry` (the repository's, the team's and
+  the box's add up) and the repository's `.worktreeinclude` (Claude Code's file: gitignore patterns, only what git
+  ignores). Never carried: `storage`, `storage/framework`, `storage/logs`, `bootstrap/cache`, `public/hot`, `.venv`,
+  `venv`, a base file, a path a link in the worktree would take outside it. A link copied from the main checkout that points into it (Laravel's `public/storage`) is
+  pointed at the worktree's own place. A failure is reported, never fatal: the recipe can still install from
+  scratch.
+
+`<key>` is `owner__repo` of the project's `origin` (`local-<name>-<hash>` without one), worked out once and kept.
+
+**The team's base.** On a machine where several people each run their own pierd, root keeps a base for a project in
+the team's folder (`/etc/pier/team.json` names it; `projects/<key>/` in it, readable by the team's group): its
+`config.json` (a recipe, `base.carry`, `env`…; never a person's consent to setup agents, `auto_share`, hooks or
+agents), its `files/`, and `published.json`, written last, with each file's sha256. Each member's pierd copies them,
+checked against those hashes, into `$PIER_HOME/box/base/<key>/team/` when a worktree is made or prepared and when
+`GET …/base` is read (at most every 5 s), through a child given the group by `sg` when pierd started before its user
+joined the group. Projects of the box with the same `origin` share the copy and each takes the team's config from it.
+Team settings that cannot be read keep the last copy; only a machine without them has no team. The team's config lies between the repository's and the box's own (2.6), its files under the box's
+own by path. A clone of a project the team has a recipe for runs it (2.8, `setup: "team"`).
+
+`GET /v1/locations/{loc}/base` (never a file's content):
+
+```json
+{"key": "octocat__shop",
+ "files": [{"path": ".env", "kind": "env", "size": 6123, "sha": "279c46ad", "keys": ["APP_KEY", "DB_HOST"], "from": "team", "added": "2026-10-20T11:32:58Z"},
+           {"path": "auth.json", "kind": "file", "size": 120, "sha": "9f2b11c0", "from": "box", "added": "2026-10-20T11:40:02Z"}],
+ "carry": [{"path": "node_modules", "from": "worktreeinclude", "in_main": true}, {"path": "vendor", "from": "team", "in_main": true}],
+ "team": {"dir": "/srv/pier/team/projects/octocat__shop", "published": "2026-10-20T10:00:00Z"},
+ "recipe": {"setup": "composer install && npm install && php artisan migrate --force", "services": ["web"], "from": "team"},
+ "copy": "reflink", "warnings": []}
+```
+
+* `files[].from`: `team` or `box`; `keys`: a dotenv file's keys, never their values. `carry[].from`: `repo`, `team`,
+  `box` or `worktreeinclude`; `in_main`: the main checkout has it. `team.error`: why the team's folder could not be
+  read (the last copy taken still applies). `copy`: `reflink` (copies share blocks on this disk) or `copy`.
+  `warnings`: the box's own recipe hides the team's; the recipe runs `npm ci` (which deletes the carried
+  `node_modules`) or writes `.env` from `.env.example`.
+* `PUT …/base {"carry": [...]}` replaces the box's own `base.carry` (paths inside the project, at most 50; 400
+  otherwise).
+* `POST …/base/files {"path", "from"?}` takes a file from a checkout of the project (`from`: a worktree's name; the
+  main checkout by default) into the box's own base: a regular file of at most 1 MB that git does not track there
+  (400 otherwise, 404 when it is missing; at most 200 files). `DELETE …/base/files?path=P` stops keeping it (409 for
+  one of the team's). Both answer the base as `GET` does.
+* `POST …/base/apply {"worktrees"?: [...]}` writes the files into checkouts that already exist (every one but a pull
+  request's when none is named): `{"results": [{"worktree", "path", "results": [{"path", "action", "reason"?,
+  "keys"?}]}]}`, `action` `written`, `updated`, `unchanged`, `kept` (with the `keys` someone changed), `skipped` or
+  `failed`.
+* Gates `before:base.change`, `before:base.apply`; event `base.changed {location, files?}` (never a value).
+* `pierd base status|add|rm|carry|apply` does the same on the box.
+* A worktree's preparation (2.6.1) reports how the base went in as `base {files, carried}`, each `{path, action,
+  reason?, keys?, ms?}`.
 
 ---
 
@@ -1303,7 +1384,8 @@ exit_code}` (every client's exec, the app's own background commands included: ne
 **Worktrees and locations**: `worktree.created {location, name, path, branch}`, `worktree.removed`,
 `worktree.setup.{started,finished,failed}` and `worktree.archive.{started,finished,failed}` `{location, name,
 path, script, log}` (failures set the envelope `error`), `worktree.prepare.{started,finished,failed}` `{location, name,
-path, kind?, session?}` (2.6.1; `kind` `agent` with the setup agent's `session`), `location.added`, `location.removed` (`purged`, `freed`
+path, kind?, session?}` (2.6.1; `kind` `agent` with the setup agent's `session`), `worktree.prepare.step {location,
+name, path, step}` (2.6.1), `base.changed {location, files?}` (2.15, never a value), `location.added`, `location.removed` (`purged`, `freed`
 after a removal from the disk), `clone.started|finished|failed` (2.8), `settings.changed`, `space.added|removed`,
 `environment.changed|started|ready|failed` (2.9), `account.added|changed|removed`, `location.accounts` (2.10),
 `login.changed {id, tool, account?, state}` (2.10.1), `tool.installed|failed` (2.13),

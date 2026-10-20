@@ -228,6 +228,7 @@ struct WorktreeDetailsView: View {
             if !p.services.isEmpty {
                 Text("Depois sobem: \(p.services.joined(separator: ", "))").font(.caption).foregroundStyle(Theme.textDim)
             }
+            if let base = p.base { BaseReportLines(base: base) }
             if p.state == .failed, let e = p.error, !e.isEmpty {
                 Text(e).font(.mono(11)).foregroundStyle(Theme.red).lineLimit(8).textSelection(.enabled)
             }
@@ -286,7 +287,13 @@ struct WorktreeDetailsView: View {
 
     private func prepareTitle(_ p: PrepareStatus) -> String {
         switch p.state {
-        case .running: p.byAgent ? String(localized: "O agente está preparando…") : String(localized: "Preparando…")
+        case .running:
+            switch p.step {
+            case "carry": String(localized: "Copiando as pastas da base…")
+            case "setup": String(localized: "Rodando a receita…")
+            case "services": String(localized: "Subindo os serviços…")
+            default: p.byAgent ? String(localized: "O agente está preparando…") : String(localized: "Preparando…")
+            }
         case .ready: String(localized: "Ambiente pronto")
         case .failed: p.byAgent ? String(localized: "A preparação não terminou") : String(localized: "O setup falhou")
         case .skipped: String(localized: "Ambiente não preparado")
@@ -475,6 +482,16 @@ struct WorktreeDetailsView: View {
                         Text(project?.isolated == true ? "configurado" : "não").font(.mono(12)).foregroundStyle(Theme.text)
                     }
                 }
+            }
+            if project?.repo == true, conn?.info?.has("base") == true {
+                NavigationLink(value: ProjectBaseRoute(box: box, location: location)) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.stack.3d.down.right").font(.caption).foregroundStyle(Theme.textFaint).frame(width: 16)
+                        Text("Base do projeto").font(.subheadline).foregroundStyle(Theme.textDim)
+                        Spacer(minLength: 8)
+                    }
+                }
+                .accessibilityIdentifier("details-base")
             }
             row("terminal", "Sessões", "\(sessions.count)")
             if model.boxes.count > 1 { row("shippingbox", "Box", box) }

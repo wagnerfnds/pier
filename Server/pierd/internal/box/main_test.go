@@ -48,6 +48,8 @@ func TestMain(m *testing.M) {
 	autoSetupAgents = false
 	canSudo = func(context.Context) bool { return false }
 	runningAsRoot = func() bool { return false }
+	// No machine's team folder reaches a test unless it makes one.
+	teamSettingsPath = "/nonexistent/pier-team.json"
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)

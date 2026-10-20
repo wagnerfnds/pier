@@ -37,6 +37,12 @@ struct ProjectScreenPlaceholder: View {
                         }
                         .accessibilityIdentifier("project-environment")
                     }
+                    if loc.repo, conn?.info?.has("base") == true {
+                        NavigationLink(value: ProjectBaseRoute(box: route.box, location: route.location)) {
+                            Label("Base do projeto", systemImage: "square.stack.3d.down.right")
+                        }
+                        .accessibilityIdentifier("project-base")
+                    }
                     if loc.repo, loc.slug?.isEmpty == false {
                         NavigationLink(value: ProjectPRsRoute(box: route.box, location: route.location)) {
                             Label("Pull requests", systemImage: "arrow.triangle.pull")

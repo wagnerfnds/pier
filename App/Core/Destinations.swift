@@ -13,6 +13,7 @@ extension View {
             .navigationDestination(for: HousekeepingRoute.self) { _ in HousekeepingScreen().toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: BoxSettingsRoute.self) { BoxSettingsDestination(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: ProjectEnvironmentRoute.self) { ProjectEnvironmentScreen(route: $0).toolbar(.hidden, for: .tabBar) }
+            .navigationDestination(for: ProjectBaseRoute.self) { ProjectBaseScreen(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: WorktreeDetailsRoute.self) { WorktreeDetailsScreen(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: PreviewBrowserRoute.self) { PreviewBrowserScreen(route: $0).toolbar(.hidden, for: .tabBar) }
             .navigationDestination(for: PullRequestRoute.self) { PullRequestScreen(route: $0).toolbar(.hidden, for: .tabBar) }

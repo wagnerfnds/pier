@@ -114,6 +114,13 @@ type savedLocation struct {
 	// SlugsCut says they were looked for (KeepLongSlugs).
 	Slugs    map[string]string `json:"slugs,omitempty"`
 	SlugsCut bool              `json:"slugs_cut,omitempty"`
+	// BaseKey names the project's base (base.go), worked out once from its
+	// origin and kept, so a rename keeps the base.
+	BaseKey string `json:"base_key,omitempty"`
+	// Team is the team's config for the project as last copied from the
+	// machine's team folder (team.go), and TeamAt when root published it.
+	Team   *RepoConfig `json:"team,omitempty"`
+	TeamAt *time.Time  `json:"team_at,omitempty"`
 }
 
 func (l *Locations) Add(ctx context.Context, name, path string) (Location, error) {

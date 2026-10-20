@@ -209,6 +209,37 @@ func (c *Client) MergeLocationConfig(ctx context.Context, location string, over 
 	return out, c.call(ctx, http.MethodPut, "/v1/locations/"+url.PathEscape(location)+"/config", map[string]RepoConfig{"merge": over}, &out)
 }
 
+// Base is what a project's base holds (GET …/base).
+func (c *Client) Base(ctx context.Context, location string) (out BaseView, err error) {
+	return out, c.call(ctx, http.MethodGet, "/v1/locations/"+url.PathEscape(location)+"/base", nil, &out)
+}
+
+// AddBaseFile takes path from a checkout of the project (from: a worktree's
+// name; "" the main checkout) into the box's own base.
+func (c *Client) AddBaseFile(ctx context.Context, location, path, from string) (out BaseView, err error) {
+	return out, c.call(ctx, http.MethodPost, "/v1/locations/"+url.PathEscape(location)+"/base/files", map[string]string{"path": path, "from": from}, &out)
+}
+
+// RemoveBaseFile drops path from the box's own base.
+func (c *Client) RemoveBaseFile(ctx context.Context, location, path string) (out BaseView, err error) {
+	return out, c.call(ctx, http.MethodDelete, "/v1/locations/"+url.PathEscape(location)+"/base/files?path="+url.QueryEscape(path), nil, &out)
+}
+
+// SetBaseCarry replaces the folders the box's own config carries.
+func (c *Client) SetBaseCarry(ctx context.Context, location string, carry []string) (out BaseView, err error) {
+	return out, c.call(ctx, http.MethodPut, "/v1/locations/"+url.PathEscape(location)+"/base", map[string][]string{"carry": carry}, &out)
+}
+
+// ApplyBase writes the base's files into existing checkouts (none named:
+// every one but a pull request's).
+func (c *Client) ApplyBase(ctx context.Context, location string, worktrees []string) (out []BaseApplied, err error) {
+	var res struct {
+		Results []BaseApplied `json:"results"`
+	}
+	err = c.call(ctx, http.MethodPost, "/v1/locations/"+url.PathEscape(location)+"/base/apply", map[string][]string{"worktrees": worktrees}, &res)
+	return res.Results, err
+}
+
 func worktreePath(location, worktree, rest string) string {
 	return "/v1/locations/" + url.PathEscape(location) + "/worktrees/" + url.PathEscape(worktree) + rest
 }

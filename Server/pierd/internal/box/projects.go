@@ -381,6 +381,15 @@ func (b *Box) runClone(from string, cl Clone, src repoSource, setup, adopt bool)
 	var services []string
 	if setup {
 		b.clones.set(cl.ID, func(c *Clone) { c.State = CloneSettingUp })
+		// The project's base (a team's on this machine, a box's own kept
+		// from before) goes into the main checkout before anything looks at
+		// what the repository needs: its .env, its keys.
+		b.syncTeam(ctx, loc.Name)
+		for _, wt := range loc.Worktrees {
+			if wt.Main {
+				b.placeBaseFiles(ctx, loc, wt)
+			}
+		}
 		how, err = b.prepareLocation(ctx, loc.Name)
 		if err != nil {
 			fail(err)
@@ -454,7 +463,8 @@ func cloneRepo(ctx context.Context, src repoSource, dest, logPath string) error 
 // prepareLocation makes a freshly cloned location's setup run: the
 // repository's own config is trusted as it is now, and a repository without
 // one gets what detectSetup recognises as the box's config for it. It says
-// which it was: "repo", "detected" or "none".
+// which it was: "repo", "team" (the team's recipe on this machine),
+// "detected" or "none".
 func (b *Box) prepareLocation(ctx context.Context, name string) (string, error) {
 	cfg, err := b.Locations.Config(ctx, name)
 	if err != nil {
@@ -468,6 +478,11 @@ func (b *Box) prepareLocation(ctx context.Context, name string) (string, error) 
 	}
 	if cfg.RepoTrust.State == RepoTrustTrusted && cfg.Repo != nil && (cfg.Repo.Setup != "" || len(cfg.Repo.Services) > 0) {
 		return "repo", nil
+	}
+	// The team's recipe for the project: pierd's guess saved as the box's
+	// own config would win over it.
+	if cfg.Team != nil && (cfg.Team.Setup != "" || len(cfg.Team.Services) > 0) {
+		return "team", nil
 	}
 	saved, err := b.Locations.saved(name)
 	if err != nil {

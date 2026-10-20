@@ -66,6 +66,9 @@ func (c RepoConfig) validate() error {
 			return err
 		}
 	}
+	if err := c.Base.validate(); err != nil {
+		return err
+	}
 	switch c.PrepareWith {
 	case "", "agent", "script":
 	default:
@@ -107,6 +110,7 @@ func merge(repo, local RepoConfig) RepoConfig {
 	if local.Preview != nil {
 		out.Preview = local.Preview
 	}
+	out.Base = mergeBase(repo.Base, local.Base)
 	// Whether previews go public, whether setup agents may prepare it, who
 	// wrote the recipe and whether pierd guessed it are the box's to say,
 	// never a repository's.
@@ -177,6 +181,9 @@ type Config struct {
 	RepoPath string      `json:"repo_path"`
 	// RepoTrust says whether this box runs the repository's config.
 	RepoTrust RepoTrust `json:"repo_trust"`
+	// Team is the team's config for the project on this machine (team.go),
+	// laid between the repository's and the box's own.
+	Team *RepoConfig `json:"team,omitempty"`
 	// Local is this box's own config for the location.
 	Local     RepoConfig `json:"local"`
 	Effective RepoConfig `json:"effective"`
@@ -208,7 +215,12 @@ func (l *Locations) Config(ctx context.Context, name string) (Config, error) {
 	if saved.Archive != "" {
 		out.Local.Archive = saved.Archive
 	}
-	out.Effective = merge(repo, out.Local)
+	team := RepoConfig{}
+	if saved.Team != nil {
+		out.Team = saved.Team
+		team = *saved.Team
+	}
+	out.Effective = merge(merge(repo, team), out.Local)
 	if saved.Environment != nil && saved.Environment.Compose {
 		out.Effective.Services = mergeBy(out.Effective.Services, []WorktreeService{composeService}, func(s WorktreeService) string { return s.Name })
 	}

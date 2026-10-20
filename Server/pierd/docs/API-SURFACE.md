@@ -64,6 +64,10 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `GET /v1/locations/{name}/worktrees/{worktree}/prepare` | `prepare.go` `getPrepare` | App `prepareStatus()`: WorktreeDetails (Preparação); `pierd prepare status\|wait` |
 | `POST /v1/locations/{name}/worktrees/{worktree}/prepare` (`prepare_with`; 202; 409 while running; gate `before:worktree.prepare`) | `prepare.go` `postPrepare` (a setup agent: `setupagent.go`) | App `prepare(with:)`: WorktreeDetails (Preparar ambiente, Preparar com agente, Rodar o script); `pierd prepare start` |
 | `POST /v1/locations/{name}/worktrees/{worktree}/prepare/done` (`failed`; 409 without a setup agent) | `prepare.go` `prepareDone` | `pierd prepare done`, run by the setup agent |
+| `GET /v1/locations/{name}/base` (the team's copied first, at most every 5 s) | `base.go` `getBase` (`team.go` `syncTeam`) | App `projectBase()`: ProjectBaseScreen; `pierd base status` |
+| `PUT /v1/locations/{name}/base` (`carry`; gate `before:base.change`) | `base.go` `putBase` | `pierd base carry` |
+| `POST`/`DELETE /v1/locations/{name}/base/files` (`path`, `from`; gate `before:base.change`) | `base.go` `postBaseFile`/`deleteBaseFile` | `pierd base add\|rm` |
+| `POST /v1/locations/{name}/base/apply` (`worktrees`; gate `before:base.apply`) | `base.go` `applyBase` | `pierd base apply` |
 | `GET`/`PUT /v1/locations/{name}/worktrees/{worktree}/preview` (gate `before:preview.change`) | `preview.go` `getPreview`/`putPreview` (the automatic public link: `syncPreviewShare`) | App `preview()`: WorktreeDetails (Visualização), SessionDetailsList (its inspector); `setPreview()` (no caller yet); `pierd preview get\|set` |
 | `GET /v1/worktrees[?location=]` | `worktreeops.go` `listWorktreeStatuses` | App `worktreeStatuses()`: EndSessionSheet, Housekeeper, Project/Worktree screens |
 | `GET /v1/services` | `services.go` `handleServices` | App `services()`: HomeStore, Housekeeper, WorktreeDetails, PreviewBrowser; `pierd services` |
