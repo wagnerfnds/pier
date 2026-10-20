@@ -226,11 +226,23 @@ func (s *Sessions) List(ctx context.Context) ([]Session, error) {
 	return all, err
 }
 
+// noTmuxServer says tmux answered that there is no server: none yet, or
+// one that exited as the client reached it.
+func noTmuxServer(out []byte) bool {
+	for _, m := range []string{"no server running", "error connecting", "server exited unexpectedly", "lost server"} {
+		if strings.Contains(string(out), m) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Sessions) list(ctx context.Context) ([]Session, error) {
 	out, err := s.tmux(ctx, "list-sessions", "-F", listFormat)
 	if err != nil {
-		// No server yet simply means no sessions.
-		if strings.Contains(string(out), "no server running") || strings.Contains(string(out), "error connecting") {
+		// No server yet simply means no sessions, and so does one that
+		// was going away as it was asked (its last session just ended).
+		if noTmuxServer(out) {
 			return []Session{}, nil
 		}
 		return nil, tmuxError("list-sessions", out, err)
