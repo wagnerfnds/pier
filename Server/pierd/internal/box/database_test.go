@@ -380,6 +380,9 @@ func TestAWorktreeGetsItsOwnDatabaseCopiedFromTheSnapshot(t *testing.T) {
 	if st.State != "ready" || st.Base == nil || len(st.Base.Servers) != 2 {
 		t.Fatalf("prepare = %+v (base %+v)", st, st.Base)
 	}
+	if !slicesContains(st.Base.Connections, ".env: DB_PORT") || !slicesContains(st.Base.Connections, ".env.testing: DB_HOST") {
+		t.Fatalf("the preparation lost what it pointed at the servers: %v", st.Base.Connections)
+	}
 	dbPort, redisPort := wt.Port+mysqlPortOffset, wt.Port+redisPortOffset
 	if got := strings.TrimSpace(readFile(t, filepath.Join(wt.Path, "seen.txt"))); got != fmt.Sprintf("127.0.0.1:%d:%d:%d::", dbPort, redisPort, dbPort) {
 		t.Fatalf("the recipe saw %q", got)

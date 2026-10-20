@@ -1164,7 +1164,10 @@ func (b *Box) prepareBase(from string, loc Location, wt Worktree) error {
 	b.prepareStep(from, loc, wt, "db")
 	servers, err := b.ensureInstances(ctx, loc, wt)
 	conns := b.rewriteConnections(ctx, loc, wt)
-	b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Servers, rep.Connections = servers, conns })
+	// What the files' placement pointed at the servers stays in the report.
+	b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) {
+		rep.Servers, rep.Connections = servers, append(rep.Connections, conns...)
+	})
 	return err
 }
 
