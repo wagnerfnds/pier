@@ -1144,7 +1144,7 @@ func (b *Box) prepareBase(from string, loc Location, wt Worktree) error {
 			b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Carried = res })
 		}
 	}
-	if engines, _ := b.wantedServers(ctx, loc); len(engines) == 0 {
+	if len(b.instancesFor(wt.Path)) == 0 {
 		return nil
 	}
 	b.prepareStep(from, loc, wt, "db")

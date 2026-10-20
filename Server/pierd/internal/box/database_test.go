@@ -601,3 +601,31 @@ func TestServersOfAWorktreeThatWentAreCollected(t *testing.T) {
 		t.Fatal("the data stayed")
 	}
 }
+
+// Turning a base's servers on never moves a worktree that already exists
+// off its database: preparing it again leaves it as it was, until someone
+// asks for the base's (PUT …/db).
+func TestAnExistingWorktreeKeepsItsDatabaseUntilAsked(t *testing.T) {
+	bx, do, events, _ := dbBox(t)
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	snapshotFor(t, bx, key, "8.0.46")
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "older"}, &wt)
+	waitFor(t, events, "worktree.prepare.finished")
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql", "allow_copy": true}}, nil)
+	do("POST", "/v1/locations/cal/worktrees/older/prepare", nil, nil)
+	waitFor(t, events, "worktree.prepare.finished")
+	if n := len(bx.instancesFor(wt.Path)); n != 0 {
+		t.Fatalf("preparing an existing worktree again gave it %d servers", n)
+	}
+	if env := envOf(t, filepath.Join(wt.Path, ".env")); env["DB_PORT"] != "3306" {
+		t.Fatalf("its .env moved: %v", env)
+	}
+	if code := do("PUT", "/v1/locations/cal/worktrees/older/db", map[string]string{"from": "base"}, nil); code != 202 {
+		t.Fatalf("asking for the base's database = %d", code)
+	}
+	waitFor(t, events, "worktree.prepare.finished")
+	if insts := bx.instancesFor(wt.Path); len(insts) != 1 || insts[0].State != "running" {
+		t.Fatalf("after asking = %+v", insts)
+	}
+}

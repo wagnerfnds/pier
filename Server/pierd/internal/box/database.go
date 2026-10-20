@@ -193,7 +193,9 @@ func instanceUnit(engine string, loc, wt, id string) string {
 
 // reserveInstances records the servers a worktree will get before they run,
 // so what starts in it meanwhile (a task's agent) has their addresses
-// already. A database needs a snapshot to copy.
+// already. Only a new worktree, a clone's main checkout and a checkout asked
+// to start over (PUT …/db) get them: turning a base's servers on never moves
+// an existing worktree off the database it has.
 func (b *Box) reserveInstances(ctx context.Context, loc Location, wt Worktree) {
 	engines, _ := b.wantedServers(ctx, loc)
 	if len(engines) == 0 {
@@ -211,10 +213,9 @@ func (b *Box) reserveInstances(ctx context.Context, loc Location, wt Worktree) {
 	for _, inst := range b.instancesFor(wt.Path) {
 		have[inst.Engine] = true
 	}
-	snap := b.currentSnapshot(key)
 	b.updateInstances(func(m map[string]dbInstance) {
 		for _, e := range engines {
-			if have[e] || e == engineMySQL && snap == nil {
+			if have[e] {
 				continue
 			}
 			id := newSecret()[:12]
@@ -228,20 +229,20 @@ func (b *Box) reserveInstances(ctx context.Context, loc Location, wt Worktree) {
 	})
 }
 
-// ensureInstances brings a worktree's servers up, making each the first
-// time (a copy of the project's snapshot, an empty Redis). A server that
-// cannot come up fails the worktree's preparation, with why.
+// ensureInstances brings a checkout's reserved servers up, making each the
+// first time (a copy of the project's snapshot, an empty Redis). A server
+// that cannot come up fails the checkout's preparation, with why.
 func (b *Box) ensureInstances(ctx context.Context, loc Location, wt Worktree) ([]InstanceReport, error) {
-	engines, db := b.wantedServers(ctx, loc)
-	if len(engines) == 0 {
+	insts := b.instancesFor(wt.Path)
+	if len(insts) == 0 {
 		return nil, nil
 	}
 	if b.Units == nil {
 		return nil, errors.New("this box cannot run managed units, which a worktree's database needs")
 	}
-	b.reserveInstances(ctx, loc, wt)
+	_, db := b.wantedServers(ctx, loc)
 	var reports []InstanceReport
-	for _, inst := range b.instancesFor(wt.Path) {
+	for _, inst := range insts {
 		var rep InstanceReport
 		var err error
 		switch inst.Engine {
@@ -261,21 +262,7 @@ func (b *Box) ensureInstances(ctx context.Context, loc Location, wt Worktree) ([
 			return reports, err
 		}
 	}
-	for _, e := range engines {
-		if e == engineMySQL && !hasEngine(reports, engineMySQL) {
-			return reports, errors.New("the project's base has no database snapshot yet: root makes the team's with `pierd team base … db import`, or `pierd db import` this box's")
-		}
-	}
 	return reports, nil
-}
-
-func hasEngine(rs []InstanceReport, engine string) bool {
-	for _, r := range rs {
-		if r.Engine == engine {
-			return true
-		}
-	}
-	return false
 }
 
 // diskRoom refuses a copy when the disk holding dir is nearly full.
@@ -314,7 +301,7 @@ func (b *Box) upMySQL(ctx context.Context, inst dbInstance, db *BaseDB) (Instanc
 	snap := b.currentSnapshot(inst.Key)
 	if _, err := os.Stat(data); err != nil {
 		if snap == nil {
-			return fail(errors.New("the project's base has no database snapshot yet"))
+			return fail(errors.New("the project's base has no database snapshot yet: root makes the team's with `pierd team base … db import`, or `pierd db import` this box's"))
 		}
 		if compareVersions(version, snap.Manifest.Version) < 0 {
 			return fail(fmt.Errorf("the project's snapshot was made with MySQL %s and this box's server is %s: a server cannot start a newer one's data", snap.Manifest.Version, version))

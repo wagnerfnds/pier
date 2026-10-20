@@ -387,6 +387,7 @@ func (b *Box) runClone(from string, cl Clone, src repoSource, setup, adopt bool)
 		b.syncTeam(ctx, loc.Name)
 		for _, wt := range loc.Worktrees {
 			if wt.Main {
+				b.reserveInstances(ctx, loc, wt)
 				b.placeBaseFiles(ctx, loc, wt)
 			}
 		}
