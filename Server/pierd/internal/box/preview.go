@@ -333,8 +333,19 @@ func (b *Box) shareDomain() string {
 // autoShareFor says whether location's previews get public links by
 // themselves: its own config's say, else the box's.
 func (b *Box) autoShareFor(ctx context.Context, location string) bool {
-	if cfg, err := b.Locations.Config(ctx, location); err == nil && cfg.Local.AutoShare != nil {
+	cfg, err := b.Locations.Config(ctx, location)
+	if err == nil && cfg.Local.AutoShare != nil {
 		return *cfg.Local.AutoShare
+	}
+	// Worktrees running on a copy of real data (a snapshot nobody took
+	// personal data out of) get no public link by themselves: one made by
+	// hand still works.
+	if err == nil && cfg.Effective.Base != nil && cfg.Effective.Base.DB != nil {
+		if key, err := b.Locations.BaseKey(ctx, location); err == nil {
+			if snap := b.currentSnapshot(key); snap != nil && !snap.Manifest.Sanitized {
+				return false
+			}
+		}
 	}
 	return b.Locations.Settings().autoShare()
 }

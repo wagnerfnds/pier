@@ -122,6 +122,44 @@ pierd setup --listen 192.0.2.10:7445 --name pier-maria --ports 42000-42999
 `--name` and `--ports` are kept in `~/.config/pier/box/name` and `ports` for later installs (default: the hostname,
 and 41000-48999). A repository setup did not find: `pierd location add shop ~/code/shop`.
 
+#### A team's base
+
+Root keeps each project's base for everyone on the machine, so a new person's worktrees are ready with nothing to set
+up:
+
+```sh
+sudo pierd team init --members alice,bob         # group pier, /srv/pier/team, AppArmor's lines for the worktrees' MySQL
+sudo pierd team base octocat/shop files add .env --from /root/shop/dev.env
+sudo pierd team base octocat/shop files add auth.json --from /root/shop/auth.json
+sudo pierd team base octocat/shop config set /root/shop/recipe.json   # or: config from-user alice shop
+sudo pierd team base octocat/shop db enable --redis
+sudo pierd team base octocat/shop db import --server replica.internal --user ro --password-file /root/ro.pass \
+  --databases shop --sanitize /root/shop/anon.sql --check /root/shop/checks.sql
+sudo pierd team status
+```
+
+`team init` makes the team's folder (new or empty, or one an earlier init made; the folders above it are left as they
+are) owned by the team's user (`--user`, which runs the imports' servers) and readable by its group alone, writes
+`/etc/pier/team.json`, and replaces pierd's lines in the MySQL server's local AppArmor profile when the folder
+changes.
+
+The import streams `mysqldump` from the source (a replica, off-peak: a big database takes hours) into a server of
+its own, empties Laravel's queues (`jobs`, `job_batches`, `failed_jobs`, `--clear-tables` more), runs the sanitize
+SQL, refuses to go on unless every check answers 0, then rebuilds it into a fresh server from a dump of the first, so
+no personal data it took out stays in the files, makes the app's user from the base's `.env` with every privilege on
+the project's databases (and on those named after them with a `_`, which Laravel's parallel tests make) and none on
+the server's administration, makes the accounts the data's triggers and views run as (locked), shuts it down cleanly
+and publishes it; the raw import is deleted. Without `--sanitize` it refuses unless `--real-data`; `--no-rebuild`
+keeps what was taken out in the files, so only with `--real-data`. The base's `.env` must give the app a user of its
+own: `DB_USERNAME=root` is refused, since a worktree's server keeps root for pierd. The import's `mysql` and
+`mysqldump` read only its own option files, never root's `~/.my.cnf`, login paths or `MYSQL_*` variables. Each import
+server's buffer pool is an eighth of the memory the machine has free, up to 8 GB (`--memory` says otherwise). One
+import of a project runs at a time; one stopped (Ctrl-C, the terminal gone) ends its servers and deletes its raw data
+and the source's password on the way out, and what one killed outright left goes when the next starts. Run it in
+tmux. `db rm` takes a snapshot's id as `db ls` shows it. Members' pierds take what root publishes within seconds;
+their existing worktrees keep their copy until `pierd db reset`. Everything the team publishes is readable by every
+member and every member's agents: publish development keys and anonymized data.
+
 A paired device can also invite another one: `POST /v1/pair/invite` answers a fresh `pier://` link (single
 use, 10 minutes) for the app to show as a QR code. `pierd clients` lists paired devices, `pierd revoke NAME`
 removes one (its open connections close within seconds).

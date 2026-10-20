@@ -811,8 +811,15 @@ agents), its `files/`, and `published.json`, written last, with each file's sha2
 checked against those hashes, into `$PIER_HOME/box/base/<key>/team/` when a worktree is made or prepared and when
 `GET …/base` is read (at most every 5 s), through a child given the group by `sg` when pierd started before its user
 joined the group. Projects of the box with the same `origin` share the copy and each takes the team's config from it.
-Team settings that cannot be read keep the last copy; only a machine without them has no team. The team's config lies between the repository's and the box's own (2.6), its files under the box's
-own by path. A clone of a project the team has a recipe for runs it (2.8, `setup: "team"`).
+Team settings that cannot be read keep the last copy; only a machine without them has no team. The team's config lies
+between the repository's and the box's own (2.6), its files under the box's own by path. A clone of a project the team
+has a recipe for runs it (2.8, `setup: "team"`). Root keeps it with `pierd team init` (the group `pier`, the team's
+user and folder, `/etc/pier/team.json`, the MySQL server's AppArmor lines) and `pierd team base OWNER/REPO
+files|config|db …`: `db import` makes a database snapshot (imported from a MySQL server through `mysqldump`, queues
+emptied, personal data taken out by the project's SQL, checks that must answer 0, rebuilt from a dump so nothing taken
+out stays in its files, the app's user from the base's `.env` with every privilege on the project's databases and none
+on the server's administration) in `db/gen/<id>/`, and `published.json`'s `db {id, manifest}` names the current one,
+which members' worktrees copy (2.15.1). `pierd db import LOC …` makes a box's own the same way.
 
 `GET /v1/locations/{loc}/base` (never a file's content):
 
@@ -899,6 +906,9 @@ work); `GET /v1/services` leaves their ports out.
   while one runs, or when the base gives no servers), which copies the snapshot afresh and runs the recipe (its
   pending migrations). The main checkout, or a worktree made before the base had a database, gets its servers the
   same way. `DELETE …/worktrees/{wt}/db` ends them and deletes their data. Gates `before:db.reset`, `before:db.drop`.
+* A snapshot nobody took personal data out of (`sanitized: false`: made with `--real-data`, or kept without the
+  rebuild) reads as such in the app,
+  and the project's worktrees get no public link by themselves (2.12.1); one made by hand still works.
 * Removing a worktree ends its servers and deletes their data, after its archive script ran (they stay up for it;
   its recipe's services stop first), and stops a copy or a start under way; forgetting the project stops them and
   keeps it; removing it from the disk deletes them, and its base too only with `?base=1` (its secrets exist nowhere

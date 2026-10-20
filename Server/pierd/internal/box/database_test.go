@@ -28,6 +28,13 @@ import (
 // shuts down cleanly on SIGTERM. FAKE_MYSQLD_DENY makes it stop the way a
 // server AppArmor confines does.
 func fakeDBServer(tool string, args []string) int {
+	trace(tool, args)
+	switch tool {
+	case "mysql":
+		return fakeMySQLClient(args)
+	case "mysqldump":
+		return fakeMySQLDump(args)
+	}
 	if len(args) == 1 && args[0] == "--version" {
 		if tool == "redis-server" {
 			fmt.Printf("Redis server v=%s sha=00000000:0 malloc=libc bits=64 build=fake\n", envOr("FAKE_REDIS_VERSION", "7.0.15"))
@@ -64,6 +71,12 @@ func fakeDBServer(tool string, args []string) int {
 			f.Close()
 		}
 	}
+	if tool == "mysqld" && len(args) > 1 && args[1] == "--initialize-insecure" {
+		os.MkdirAll(conf["datadir"], 0o750)
+		os.WriteFile(filepath.Join(conf["datadir"], "mysql.ibd"), []byte("data dictionary"), 0o640)
+		os.WriteFile(filepath.Join(conf["datadir"], "auto.cnf"), []byte("[auto]\nserver-uuid=x\n"), 0o640)
+		return 0
+	}
 	if tool == "mysqld" {
 		if os.Getenv("FAKE_MYSQLD_DENY") != "" {
 			logf("[ERROR] [MY-012592] [InnoDB] Operating system error number 13 in a file operation. Errcode: 13 - Permission denied")
@@ -88,12 +101,19 @@ func fakeDBServer(tool string, args []string) int {
 		}
 		lns = append(lns, ln)
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:"+conf["port"])
-	if err != nil {
-		logf("[ERROR] port %s: %v", conf["port"], err)
-		return 1
+	if port := conf["port"]; port != "" {
+		ln, err := net.Listen("tcp", "127.0.0.1:"+port)
+		if err != nil {
+			logf("[ERROR] port %s: %v", port, err)
+			return 1
+		}
+		lns = append(lns, ln)
 	}
-	lns = append(lns, ln)
+	// What the fake client needs to reach this server's data: where it is.
+	if sock := conf["socket"]; sock != "" {
+		info, _ := json.Marshal(map[string]any{"datadir": conf["datadir"], "pid": os.Getpid()})
+		os.WriteFile(sock+".info", info, 0o600)
+	}
 	for _, l := range lns {
 		go func(l net.Listener) {
 			for {
@@ -116,8 +136,11 @@ func fakeDBServer(tool string, args []string) int {
 		}(l)
 	}
 	logf("ready for connections")
+	// Like MySQL's, it shuts down on SIGTERM alone: a terminal's Ctrl-C or
+	// hang-up leaves it running.
+	signal.Ignore(syscall.SIGINT, syscall.SIGHUP)
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(sig, syscall.SIGTERM)
 	<-sig
 	for _, l := range lns {
 		l.Close()
@@ -952,5 +975,23 @@ func waitForEither(t *testing.T, ch <-chan events.Event, one, other string) even
 		case <-deadline:
 			t.Fatalf("saw neither %s nor %s", one, other)
 		}
+	}
+}
+
+// Worktrees on a copy of real data get no public link by themselves.
+func TestRealDataGetsNoPublicLinkByItself(t *testing.T) {
+	bx, do, _, _ := dbBox(t)
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	data := snapshotFor(t, bx, key, "8.0.46")
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql"}}, nil)
+	if !bx.autoShareFor(context.Background(), "cal") {
+		t.Fatal("an anonymized snapshot's worktrees lost their links")
+	}
+	var m snapshotManifest
+	loadJSON(filepath.Join(filepath.Dir(data), "manifest.json"), &m)
+	m.Sanitized = false
+	saveJSON(filepath.Join(filepath.Dir(data), "manifest.json"), m)
+	if bx.autoShareFor(context.Background(), "cal") {
+		t.Fatal("worktrees on real data get public links by themselves")
 	}
 }

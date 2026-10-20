@@ -50,6 +50,7 @@ var usageSections = []struct {
 		{"pierd db enable LOC [--redis] [--option NAME=VALUE]... [--allow-copy]", "Give the project's worktrees a MySQL server of their own\n(and a Redis), each on a copy of its snapshot"},
 		{"pierd db disable LOC", "Stop giving new worktrees servers of their own"},
 		{"pierd db apparmor", "The AppArmor lines root adds once for the worktrees' MySQL"},
+		{"pierd db import LOC --server HOST[:PORT] --user U --password-file F (--databases A,B|--all-databases) --sanitize FILE.sql [--check FILE.sql]…", "Make this box's own snapshot of the project's database:\nimported, personal data taken out, checked, rebuilt clean\n(pierd team base … db import makes a team's)"},
 	}},
 	{"Preparation and previews (LOC/WORKTREE: the session's own when left out)", [][2]string{
 		{"pierd prepare status|wait [LOC/WORKTREE] [--timeout 30m]", "How its preparation stands; wait blocks until it is ready\nor failed"},
@@ -143,7 +144,7 @@ func Run(ctx context.Context, c *box.Client, args []string, out io.Writer) error
 		return locationConfig(ctx, c, rest, out)
 	case "base status", "base add", "base rm", "base carry", "base apply":
 		return baseCmd(ctx, c, args[1], rest, out)
-	case "db status", "db reset", "db drop", "db enable", "db disable", "db apparmor":
+	case "db status", "db reset", "db drop", "db enable", "db disable", "db apparmor", "db import":
 		return dbCmd(ctx, c, args[1], rest, out)
 	case "prepare status", "prepare wait", "prepare start", "prepare done":
 		return prepareCmd(ctx, c, strings.TrimPrefix(cmd, "prepare "), rest, out)
