@@ -17388,6 +17388,288 @@
           }
         }
       }
+    },
+    "Base do projeto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Project base"
+          }
+        }
+      }
+    },
+    "Nada configurado ainda" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing set up yet"
+          }
+        }
+      }
+    },
+    "Base da equipe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Team base"
+          }
+        }
+      }
+    },
+    "Publicada %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Published %@"
+          }
+        }
+      }
+    },
+    "Mantida pelo root desta máquina (pierd team), igual para todas as pessoas daqui. O que esta box tem de seu vale por cima dela." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kept by this machine's root (pierd team), the same for everyone here. What this box has of its own comes first."
+          }
+        }
+      }
+    },
+    "Nenhum arquivo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No files"
+          }
+        }
+      }
+    },
+    "%lld chaves" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld keys"
+          }
+        }
+      }
+    },
+    "Cada worktree nova recebe estes arquivos ao ser criada. Num .env, cada chave segue a base, menos as que alguém mudou na própria worktree. Os valores nunca saem da box." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every new worktree gets these files as it is made. In a .env, each key follows the base, except those someone changed in that worktree. The values never leave the box."
+          }
+        }
+      }
+    },
+    "Nenhuma pasta" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No folders"
+          }
+        }
+      }
+    },
+    "Ainda não está na cópia principal: a receita instala do zero" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not in the main checkout yet: the recipe installs it from scratch"
+          }
+        }
+      }
+    },
+    "Pastas reaproveitadas" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reused folders"
+          }
+        }
+      }
+    },
+    "Copiadas da cópia principal para cada worktree nova antes da receita rodar, num instante: neste disco a cópia divide os blocos com a original. A instalação só acerta o que o branch mudou." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied from the main checkout into every new worktree before its recipe runs, in an instant: on this disk the copy shares its blocks with the original. The install only catches up with what the branch changed."
+          }
+        }
+      }
+    },
+    "Copiadas da cópia principal para cada worktree nova antes da receita rodar. A instalação só acerta o que o branch mudou." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied from the main checkout into every new worktree before its recipe runs. The install only catches up with what the branch changed."
+          }
+        }
+      }
+    },
+    "Receita" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recipe"
+          }
+        }
+      }
+    },
+    "Salva por um agente de preparação. Roda em cada worktree nova depois que a base está no lugar." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved by a setup agent. It runs in every new worktree once the base is in place."
+          }
+        }
+      }
+    },
+    "Roda em cada worktree nova depois que a base está no lugar." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It runs in every new worktree once the base is in place."
+          }
+        }
+      }
+    },
+    "Avisos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warnings"
+          }
+        }
+      }
+    },
+    "da equipe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "team's"
+          }
+        }
+      }
+    },
+    "desta box" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "this box's"
+          }
+        }
+      }
+    },
+    "do repositório" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "the repository's"
+          }
+        }
+      }
+    },
+    "Arquivos da base: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Base files: %@"
+          }
+        }
+      }
+    },
+    "Mudadas nesta worktree, mantidas: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changed in this worktree, kept: %@"
+          }
+        }
+      }
+    },
+    "Copiando as pastas da base…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copying the base's folders…"
+          }
+        }
+      }
+    },
+    "Rodando a receita…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Running the recipe…"
+          }
+        }
+      }
+    },
+    "Subindo os serviços…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting the services…"
+          }
+        }
+      }
+    },
+    "Da cópia principal: %@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From the main checkout: %1$@ (%2$@)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Da cópia principal: %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "Arquivos fora do git (.env, auth.json, chaves) e pastas como vendor e node_modules podem ser preparados uma vez para todas as worktrees. Na box: pierd base add %@ .env auth.json e pierd base carry %@ vendor node_modules." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Files git leaves out (.env, auth.json, keys) and folders such as vendor and node_modules can be prepared once for every worktree. On the box: pierd base add %1$@ .env auth.json and pierd base carry %2$@ vendor node_modules."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arquivos fora do git (.env, auth.json, chaves) e pastas como vendor e node_modules podem ser preparados uma vez para todas as worktrees. Na box: pierd base add %1$@ .env auth.json e pierd base carry %2$@ vendor node_modules."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

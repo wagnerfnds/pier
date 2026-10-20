@@ -130,7 +130,7 @@ removes one (its open connections close within seconds).
 
 | Where | What |
 |---|---|
-| `$PIER_HOME` (default `~/.config/pier`) | `box/` (identity, `clients.json`, `locations.json`, `ports.json`, `journal/`, `turns.json`, `accounts.json` and `accounts/`, `mcp.json`, `prepare.json`, `previews.json`, `settings.json`, logs, `pierd.sock`), `push.json`, `AuthKey.p8`, `push-state.json` |
+| `$PIER_HOME` (default `~/.config/pier`) | `box/` (identity, `clients.json`, `locations.json`, `ports.json`, `journal/`, `turns.json`, `accounts.json` and `accounts/`, `mcp.json`, `prepare.json`, `previews.json`, `settings.json`, `base/` (each project's base, below), logs, `pierd.sock`), `push.json`, `AuthKey.p8`, `push-state.json` |
 | `$PIER_USER_DIR` (default `~/.pier`) | `hooks.json` (box hooks: `{"hooks":[{"on":"before:worktree.create","run":"…"}]}`), `env.json` (`{"env":{…}}` for every worktree) |
 | repository `.pier/config.json` | what every worktree of the repository gets (below). It runs only once trusted on the box: `pierd location config NAME --trust HASH` |
 | box-local location config | the same keys, for one box, laid over the repository's: `pierd location config NAME --set file.json` (replaces it) or `--merge file.json` (`-`: stdin; lays keys over it) |
@@ -147,7 +147,8 @@ A location config:
   "services": [ { "name": "web", "run": "npm run dev -- --port $PIER_PORT", "autostart": true } ],
   "hooks": [ { "on": "worktree.created", "run": "echo $PIER_WORKTREE_PATH" } ],
   "agents": [ { "id": "claude", "command": "claude --model opus" } ],
-  "preview": { "path": "/login", "login": { "user": "demo@example.com", "password": "demo-pass" } }
+  "preview": { "path": "/login", "login": { "user": "demo@example.com", "password": "demo-pass" } },
+  "base": { "carry": [ "vendor", "node_modules" ] }
 }
 ```
 
@@ -182,6 +183,23 @@ trusted, the worktree is not a pull request's and pierd does not run as root; as
 `pierd prepare wait` blocks until a worktree's preparation is over (agents run it before they run the app or its
 tests; the setup agent itself never does). A worktree's preview with a port gets a public link by itself on a box
 with a relay that serves links, a day at a time, renewed while the worktree is there.
+
+### The project's base
+
+What every new worktree of a project gets that git does not bring, configured once:
+
+- **files** the box keeps for the project, untracked in it (`.env`, `auth.json`, keys): `pierd base add shop .env
+  auth.json` takes them from the main checkout. Each new worktree gets them as it is made (a dotenv file key by key;
+  what someone changed in a worktree stays when the base changes), never a pull request's from a fork. `pierd base
+  apply shop` writes them into worktrees that already exist.
+- **carried folders**: `pierd base carry shop vendor node_modules` (or `"base": {"carry": [...]}` in a config, or the
+  repository's `.worktreeinclude`) copies those ignored folders from the main checkout into each new worktree before
+  its recipe runs, copy-on-write where the disk can (btrfs, APFS: seconds), so `composer install` and `npm install`
+  only bring them up to date. Laravel's caches, logs and `storage`, and a Python virtualenv, are never carried.
+
+`pierd base status shop` shows what the base holds and whose each part is. On a machine where each person runs their
+own pierd, root can keep a project's base in the team's folder (named in `/etc/pier/team.json`): every member's pierd
+lays it under their own, its recipe between the repository's and their box's.
 
 ## Agent hooks
 
@@ -234,7 +252,7 @@ contract in the app's `docs/PUSH.md`.
 then `pierd client GET /v1/sessions`), and the box commands over the local socket: `locations`,
 `location add|rm|config`, `worktree new|rm`, `services`, `service list|start|stop|restart`, `sessions`,
 `session new|send|screen|rename|wait|turns|kill`, `task new`, `prepare status|wait|start|done`, `preview get|set`,
-`exec`, `stats`, `info`, `emit`, `events`. Run in a worktree's session, `prepare` and `preview` take that worktree
+`base status|add|rm|carry|apply`, `exec`, `stats`, `info`, `emit`, `events`. Run in a worktree's session, `prepare` and `preview` take that worktree
 when none is named.
 
 ## API

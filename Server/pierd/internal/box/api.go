@@ -79,6 +79,10 @@ type Box struct {
 	envState envStates
 	// envLocks keeps one environment apply per location at a time.
 	envLocks sync.Map
+	// baseLocks keeps one change to a project's base at a time (base.go),
+	// and teamSynced when each location last copied the team's (team.go).
+	baseLocks  sync.Map
+	teamSynced sync.Map
 	// prep is how each worktree's preparation went (prepare.go).
 	prep prepStates
 	// leftovers are the sessions whose agent's input box holds a prompt pierd
@@ -186,6 +190,11 @@ func (b *Box) Mount(s *wire.Server) {
 	route("PUT /v1/settings", b.putSettings)
 	route("POST /v1/spaces", b.addSpace)
 	route("DELETE /v1/spaces/{name}", b.removeSpace)
+	route("GET /v1/locations/{name}/base", b.getBase)
+	route("PUT /v1/locations/{name}/base", b.putBase)
+	route("POST /v1/locations/{name}/base/files", b.postBaseFile)
+	route("DELETE /v1/locations/{name}/base/files", b.deleteBaseFile)
+	route("POST /v1/locations/{name}/base/apply", b.applyBase)
 	route("GET /v1/locations/{name}/environment", b.getEnvironment)
 	route("PUT /v1/locations/{name}/environment", b.putEnvironment)
 	route("GET /v1/locations/{name}/branches", b.listBranches)
@@ -425,6 +434,13 @@ func (b *Box) addWorktree(w http.ResponseWriter, r *http.Request) error {
 // task calls it once its agent started, so a task that fails leaves no
 // setup agent behind.
 func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest) (wt Worktree, prepare func(), err error) {
+	// The team's base for the project, as root published it last, decides
+	// the recipe as much as the box's own config does.
+	if b.syncTeam(r.Context(), loc.Name) != nil {
+		if fresh, err := b.Locations.Get(r.Context(), loc.Name); err == nil {
+			loc = fresh
+		}
+	}
 	// A pull request's code (pr, ref) is never handed to a setup agent
 	// unasked, now or when it is prepared again.
 	checkout := req.PR > 0 || req.Ref != ""
@@ -461,6 +477,9 @@ func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest)
 	if checkout {
 		b.preps().markCheckout(key)
 	}
+	// The project's base files go in as it is made, even for "only the
+	// code": a quick fix still runs the app and its tests.
+	b.placeBaseFiles(r.Context(), loc, wt)
 	if how == "none" {
 		b.setPrepare(loc.Name, wt.Name, "skipped", nil)
 		return wt, func() {}, nil
@@ -548,8 +567,10 @@ func (b *Box) removeWorktree(w http.ResponseWriter, r *http.Request) error {
 	from := origin(r)
 	removed := func(ctx context.Context) {
 		b.stopSessionsIn(from, dir)
-		// Its links, its preview, how its preparation went.
+		// Its links, its preview, how its preparation went, what the base
+		// wrote into it.
 		b.forgetWorktree(location, name)
+		b.forgetWritten(ctx, location, dir)
 		b.Locations.Ports.Release(dir)
 		if branch != "" {
 			git(ctx, "-C", loc.Path, "branch", "-D", branch)

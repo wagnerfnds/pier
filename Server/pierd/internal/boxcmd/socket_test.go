@@ -184,3 +184,37 @@ func TestPreviewAndPrepareThroughTheLocalSocket(t *testing.T) {
 		t.Fatalf("after --clear = %+v", cleared)
 	}
 }
+
+// `pierd base`: keep a project's untracked files and the folders its
+// worktrees take from the main checkout, never printing a file's values.
+func TestTheProjectsBaseThroughTheLocalSocket(t *testing.T) {
+	c := socketBox(t)
+	locs, err := c.Locations(context.Background())
+	if err != nil || len(locs) != 1 {
+		t.Fatalf("locations = %v %v", locs, err)
+	}
+	repo := locs[0].Path
+	os.WriteFile(filepath.Join(repo, ".gitignore"), []byte(".env\n/vendor\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, ".env"), []byte("APP_KEY=base64:x\nDB_PASSWORD=never-printed\n"), 0o644)
+	out := runOK(t, c, "base", "add", "cal", ".env")
+	if !strings.Contains(out, ".env") || !strings.Contains(out, "2 keys") || strings.Contains(out, "never-printed") {
+		t.Fatalf("base add printed:\n%s", out)
+	}
+	out = runOK(t, c, "base", "carry", "cal", "vendor", "node_modules")
+	if !strings.Contains(out, "vendor") || !strings.Contains(out, "not in the main checkout yet") {
+		t.Fatalf("base carry printed:\n%s", out)
+	}
+	var v box.BaseView
+	if err := json.Unmarshal([]byte(runOK(t, c, "base", "status", "cal", "--json")), &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Files) != 1 || v.Files[0].Kind != "env" || len(v.Carry) != 2 {
+		t.Fatalf("base status = %+v", v)
+	}
+	if out := runOK(t, c, "base", "rm", "cal", ".env"); !strings.Contains(out, "(none)") {
+		t.Fatalf("base rm printed:\n%s", out)
+	}
+	if out := runOK(t, c, "base", "carry", "cal", "--clear"); !strings.Contains(out, "(none)") {
+		t.Fatalf("base carry --clear printed:\n%s", out)
+	}
+}

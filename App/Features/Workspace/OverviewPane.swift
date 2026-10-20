@@ -91,6 +91,12 @@ struct OverviewPane: View {
                 }
                 .buttonStyle(.bordered)
             }
+            if project.repo, model.connection(for: ref.box)?.info?.has("base") == true {
+                NavigationLink(value: ProjectBaseRoute(box: ref.box, location: project.name)) {
+                    Label("Base do projeto", systemImage: "square.stack.3d.down.right")
+                }
+                .buttonStyle(.bordered)
+            }
             if worktree.main != true {
                 Button(role: .destructive, action: onRemove) { Label("Remover worktree", systemImage: "archivebox") }
                     .buttonStyle(.bordered)

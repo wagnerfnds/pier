@@ -418,14 +418,19 @@ public struct PrepareStatus: Codable, Sendable, Hashable {
     public let services: [String]
     /// How preparing it now goes by default ("agent" or "script"); nil from a box without setup agents.
     public let prepareWith: PrepareMode?
+    /// What a running preparation does now: "carry" (the base's folders), "setup", "agent" or "services" (capability
+    /// `base`).
+    public let step: String?
+    /// How the project's base went into the worktree (capability `base`).
+    public let base: PrepareBase?
 
     public init(state: State, since: Date? = nil, error: String? = nil, kind: String? = nil, session: String? = nil, waiting: Bool = false,
-                setup: String? = nil, services: [String] = [], prepareWith: PrepareMode? = nil) {
+                setup: String? = nil, services: [String] = [], prepareWith: PrepareMode? = nil, step: String? = nil, base: PrepareBase? = nil) {
         self.state = state; self.since = since; self.error = error; self.kind = kind; self.session = session; self.waiting = waiting
-        self.setup = setup; self.services = services; self.prepareWith = prepareWith
+        self.setup = setup; self.services = services; self.prepareWith = prepareWith; self.step = step; self.base = base
     }
 
-    enum CodingKeys: String, CodingKey { case state, since, error, kind, session, waiting, setup, services, prepareWith = "prepare_with" }
+    enum CodingKeys: String, CodingKey { case state, since, error, kind, session, waiting, setup, services, prepareWith = "prepare_with", step, base }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -439,6 +444,8 @@ public struct PrepareStatus: Codable, Sendable, Hashable {
         services = try c.decodeIfPresent([String].self, forKey: .services) ?? []
         // A way a later box adds reads as none given: the box decides.
         prepareWith = try? c.decodeIfPresent(PrepareMode.self, forKey: .prepareWith)
+        step = try c.decodeIfPresent(String.self, forKey: .step).flatMap { $0.isEmpty ? nil : $0 }
+        base = (try? c.decodeIfPresent(PrepareBase.self, forKey: .base)).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// Something to run: a setup script or a service that starts on its own. Without either, preparing by script does
@@ -446,6 +453,6 @@ public struct PrepareStatus: Codable, Sendable, Hashable {
     public var hasWork: Bool { !(setup ?? "").isEmpty || !services.isEmpty }
     /// A setup agent prepares it (or did).
     public var byAgent: Bool { kind == "agent" }
-    /// Worth showing: something to run, a setup agent's work, or a box that can hand it to one.
-    public var hasAnything: Bool { hasWork || byAgent || prepareWith == .agent }
+    /// Worth showing: something to run, a setup agent's work, a box that can hand it to one, or the project's base.
+    public var hasAnything: Bool { hasWork || byAgent || prepareWith == .agent || base != nil }
 }

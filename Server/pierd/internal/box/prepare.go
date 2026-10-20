@@ -54,6 +54,11 @@ type PrepareStatus struct {
 	// PrepareWith is how preparing it now goes when the request does not
 	// say: "agent" or "script".
 	PrepareWith string `json:"prepare_with,omitempty"`
+	// Step is what a running preparation is doing: "carry" (folders from
+	// the main checkout), "setup" (the recipe), "agent" or "services".
+	Step string `json:"step,omitempty"`
+	// Base is how the project's base went into the worktree.
+	Base *BaseReport `json:"base,omitempty"`
 }
 
 // prepRecord is a preparation as kept on disk.
@@ -72,6 +77,10 @@ type prepRecord struct {
 	// Checkout marks a worktree made from a pull request (pr, ref): its
 	// code is nobody's to vet, so no setup agent prepares it unasked.
 	Checkout bool `json:"checkout,omitempty"`
+	// Step is what a running preparation is doing (PrepareStatus.Step).
+	Step string `json:"step,omitempty"`
+	// Base is how the project's base went into the worktree.
+	Base *BaseReport `json:"base,omitempty"`
 }
 
 type prepStates struct {
@@ -110,6 +119,12 @@ func (b *Box) preps() *prepStates {
 			if r.State == "running" && r.Kind != "agent" {
 				now := time.Now()
 				r.State, r.Since, r.Error = "failed", &now, "pierd restarted before the setup script ended: prepare it again"
+			}
+			// A setup agent's run still putting the base in place had no
+			// session yet: nothing goes on with it.
+			if r.State == "running" && r.Kind == "agent" && baseStep(r.Step) {
+				now := time.Now()
+				r.State, r.Since, r.Error, r.Step = "failed", &now, "pierd restarted while it put the project's base in place: prepare it again", ""
 			}
 			b.prep.all[k] = r
 		}
@@ -154,7 +169,7 @@ func (s *prepStates) finishIfPresent(key, state string, err error) bool {
 		return false
 	}
 	now := time.Now()
-	r.State, r.Since, r.Error = state, &now, ""
+	r.State, r.Since, r.Error, r.Step = state, &now, "", ""
 	if err != nil {
 		r.Error = err.Error()
 	}
@@ -202,7 +217,7 @@ func (s *prepStates) start(key, kind, session string) bool {
 	if session != "" {
 		last = session
 	}
-	s.all[key] = prepRecord{State: "running", Since: &now, Kind: kind, Session: session, Last: last, Checkout: old.Checkout}
+	s.all[key] = prepRecord{State: "running", Since: &now, Kind: kind, Session: session, Last: last, Checkout: old.Checkout, Base: old.Base}
 	s.save()
 	return true
 }
@@ -246,7 +261,7 @@ func (s *prepStates) agentRunLocked(key string, r prepRecord, had bool, base str
 		name = base + "-2"
 	}
 	now := time.Now()
-	s.all[key] = prepRecord{State: "running", Since: &now, Kind: "agent", Session: name, Last: name, Checkout: r.Checkout}
+	s.all[key] = prepRecord{State: "running", Since: &now, Kind: "agent", Session: name, Last: name, Checkout: r.Checkout, Base: r.Base}
 	s.save()
 	return name, previous, true
 }
@@ -362,12 +377,15 @@ func (b *Box) prepareWorktree(from string, loc Location, wt Worktree) error {
 // agentFallback allows it.
 func (b *Box) prepareByScript(from, gateFrom string, loc Location, wt Worktree, fallback bool) error {
 	b.Events.Publish(events.Event{Type: "worktree.prepare.started", Box: b.Name, Origin: from, Data: b.prepareData(loc, wt)})
+	b.prepareBase(from, loc, wt)
 	var err error
 	if loc.Scripts.Setup != "" {
+		b.prepareStep(from, loc, wt, "setup")
 		err = b.lifecycle(from, "setup", loc, wt.Path, wt.Name, loc.Scripts.Setup, nil)
 	}
 	if err == nil {
 		// Services start once setup has made the worktree ready for them.
+		b.prepareStep(from, loc, wt, "services")
 		b.startAutostart(loc.Name, wt.Name)
 		b.applyPreviewTemplate(context.Background(), from, loc, wt)
 		b.finishPrepare(from, loc, wt, nil)
@@ -398,6 +416,10 @@ func (b *Box) settleVanished(ctx context.Context, key string) {
 	if !ok || r.Kind != "agent" || r.State != "running" || r.Since == nil || time.Since(*r.Since) < setupGrace || b.Sessions == nil {
 		return
 	}
+	// Still putting the base in place: its session comes after.
+	if baseStep(r.Step) {
+		return
+	}
 	sess, err := b.Sessions.Get(ctx, r.Session)
 	if errors.Is(err, ErrUnknownSession) || err == nil && sess.Exited {
 		b.setupTurnEnded(DefaultOrigin, key, r.Session, false, true)
@@ -408,8 +430,14 @@ func (b *Box) settleVanished(ctx context.Context, key string) {
 func (b *Box) prepareStatus(ctx context.Context, loc Location, wt Worktree) PrepareStatus {
 	st := PrepareStatus{State: "unknown"}
 	b.settleVanished(ctx, prepKey(loc.Name, wt.Name))
+	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok {
+		st.Base = r.Base
+	}
 	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && r.State != "unknown" {
-		st = PrepareStatus{State: r.State, Since: r.Since, Error: r.Error, Kind: r.Kind, Session: r.Session}
+		st = PrepareStatus{State: r.State, Since: r.Since, Error: r.Error, Kind: r.Kind, Session: r.Session, Base: r.Base}
+		if r.State == "running" {
+			st.Step = r.Step
+		}
 		if r.Kind == "agent" && r.State == "running" && b.Turns != nil {
 			if ss, ok := b.Turns.State(r.Session); ok && ss.State == "waiting" {
 				st.Waiting = true
@@ -461,6 +489,11 @@ func (b *Box) postPrepare(w http.ResponseWriter, r *http.Request) error {
 	if req.PrepareWith == "none" {
 		return badRequest("prepare_with is agent or script here")
 	}
+	if b.syncTeam(r.Context(), loc.Name) != nil {
+		if fresh, err := b.Locations.Get(r.Context(), loc.Name); err == nil {
+			loc = fresh
+		}
+	}
 	// A pull request's worktree is never handed to a setup agent unasked.
 	rec, _ := b.preps().get(prepKey(loc.Name, wt.Name))
 	how, err := b.prepareWithFor(r.Context(), loc, req.PrepareWith, nil, rec.Checkout)
@@ -470,6 +503,12 @@ func (b *Box) postPrepare(w http.ResponseWriter, r *http.Request) error {
 	if err := b.before(r, "worktree.prepare", map[string]any{"location": loc.Name, "name": wt.Name, "path": wt.Path, "prepare_with": how}); err != nil {
 		return err
 	}
+	if cur, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && cur.State == "running" {
+		return httpError{http.StatusConflict, "this worktree is already being prepared"}
+	}
+	// The base's files first, as for a new worktree: the recipe or agent
+	// finds them in place.
+	b.placeBaseFiles(r.Context(), loc, wt)
 	// Claimed before the answer, so a second tap is refused and the app's
 	// next read already sees it running.
 	if !b.beginPrepare(r, loc, wt, how, false) {

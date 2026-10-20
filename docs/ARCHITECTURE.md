@@ -449,6 +449,16 @@ reports. Detalhes' **Preparação** follows it (running, waiting for someone, re
 while its session is there; **Preparar com agente** again), and the agents working in the worktree wait for it before
 they run the app or its tests (`pierd prepare wait`, in the `pier-box` skill). docs/API.md 2.6.1.
 
+**The project's base** (boxes with `base`): what every new worktree of a project gets that git does not bring,
+configured once on the box (`pierd base add|carry`) or, on a machine several people share, by root for all of them
+(`pierd team`, the team's base laid under each person's own). Its files (`.env`, `auth.json`, keys) go into each
+worktree as it is made, a dotenv file key by key so what someone changed in a worktree stays; its folders (`vendor`,
+`node_modules`) are copied from the main checkout, copy-on-write where the disk allows, before the recipe runs or the
+setup agent starts, so installs only catch up. `ProjectBaseScreen` (from the project, its Visão geral and a worktree's
+Detalhes) shows it read-only, whose each part is, and the recipe; Detalhes' Preparação shows the running step
+(`PrepareStatus.step`) and how the base went in (`BaseReportLines`). The API never hands out a file's content.
+docs/API.md 2.15.
+
 **Previews**: whoever gets a worktree's page running records it (`pierd preview set`: its port and path, a test login
 of the app, a note), and a worktree prepared by script gets its project's. Detalhes' **Visualização** and the
 session's inspector (`SessionDetailsList`, from a `WorktreeDetailsStore` of its own) show it first

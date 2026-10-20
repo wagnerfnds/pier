@@ -131,6 +131,28 @@ final class ProjectsUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [shown], timeout: 5), .completed, "Mostrar senha did not show it")
     }
 
+    /// sandbox's base in the mock: the team's, published hours ago, with its .env (keys, never values) and auth.json, the
+    /// folders carried from the main checkout (instantly on this disk) and the team's recipe.
+    func testProjectBaseShowsWhatEveryWorktreeGets() throws {
+        try launch()
+        let project = app.staticTexts["sandbox"].firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 10))
+        if element("projects-worktree-sandbox/subtract").exists { element("projects-disclosure-sandbox").tap() }
+        project.tap()
+        let base = element("project-base")
+        XCTAssertTrue(base.waitForExistence(timeout: 10), "no Base do projeto on the project")
+        base.tap()
+        XCTAssertTrue(element("base-team").waitForExistence(timeout: 10), "the team's base is not shown")
+        XCTAssertTrue(element("base-file-.env").exists && element("base-file-auth.json").exists, "the base's files are not listed")
+        XCTAssertTrue(text("4 chaves").exists, "the .env's keys are not counted")
+        XCTAssertTrue(text("da equipe").exists && text("desta box").exists, "whose each file is is not shown")
+        let vendor = element("base-carry-vendor")
+        for _ in 0..<3 where !vendor.exists { app.swipeUp() }
+        XCTAssertTrue(vendor.exists && element("base-carry-node_modules").exists, "the carried folders are not listed")
+        XCTAssertTrue(text("divide os blocos").exists, "the instant copy is not explained")
+        shot("project-base")
+    }
+
     func testProjectsFolderSpacesAndEnvironment() throws {
         app.launchArguments = ["-uiTestMock", "1", "-startTab", "settings", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR"]
         app.launch()

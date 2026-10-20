@@ -61,6 +61,12 @@ extension BoxAPI {
         return try decode(try await call(.put, "/v1/locations/\(Self.seg(location))/setup-agent", body: Body(allowed: allowed)).data)
     }
 
+    /// The project's base: the files and folders every new worktree gets, the recipe, and the team's part on a shared
+    /// machine (capability `base`). Never a file's content.
+    public func projectBase(location: String) async throws -> ProjectBase {
+        try await get("/v1/locations/\(Self.seg(location))/base")
+    }
+
     /// The worktree's preview: the page to open, a test login, its public link (capability `preview`). Empty when nothing
     /// was recorded.
     public func preview(location: String, worktree: String) async throws -> WorktreePreview {
