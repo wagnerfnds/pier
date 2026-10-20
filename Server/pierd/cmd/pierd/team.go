@@ -39,8 +39,8 @@ const teamUsage = `usage:
   pierd team base OWNER/REPO db disable
   pierd team base OWNER/REPO db import --server HOST[:PORT] --user USER --password-file FILE
         (--databases A,B | --all-databases) --sanitize FILE.sql [--sanitize …] [--check FILE.sql]…
-        [--users FILE.sql] [--clear-tables A,B] [--keep-queues] [--ssl-mode MODE] [--memory 8G]
-        [--real-data] [--no-rebuild] [--schema-only] [--keep 2]
+        [--users FILE.sql] [--clear-tables A,B] [--keep-queues] [--rows DB.TABLE:CONDITION]… [--ssl-mode MODE]
+        [--memory 8G] [--real-data] [--no-rebuild] [--schema-only] [--keep 2]
   pierd team base OWNER/REPO db ls|prune [--keep 2]|rm ID`
 
 // teamRun runs a system command for team init; tests replace it.
@@ -600,9 +600,10 @@ func teamImport(p *box.TeamProject, owner box.TeamOwner, fs *flag.FlagSet, args 
 	databases := fs.String("databases", "", "")
 	all := fs.Bool("all-databases", false, "")
 	sslMode := fs.String("ssl-mode", "", "")
-	var sanitize, checks listFlag
+	var sanitize, checks, rows listFlag
 	fs.Var(&sanitize, "sanitize", "")
 	fs.Var(&checks, "check", "")
+	fs.Var(&rows, "rows", "")
 	usersSQL := fs.String("users", "", "")
 	clear := fs.String("clear-tables", "", "")
 	keepQueues := fs.Bool("keep-queues", false, "")
@@ -641,6 +642,11 @@ func teamImport(p *box.TeamProject, owner box.TeamOwner, fs *flag.FlagSet, args 
 	if *clear != "" {
 		o.ClearTables = splitList(*clear)
 	}
+	limits, err := rowsFlags(rows)
+	if err != nil {
+		return err
+	}
+	o.Rows = limits
 	if owner.UID != 0 {
 		o.RunAs = &syscall.Credential{Uid: uint32(owner.UID), Gid: uint32(owner.GID)}
 	}
@@ -675,6 +681,22 @@ func teamImport(p *box.TeamProject, owner box.TeamOwner, fs *flag.FlagSet, args 
 	}
 	fmt.Fprintln(out, "published: members' new worktrees copy it; existing ones keep theirs until pierd db reset")
 	return nil
+}
+
+// rowsFlags reads --rows DB.TABLE:CONDITION (the condition may hold colons).
+func rowsFlags(flags []string) (map[string]string, error) {
+	if len(flags) == 0 {
+		return nil, nil
+	}
+	rows := map[string]string{}
+	for _, f := range flags {
+		table, cond, ok := strings.Cut(f, ":")
+		if !ok || strings.TrimSpace(cond) == "" {
+			return nil, fmt.Errorf("--rows %q: DB.TABLE:CONDITION", f)
+		}
+		rows[strings.TrimSpace(table)] = strings.TrimSpace(cond)
+	}
+	return rows, nil
 }
 
 func splitList(s string) []string {

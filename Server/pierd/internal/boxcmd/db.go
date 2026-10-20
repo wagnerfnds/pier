@@ -148,16 +148,17 @@ func printServers(out io.Writer, v box.BaseView) {
 // the command, as the box's user: it takes hours for a big one, and pierd
 // reads the new current snapshot from the disk.
 func dbImport(ctx context.Context, c *box.Client, fs *flag.FlagSet, args []string, out io.Writer) error {
-	usage := "db import LOC --server HOST[:PORT] --user U --password-file F (--databases A,B|--all-databases) --sanitize FILE.sql [--check FILE.sql]… [--users FILE.sql] [--clear-tables A,B] [--keep-queues] [--real-data] [--no-rebuild] [--schema-only] [--memory 4G] [--keep 2]"
+	usage := "db import LOC --server HOST[:PORT] --user U --password-file F (--databases A,B|--all-databases) --sanitize FILE.sql [--check FILE.sql]… [--users FILE.sql] [--clear-tables A,B] [--keep-queues] [--rows DB.TABLE:CONDITION]… [--real-data] [--no-rebuild] [--schema-only] [--memory 4G] [--keep 2]"
 	server := fs.String("server", "", "")
 	dbUser := fs.String("user", "", "")
 	passwordFile := fs.String("password-file", "", "")
 	databases := fs.String("databases", "", "")
 	all := fs.Bool("all-databases", false, "")
 	sslMode := fs.String("ssl-mode", "", "")
-	var sanitize, checks repeated
+	var sanitize, checks, rows repeated
 	fs.Var(&sanitize, "sanitize", "")
 	fs.Var(&checks, "check", "")
+	fs.Var(&rows, "rows", "")
 	usersSQL := fs.String("users", "", "")
 	clear := fs.String("clear-tables", "", "")
 	keepQueues := fs.Bool("keep-queues", false, "")
@@ -202,6 +203,16 @@ func dbImport(ctx context.Context, c *box.Client, fs *flag.FlagSet, args []strin
 	}
 	if *clear != "" {
 		o.ClearTables = strings.Split(*clear, ",")
+	}
+	for _, r := range rows {
+		table, cond, ok := strings.Cut(r, ":")
+		if !ok || strings.TrimSpace(cond) == "" {
+			return usageErr(usage)
+		}
+		if o.Rows == nil {
+			o.Rows = map[string]string{}
+		}
+		o.Rows[strings.TrimSpace(table)] = strings.TrimSpace(cond)
 	}
 	// The app's users and databases come from the base's own .env files: the
 	// box's, else the team's copy.
