@@ -2,6 +2,8 @@ package box
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -416,6 +418,19 @@ func (p *PortAlloc) Release(dir string) {
 
 var nonIdent = regexp.MustCompile(`[^a-z0-9]+`)
 
+// worktreeSlug names a worktree safely in database, user and container
+// names: shop_fix_checkout. MySQL takes user names of at most 32 characters
+// (databases 64), so a longer slug keeps its start and ends in a hash of the
+// whole name, which keeps two long names that share a start apart.
+func worktreeSlug(location, worktree string) string {
+	s := strings.Trim(nonIdent.ReplaceAllString(strings.ToLower(location+"_"+worktree), "_"), "_")
+	if len(s) <= 32 {
+		return s
+	}
+	sum := sha256.Sum256([]byte(location + "/" + worktree))
+	return strings.TrimRight(s[:25], "_") + "_" + hex.EncodeToString(sum[:3])
+}
+
 // WorktreeEnv is what everything run in a worktree gets: pierd's variables
 // for it (PIER_*), then the box's and the
 // location's env with those variables expanded.
@@ -434,8 +449,8 @@ func (b *Box) WorktreeEnv(ctx context.Context, location string, wt Worktree) ([]
 		"PIER_ROOT_PATH":     loc.Path,
 		"PIER_WORKTREE_PATH": wt.Path,
 		"PIER_WORKTREE_NAME": wt.Name,
-		// Safe in database and container names: shop_fix_checkout.
-		"PIER_WORKTREE_SLUG": strings.Trim(nonIdent.ReplaceAllString(strings.ToLower(loc.Name+"_"+wt.Name), "_"), "_"),
+		// Safe in database, user and container names: shop_fix_checkout.
+		"PIER_WORKTREE_SLUG": worktreeSlug(loc.Name, wt.Name),
 		"PIER_BRANCH":        wt.Branch,
 	}
 	if port, err := b.Locations.Ports.For(wt.Path); err != nil {

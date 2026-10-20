@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Spec struct {
@@ -35,6 +36,11 @@ type Spec struct {
 	// reason. A program run as a managed unit can shut itself down on purpose
 	// and still need to come back.
 	RestartAlways bool
+	// StopTimeout is how long a stop waits for the program to exit before it
+	// is killed: a database flushing a large buffer pool needs minutes to
+	// shut down cleanly. Zero keeps the service manager's own (90 s on
+	// systemd, 20 s on launchd).
+	StopTimeout time.Duration
 }
 
 // These are replaced in tests.
@@ -157,6 +163,9 @@ func Render(s Spec) ([]byte, error) {
 		if s.KeepChildren {
 			b.WriteString("<key>AbandonProcessGroup</key><true/>\n")
 		}
+		if s.StopTimeout > 0 {
+			fmt.Fprintf(&b, "<key>ExitTimeOut</key><integer>%d</integer>\n", int(s.StopTimeout.Seconds()))
+		}
 		if s.LogPath != "" {
 			fmt.Fprintf(&b, "<key>StandardOutPath</key><string>%s</string>\n<key>StandardErrorPath</key><string>%s</string>\n", esc(s.LogPath), esc(s.LogPath))
 		}
@@ -180,6 +189,9 @@ func Render(s Spec) ([]byte, error) {
 			policy = "always"
 		}
 		fmt.Fprintf(&b, "Restart=%s\nRestartSec=5\n", policy)
+		if s.StopTimeout > 0 {
+			fmt.Fprintf(&b, "TimeoutStopSec=%d\n", int(s.StopTimeout.Seconds()))
+		}
 		if s.KeepChildren {
 			b.WriteString("KillMode=process\n")
 		}

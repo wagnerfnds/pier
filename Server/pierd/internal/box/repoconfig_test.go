@@ -276,3 +276,25 @@ func TestAWorktreesTerminalsGetItsPortAsPORT(t *testing.T) {
 		t.Fatalf("the project's PORT was replaced: %q", e["PORT"])
 	}
 }
+
+// A worktree's slug names its database and database user: MySQL takes user
+// names of at most 32 characters, so a longer one is cut and keeps a hash of
+// the whole name, and two long names that start alike stay apart.
+func TestAWorktreeSlugFitsAMySQLUserName(t *testing.T) {
+	if got := worktreeSlug("shop", "fix-checkout"); got != "shop_fix_checkout" {
+		t.Fatalf("short slug = %q", got)
+	}
+	long := strings.Repeat("a", 40)
+	one, two := worktreeSlug("777leads", long+"-one"), worktreeSlug("777leads", long+"-two")
+	for _, s := range []string{one, two} {
+		if len(s) > 32 || !strings.HasPrefix(s, "777leads_aaaa") {
+			t.Fatalf("long slug = %q (%d)", s, len(s))
+		}
+	}
+	if one == two {
+		t.Fatalf("two worktrees share the slug %q", one)
+	}
+	if worktreeSlug("777leads", long+"-one") != one {
+		t.Fatal("a slug changed between calls")
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseWorktrees(t *testing.T) {
@@ -263,5 +264,56 @@ func TestAFailedAddLeavesNothingBehind(t *testing.T) {
 	os.Remove(hook)
 	if _, err := l.CreateWorktree(ctx, "cal", "broken", "broken", "main"); err != nil {
 		t.Fatalf("creating again after a failed add: %v", err)
+	}
+}
+
+// slowGit puts a git first on PATH that takes its time checking out a new
+// worktree, as one of a large repository does, and runs the real git after.
+func slowGit(t *testing.T, delay string) {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not installed")
+	}
+	bin := t.TempDir()
+	script := "#!/bin/sh\nif [ \"$3\" = worktree ] && [ \"$4\" = add ]; then sleep " + delay + "; fi\nexec " + real + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// Checking out a large repository's worktree takes longer than an ordinary
+// git call is given: the add has a deadline of its own.
+func TestAWorktreeAddMayOutlastAnOrdinaryGitCall(t *testing.T) {
+	repo := gitRepo(t)
+	slowGit(t, "2")
+	defer func(d time.Duration) { gitTimeout = d }(gitTimeout)
+	gitTimeout = time.Second
+	ctx := context.Background()
+	l := NewLocations(filepath.Join(t.TempDir(), "locations.json"))
+	if _, err := l.Add(ctx, "cal", repo); err != nil {
+		t.Fatal(err)
+	}
+	wt, err := l.CreateWorktree(ctx, "cal", "big", "big", "main")
+	if err != nil {
+		t.Fatalf("a slow checkout was cut short: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wt.Path, "README")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A git call cut short by its deadline says so instead of ending on what git
+// printed until then.
+func TestAGitCallPastItsDeadlineSaysSo(t *testing.T) {
+	repo := gitRepo(t)
+	slowGit(t, "3")
+	out, err := gitWithin(context.Background(), 200*time.Millisecond, "-C", repo, "worktree", "add", "-b", "late", filepath.Join(filepath.Dir(repo), "cal-late"))
+	if err == nil {
+		t.Fatal("the slow add finished")
+	}
+	if !strings.Contains(string(out), "git stopped: it took longer than 200ms") {
+		t.Fatalf("output = %q", out)
 	}
 }

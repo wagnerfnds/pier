@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"time"
 
 	"pier/pierd/internal/doctor"
 	"pier/pierd/internal/service"
@@ -29,6 +30,13 @@ type UnitRequest struct {
 	Program string            `json:"program"`
 	Args    []string          `json:"args"`
 	Env     map[string]string `json:"env"`
+	// KeepStopped leaves the unit down when its program exits cleanly (a
+	// database told to shut down so its files can be copied): only a crash
+	// brings it back.
+	KeepStopped bool `json:"keep_stopped,omitempty"`
+	// StopTimeout is how long a stop waits for a clean shutdown before the
+	// program is killed; zero keeps the service manager's own.
+	StopTimeout time.Duration `json:"stop_timeout,omitempty"`
 }
 
 var (
@@ -102,8 +110,10 @@ func (u *Units) spec(req UnitRequest) (service.Spec, error) {
 		Env:         req.Env,
 		LogPath:     u.logPath(req.Name),
 		// A managed unit exists to stay up, and the programs it runs can shut
-		// themselves down cleanly. on-failure would read that as success.
-		RestartAlways: true,
+		// themselves down cleanly. on-failure would read that as success,
+		// which is what a unit asking to stay stopped wants.
+		RestartAlways: !req.KeepStopped,
+		StopTimeout:   req.StopTimeout,
 	}, nil
 }
 

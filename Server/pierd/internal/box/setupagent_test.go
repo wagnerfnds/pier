@@ -123,6 +123,12 @@ func TestSetupPromptSaysWhatTheBoxAllows(t *testing.T) {
 	if s, _ := b.setupPrompt(ctx, loc, wt, ""); !strings.Contains(s, "pierd runs it with /bin/sh") || !strings.Contains(s, "no `pipefail`") {
 		t.Errorf("the prompt does not say the recipe runs under POSIX sh")
 	}
+	// A worktree's database and user go when it goes: the recipe's archive
+	// drops them and never fails, since a failing archive keeps the worktree.
+	if s, _ := b.setupPrompt(ctx, loc, wt, ""); !strings.Contains(s, `"archive": "<a shell script that removes what setup made outside the folder>"`) ||
+		!strings.Contains(s, "never fails (end each command with `|| true`)") {
+		t.Errorf("the prompt does not ask for an archive that never fails")
+	}
 }
 
 // A setup session's name stays within tmux's 63 characters, with the -2 of
