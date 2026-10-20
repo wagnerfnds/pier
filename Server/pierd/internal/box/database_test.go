@@ -87,6 +87,11 @@ func fakeDBServer(tool string, args []string) int {
 			return 1
 		}
 	}
+	if p := os.Getenv("FAKE_CONF_LOG"); p != "" && tool == "mysqld" {
+		f, _ := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		fmt.Fprintf(f, "%s innodb_strict_mode=%s\n", conf["datadir"], conf["innodb_strict_mode"])
+		f.Close()
+	}
 	pidFile := conf["pid-file"]
 	if tool != "mysqld" {
 		pidFile = conf["pidfile"]

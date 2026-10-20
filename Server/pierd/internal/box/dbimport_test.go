@@ -700,3 +700,22 @@ func TestAnImportTakesOnlyTheRowsATableIsLimitedTo(t *testing.T) {
 		t.Fatalf("a table of another database = %v", err)
 	}
 }
+
+// The import's servers take the source's tables as they are: one the source
+// created before its server checked row sizes would be refused under strict
+// mode, so they run without it. A worktree's server keeps the default, as the
+// source does.
+func TestTheImportsServersTakeTheSourcesTablesAsTheyAre(t *testing.T) {
+	o, _ := importOptions(t)
+	confLog := filepath.Join(t.TempDir(), "conf.log")
+	t.Setenv("FAKE_CONF_LOG", confLog)
+	if _, err := ImportSnapshot(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, confLog); strings.Count(got, "innodb_strict_mode=OFF") != 2 {
+		t.Fatalf("the import's servers started with:\n%s", got)
+	}
+	if strings.Contains(string(mysqlConfig("/d", "/r", 41009, "8.0.46", snapshotManifest{}, nil)), "innodb_strict_mode") {
+		t.Fatal("a worktree's server turned strict mode off")
+	}
+}
