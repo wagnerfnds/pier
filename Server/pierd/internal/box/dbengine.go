@@ -70,6 +70,9 @@ func (b *Box) dbRoot() string {
 	return filepath.Join(base, "pier", "db")
 }
 
+// DefaultDBRoot is where a pierd that sets no DBDir keeps databases.
+func DefaultDBRoot() string { return (&Box{}).dbRoot() }
+
 // currentSnapshot is the snapshot a project's new worktrees start their
 // database from: the box's own when it has one, else the team's (as the
 // box's copy of the team's base names it: refreshTeam first for the one
@@ -153,7 +156,7 @@ func compareVersions(a, b string) int {
 // mysqlOptions are the server options a project may set for its worktrees'
 // servers. Anything else (an init file, a plugin) would run what it names.
 var mysqlOptions = map[string]bool{
-	"character_set_server": true, "collation_server": true, "default_time_zone": true,
+	"character_set_server": true, "collation_server": true, "default_time_zone": true, "event_scheduler": true,
 	"explicit_defaults_for_timestamp": true, "group_concat_max_len": true, "innodb_buffer_pool_size": true,
 	"innodb_lock_wait_timeout": true, "innodb_strict_mode": true, "log_bin_trust_function_creators": true,
 	"max_allowed_packet": true, "max_connections": true, "max_heap_table_size": true, "sort_buffer_size": true,
@@ -209,6 +212,10 @@ func mysqlConfig(dir, run string, port int, version string, m snapshotManifest, 
 		}
 	}
 	b.WriteString("skip-log-bin\n")
+	// A production's scheduled events would run in every worktree.
+	if _, ok := opts["event_scheduler"]; !ok {
+		set("event_scheduler", "OFF")
+	}
 	set("performance_schema", "OFF")
 	set("persisted_globals_load", "OFF")
 	// The redo log's size took one setting from 8.0.30 on.

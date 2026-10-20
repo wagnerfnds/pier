@@ -119,6 +119,10 @@ func merge(repo, local RepoConfig) RepoConfig {
 	return out
 }
 
+// MergeConfig lays over on base the way the box's config lies on a
+// repository's (root merging into a team's config).
+func MergeConfig(base, over RepoConfig) RepoConfig { return merge(base, over) }
+
 // layOver is what `PUT …/config {"merge": …}` saves: over lays on base the
 // way merge lays the box's config on a repository's, except that a hook
 // already there is not added twice, so a recipe saved again stays the same.

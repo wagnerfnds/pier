@@ -36,6 +36,9 @@ type teamSettings struct {
 	// Dir is the team's folder: projects/<base key>/ in it.
 	Dir   string `json:"dir"`
 	Group string `json:"group,omitempty"`
+	// User is the team's system user: it owns the team's folder and runs
+	// the imports' servers.
+	User string `json:"user,omitempty"`
 }
 
 // readTeamSettings reads the machine's team settings: ok is false when the

@@ -71,6 +71,12 @@ const usage = `pierd — the Pier box server
   pierd revoke <name|fingerprint>         Stop trusting a client
   pierd id                                Print this box's fingerprint
   pierd doctor [--json]                   Check this box's setup and how to fix it
+  pierd team init|status|base OWNER/REPO … (as root)
+                                          On a machine where several people each run their own
+                                          pierd: the team's folder and group, and each project's
+                                          base in it (files, recipe, database snapshot imported
+                                          with personal data taken out) that every member's
+                                          worktrees get (pierd team for more)
   pierd version                           Print this build's version
   pierd client pair LINK [--name N]       Pair this machine with a pierd as a client (tests,
                                           scripts/smoke.sh); kept in $PIER_CLIENT_HOME
@@ -175,6 +181,8 @@ func run(args []string) error {
 		return runDoctor(b, args[1:])
 	case "tools":
 		return toolsCmd(args[1:])
+	case "team":
+		return teamCmd(args[1:], os.Stdout)
 	case "client":
 		return clientCmd(args[1:], os.Stdout)
 	case "statusline":
@@ -506,9 +514,11 @@ func serveRetrying(ctx context.Context, s *wire.Server, addr string, logger *log
 	}
 }
 
-// runLocal runs a box command against this box's own pierd.
+// runLocal runs a box command against this box's own pierd. A terminal that
+// goes away (SIGHUP) stops it the way Ctrl-C does: what it was doing (an
+// import) cleans up on the way out.
 func runLocal(b boxHome, args []string) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	if _, err := os.Stat(b.socket()); err != nil {
 		return errors.New("pierd serve is not running on this box; start it with pierd install")
