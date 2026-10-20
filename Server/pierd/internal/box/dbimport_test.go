@@ -75,6 +75,16 @@ func clientConf(args []string) (map[string]string, error) {
 	return conf, nil
 }
 
+// argValue is the value of the argument that starts with prefix.
+func argValue(args []string, prefix string) (string, bool) {
+	for _, a := range args {
+		if v, ok := strings.CutPrefix(a, prefix); ok {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 func serverInfo(sock string) (datadir string, pid int) {
 	var info struct {
 		Datadir string `json:"datadir"`
@@ -99,9 +109,14 @@ func fakeMySQLClient(args []string) int {
 	sql, _ := io.ReadAll(os.Stdin)
 	text := string(sql)
 	if conf["host"] != "" {
-		// The source: only asked which databases it has.
+		// The source: only asked which databases it has, and whether its
+		// events can be read (a read-only user's often cannot).
 		if strings.Contains(text, "SHOW DATABASES") {
 			fmt.Println("information_schema\nmysql\napp\nperformance_schema\nsys")
+		}
+		if strings.Contains(text, "SHOW EVENTS") && os.Getenv("FAKE_EVENTS_DENIED") != "" {
+			fmt.Fprintln(os.Stderr, "ERROR 1044 (42000) at line 1: Access denied for user 'ro'@'%' to database 'app'")
+			return 1
 		}
 		return 0
 	}
@@ -153,8 +168,22 @@ func fakeMySQLDump(args []string) int {
 			fmt.Fprintln(os.Stderr, "Access denied")
 			return 2
 		}
-		if strings.Contains(strings.Join(args, " "), "--no-data") {
+		all := strings.Join(args, " ")
+		if strings.Contains(all, "--events") && os.Getenv("FAKE_EVENTS_DENIED") != "" {
+			fmt.Fprintln(os.Stderr, "mysqldump: Couldn't execute 'show events': Access denied for user 'ro'@'%' to database 'app' (1044)")
+			return 2
+		}
+		if strings.Contains(all, "--no-data") {
 			fmt.Println("-- the source's tables\nCREATE TABLE app.leads (id INT, name TEXT, email TEXT, phone TEXT);")
+			return 0
+		}
+		// One table's own dump, its rows limited: it names no database.
+		if where, ok := argValue(args, "--where="); ok {
+			fmt.Printf("-- rows of app.leads where %s\nINSERT INTO leads VALUES ('Ana Lima','ana@real.example','+55 11 98888-0000');\n", where)
+			return 0
+		}
+		if strings.Contains(all, "--ignore-table=app.leads") {
+			fmt.Println("-- dump from the source, leads left out")
 			return 0
 		}
 		fmt.Println("-- dump from the source\nINSERT INTO app.leads VALUES ('Maria Souza','maria@real.example','+55 11 99999-0000');")
@@ -625,5 +654,49 @@ func TestASchemaOnlyImportTestsTheSQLAndPublishesNothing(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(filepath.Join(o.Dest, "build")); len(entries) > 0 {
 		t.Fatalf("its build stayed: %v", entries)
+	}
+}
+
+// A table's rows can be limited (a messages table's last 90 days): the
+// source's dump leaves it out, and a dump of its own takes only the rows its
+// condition picks, into the same database. A user that may not read events
+// still imports, without them.
+func TestAnImportTakesOnlyTheRowsATableIsLimitedTo(t *testing.T) {
+	o, tracePath := importOptions(t)
+	t.Setenv("FAKE_EVENTS_DENIED", "1")
+	o.Rows = map[string]string{"app.leads": "id >= 8198353"}
+	var progress strings.Builder
+	o.Progress = &progress
+	m, err := ImportSnapshot(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var main, limited string
+	for _, l := range strings.Split(readFile(t, tracePath), "\n") {
+		if strings.HasPrefix(l, "mysqldump ") {
+			switch {
+			case strings.Contains(l, "--ignore-table=app.leads"):
+				main = l
+			case strings.Contains(l, "--where="):
+				limited = l
+			}
+		}
+	}
+	if main == "" || strings.Contains(main, "--events") {
+		t.Fatalf("the source's dump = %q", main)
+	}
+	if !strings.HasSuffix(limited, "--where=id >= 8198353 app leads") {
+		t.Fatalf("the limited table's dump = %q", limited)
+	}
+	log := readFile(t, filepath.Join(o.Dest, "gen", m.ID, "data", "sql.log"))
+	if !strings.Contains(log, "USE `app`;\n-- rows of app.leads where id >= 8198353") || strings.Contains(log, "maria@real.example") {
+		t.Fatalf("the snapshot's server got:\n%s", log)
+	}
+	if !strings.Contains(progress.String(), "cannot read events") || !strings.Contains(m.Source, "app.leads where id >= 8198353") {
+		t.Fatalf("progress:\n%s\nsource: %s", progress.String(), m.Source)
+	}
+	o.Rows = map[string]string{"other.leads": "id > 1"}
+	if _, err := ImportSnapshot(context.Background(), o); err == nil || !strings.Contains(err.Error(), "--rows") {
+		t.Fatalf("a table of another database = %v", err)
 	}
 }

@@ -157,8 +157,10 @@ own: `DB_USERNAME=root` is refused, since a worktree's server keeps root for pie
 `mysqldump` read only its own option files, never root's `~/.my.cnf`, login paths or `MYSQL_*` variables. Each import
 server's buffer pool is an eighth of the memory the machine has free, up to 8 GB (`--memory` says otherwise). One
 import of a project runs at a time; one stopped (Ctrl-C, the terminal gone) ends its servers and deletes its raw data
-and the source's password on the way out, and what one killed outright left goes when the next starts. Run it in
-tmux, after a `--schema-only` run: the source's tables without their rows, the sanitize SQL and the checks run on them
+and the source's password on the way out, and what one killed outright left goes when the next starts. `--rows DB.TABLE:CONDITION` keeps only the rows a condition picks (a messages
+table's recent ones: `--rows 'shop.messages:id >= 8198353'`), so the source never reads the rest; a source user that
+may not read events (a read-only one often cannot) imports without them, since a worktree's server never runs them.
+Run it in tmux, after a `--schema-only` run: the source's tables without their rows, the sanitize SQL and the checks run on them
 in a minute and nothing is published, so a mistake in that SQL shows before an import of hours. `db rm` takes a
 snapshot's id as `db ls` shows it. Members' pierds take what root publishes within seconds;
 their existing worktrees keep their copy until `pierd db reset`. Everything the team publishes is readable by every

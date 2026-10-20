@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,6 +42,10 @@ type ImportOptions struct {
 	// Databases are those taken, or all of the source's but its own.
 	Databases    []string
 	AllDatabases bool
+	// Rows limits tables ("db.table") to the rows a WHERE condition picks
+	// (the last 90 days of a messages table): the source never reads the
+	// rest.
+	Rows map[string]string
 	// Sanitize are SQL files run on the imported data; Checks SQL files
 	// whose every answer must be 0. A source of real data needs Sanitize
 	// unless RealData says to keep it as it is.
@@ -256,6 +261,19 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 	}
 	sort.Strings(dbs)
 	grantOn := grantDatabases(dbs, o.EnvFiles)
+	for t, cond := range o.Rows {
+		db, table, ok := strings.Cut(t, ".")
+		if !ok || !sqlIdent.MatchString(db) || !sqlIdent.MatchString(table) || !slices.Contains(dbs, db) || strings.TrimSpace(cond) == "" {
+			return m, fmt.Errorf("--rows %s: name a table of the imported databases as DB.TABLE:CONDITION", t)
+		}
+	}
+	// A read-only user often may not read events (mysqldump --events then
+	// fails): they are left out, and they never run in a worktree anyway,
+	// whose server has its event scheduler off.
+	events := eventsReadable(ctx, tools, src, dbs)
+	if !events {
+		say("the source's user cannot read events: they are left out (a worktree's server never runs them)")
+	}
 
 	say("importing %s from %s into a server of the import's own…", strings.Join(dbs, ", "), o.Server)
 	a, err := startImportServer(ctx, o, tools, server, version, build, run, "raw", "a")
@@ -264,7 +282,7 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 	}
 	defer a.stop()
 	start := time.Now()
-	n, err := tools.pipe(ctx, src, a.cnf, dbs, o.SchemaOnly, o.Progress)
+	n, err := tools.pipe(ctx, src, a.cnf, sourceParts(dbs, o.Rows, events, o.SchemaOnly), o.Progress)
 	if err != nil {
 		return m, fmt.Errorf("importing: %w", err)
 	}
@@ -320,7 +338,7 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 			return m, err
 		}
 		defer b.stop()
-		if _, err := tools.pipe(ctx, a.cnf, b.cnf, dbs, false, nil); err != nil {
+		if _, err := tools.pipe(ctx, a.cnf, b.cnf, []dumpPart{{args: dumpArgs(true, true, false, nil, dbs)}}, nil); err != nil {
 			return m, fmt.Errorf("rebuilding: %w", err)
 		}
 		a.stop()
@@ -348,7 +366,7 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 		return m, err
 	}
 	m = snapshotManifest{ID: id, Engine: engineMySQL, Version: version, Databases: dbs, Created: time.Now().UTC(),
-		Sanitized: len(o.Sanitize) > 0 && !o.RealData && !o.NoRebuild, Checks: checks, Source: "mysqldump of " + strings.Join(dbs, ", ") + " from " + host,
+		Sanitized: len(o.Sanitize) > 0 && !o.RealData && !o.NoRebuild, Checks: checks, Source: "mysqldump of " + strings.Join(dbs, ", ") + " from " + host + rowsNote(o.Rows),
 		Bytes: treeBytes(filepath.Join(gen, "data"))}
 	if err := saveJSON(filepath.Join(gen, "manifest.json"), m); err != nil {
 		return m, err
@@ -654,26 +672,87 @@ func (s *importServer) stop() {
 	}
 }
 
-// pipe streams a dump of dbs (their tables alone with noData) from the
-// server fromCnf names into the one toCnf names, never through a file; it
-// says how many bytes went. A load that stops (an SQL error) stops the dump
-// too, which would otherwise wait forever to write.
-func (t mysqlTools) pipe(ctx context.Context, fromCnf, toCnf string, dbs []string, noData bool, progress io.Writer) (int64, error) {
-	args := []string{"--defaults-file=" + fromCnf, "--single-transaction", "--quick", "--routines", "--triggers", "--events",
-		"--hex-blob", "--set-gtid-purged=OFF", "--no-tablespaces", "--column-statistics=0"}
+// dumpPart is one mysqldump run of a pipe: its arguments after the defaults
+// file, and what goes into the load before its output.
+type dumpPart struct {
+	args []string
+	head string
+}
+
+// dumpArgs are a dump of dbs: with their routines and triggers, their
+// events when readable, their tables alone with noData, less the ignored
+// tables.
+func dumpArgs(routines, events, noData bool, ignore []string, dbs []string) []string {
+	args := []string{"--single-transaction", "--quick", "--hex-blob", "--set-gtid-purged=OFF", "--no-tablespaces", "--column-statistics=0", "--triggers"}
+	if routines {
+		args = append(args, "--routines")
+	}
+	if events {
+		args = append(args, "--events")
+	}
 	if noData {
 		args = append(args, "--no-data")
 	}
-	args = append(args, "--databases")
-	dumpCmd := exec.CommandContext(ctx, t.dump, append(args, dbs...)...)
-	loadCmd := exec.CommandContext(ctx, t.client, "--defaults-file="+toCnf, "--max-allowed-packet=1G")
-	dumpCmd.Env, loadCmd.Env = t.env, t.env
-	out, err := dumpCmd.StdoutPipe()
-	if err != nil {
-		return 0, err
+	for _, t := range ignore {
+		args = append(args, "--ignore-table="+t)
 	}
-	var dumpErr, loadErr bytes.Buffer
-	dumpCmd.Stderr, loadCmd.Stderr = &dumpErr, &loadErr
+	return append(append(args, "--databases"), dbs...)
+}
+
+// sourceParts are the dumps that take dbs from the source: everything but
+// the tables rows limits, then each of those with only the rows its
+// condition picks (after a USE, since a dump of one table names no
+// database).
+func sourceParts(dbs []string, rows map[string]string, events, noData bool) []dumpPart {
+	limited := make([]string, 0, len(rows))
+	for t := range rows {
+		limited = append(limited, t)
+	}
+	sort.Strings(limited)
+	parts := []dumpPart{{args: dumpArgs(true, events, noData, limited, dbs)}}
+	for _, t := range limited {
+		db, table, _ := strings.Cut(t, ".")
+		args := []string{"--single-transaction", "--quick", "--hex-blob", "--set-gtid-purged=OFF", "--no-tablespaces", "--column-statistics=0", "--triggers", "--where=" + rows[t]}
+		if noData {
+			args = append(args, "--no-data")
+		}
+		parts = append(parts, dumpPart{args: append(args, db, table), head: "USE `" + db + "`;\n"})
+	}
+	return parts
+}
+
+// rowsNote says which tables an import limited, for its manifest.
+func rowsNote(rows map[string]string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	notes := make([]string, 0, len(rows))
+	for t, cond := range rows {
+		notes = append(notes, t+" where "+cond)
+	}
+	sort.Strings(notes)
+	return " (" + strings.Join(notes, "; ") + ")"
+}
+
+// eventsReadable says the source's user may read dbs' events.
+func eventsReadable(ctx context.Context, t mysqlTools, cnf string, dbs []string) bool {
+	for _, d := range dbs {
+		if _, err := t.sql(ctx, cnf, "SHOW EVENTS FROM `"+d+"`"); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// pipe streams parts' dumps from the server fromCnf names into the one toCnf
+// names, one after another into the same load, never through a file; it
+// says how many bytes went. A load that stops (an SQL error) stops the dump
+// too, which would otherwise wait forever to write.
+func (t mysqlTools) pipe(ctx context.Context, fromCnf, toCnf string, parts []dumpPart, progress io.Writer) (int64, error) {
+	loadCmd := exec.CommandContext(ctx, t.client, "--defaults-file="+toCnf, "--max-allowed-packet=1G")
+	loadCmd.Env = t.env
+	var loadErr bytes.Buffer
+	loadCmd.Stderr = &loadErr
 	in, err := loadCmd.StdinPipe()
 	if err != nil {
 		return 0, err
@@ -681,31 +760,55 @@ func (t mysqlTools) pipe(ctx context.Context, fromCnf, toCnf string, dbs []strin
 	if err := loadCmd.Start(); err != nil {
 		return 0, err
 	}
-	if err := dumpCmd.Start(); err != nil {
-		in.Close()
-		loadCmd.Wait()
-		return 0, err
-	}
 	counter := &countingWriter{w: in, progress: progress, every: 1 << 30}
-	n, copyErr := io.Copy(counter, out)
+	var dumpErr error
+	for _, part := range parts {
+		if part.head != "" {
+			if _, dumpErr = io.WriteString(counter, part.head); dumpErr != nil {
+				break
+			}
+		}
+		if dumpErr = t.dumpInto(ctx, fromCnf, part.args, counter); dumpErr != nil {
+			break
+		}
+	}
 	in.Close()
+	lErr := loadCmd.Wait()
+	switch {
+	case lErr != nil:
+		return counter.n, fmt.Errorf("mysql: %v %s", lErr, lastLines(loadErr.String(), 6))
+	case dumpErr != nil:
+		return counter.n, dumpErr
+	}
+	return counter.n, nil
+}
+
+// dumpInto runs one mysqldump into w; one that cannot write (the load
+// stopped) is ended rather than left waiting.
+func (t mysqlTools) dumpInto(ctx context.Context, fromCnf string, args []string, w io.Writer) error {
+	dumpCmd := exec.CommandContext(ctx, t.dump, append([]string{"--defaults-file=" + fromCnf}, args...)...)
+	dumpCmd.Env = t.env
+	var dumpErr bytes.Buffer
+	dumpCmd.Stderr = &dumpErr
+	out, err := dumpCmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := dumpCmd.Start(); err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(w, out)
 	if copyErr != nil {
 		dumpCmd.Process.Kill()
 	}
-	lErr := loadCmd.Wait()
-	if lErr != nil {
-		dumpCmd.Process.Kill()
-	}
 	dErr := dumpCmd.Wait()
-	switch {
-	case lErr != nil:
-		return n, fmt.Errorf("mysql: %v %s", lErr, lastLines(loadErr.String(), 6))
-	case dErr != nil:
-		return n, fmt.Errorf("mysqldump: %v %s", dErr, lastLines(dumpErr.String(), 6))
-	case copyErr != nil:
-		return n, copyErr
+	if copyErr != nil {
+		return copyErr
 	}
-	return n, nil
+	if dErr != nil {
+		return fmt.Errorf("mysqldump: %v %s", dErr, lastLines(dumpErr.String(), 6))
+	}
+	return nil
 }
 
 type countingWriter struct {
