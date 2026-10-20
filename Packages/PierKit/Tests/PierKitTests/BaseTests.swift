@@ -47,6 +47,31 @@ import Testing
         #expect(empty.base == nil && !empty.hasAnything)
     }
 
+    /// The worktrees' own database: the box's server and AppArmor's say, the team's snapshot (anonymized), and how a
+    /// worktree's servers came up with the keys pointed at them.
+    @Test func databaseDecodes() throws {
+        let base = try Fixture.decode("base_db.json", as: ProjectBase.self)
+        let db = try #require(base.db)
+        #expect(db.hasDatabase && db.redis && db.instances == 3 && db.problems.count == 1)
+        #expect(db.server?.version == "8.0.46" && db.server?.needsAppArmorRule == true && db.server?.fix?.contains("pierd team init") == true)
+        let snap = try #require(db.snapshot)
+        #expect(snap.isTeams && snap.sanitized && snap.databases == ["brokerfy", "brokerfy_test"] && snap.bytes == 48_318_382_080)
+        let st = try Fixture.decode("prepare_base_db.json", as: PrepareStatus.self)
+        let dbServer = try #require(st.base?.database)
+        #expect(dbServer.port == 41009 && dbServer.action == "copied" && dbServer.snapshotCreated != nil && dbServer.layer == "team")
+        #expect(st.base?.servers.count == 2 && st.base?.connections.count == 4)
+        let services = try Fixture.decode("services_wt_db.json", as: [WorktreeServiceDetail].self)
+        #expect(services.map(\.isServer) == [false, true, true] && services[1].kind == "mysql")
+    }
+
+    @Test func resetRoute() async throws {
+        let t = MockTransport { _, _, _ in (202, try Fixture.data("prepare_running.json")) }
+        let a = BoxAPI(transport: t, eventPolicy: EventStreamPolicy(jitter: 0))
+        #expect(try await a.resetDatabase(location: "shop", worktree: "fix").state == .running)
+        #expect(t.requests.map { "\($0.method) \($0.path)" } == ["PUT /v1/locations/shop/worktrees/fix/db"])
+        #expect(t.requests[0].body?.contains(#""from":"base""#) == true)
+    }
+
     @Test func route() async throws {
         let t = MockTransport { _, _, _ in (200, try Fixture.data("base.json")) }
         let a = BoxAPI(transport: t, eventPolicy: EventStreamPolicy(jitter: 0))

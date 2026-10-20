@@ -457,7 +457,12 @@ worktree as it is made, a dotenv file key by key so what someone changed in a wo
 setup agent starts, so installs only catch up. `ProjectBaseScreen` (from the project, its Visão geral and a worktree's
 Detalhes) shows it read-only, whose each part is, and the recipe; Detalhes' Preparação shows the running step
 (`PrepareStatus.step`) and how the base went in (`BaseReportLines`). The API never hands out a file's content.
-docs/API.md 2.15.
+With `base.db` (Linux boxes, capability `base.db`) each worktree also gets a MySQL server of its own on a copy of the
+project's snapshot that shares its blocks, and an empty Redis, on the last two ports of its block: the base screen
+shows the snapshot (date, size, anonymized or real data, whose) and what the box lacks (AppArmor's rule, a server);
+Detalhes shows the worktree's own database and **Recomeçar do banco da base** (a confirmation, then the checkout is
+prepared again on a fresh copy), or **Usar o banco da base** for a checkout without one; its services list the servers
+as the worktree's own (`WorktreeServiceDetail.kind`). docs/API.md 2.15.1.
 
 **Previews**: whoever gets a worktree's page running records it (`pierd preview set`: its port and path, a test login
 of the app, a note), and a worktree prepared by script gets its project's. Detalhes' **Visualização** and the

@@ -15,15 +15,17 @@ public struct ProjectBase: Codable, Sendable, Hashable {
     public let recipe: BaseRecipe?
     /// "reflink" (a copy shares the main checkout's blocks on this disk: seconds) or "copy"; nil with nothing to carry.
     public let copy: String?
+    /// The worktrees' own database and Redis (capability `base.db`).
+    public let db: BaseDatabase?
     public let warnings: [String]
 
     public init(key: String, files: [BaseFile] = [], carry: [BaseCarry] = [], team: BaseTeam? = nil, recipe: BaseRecipe? = nil,
-                copy: String? = nil, warnings: [String] = []) {
+                copy: String? = nil, db: BaseDatabase? = nil, warnings: [String] = []) {
         self.key = key; self.files = files; self.carry = carry; self.team = team; self.recipe = recipe; self.copy = copy
-        self.warnings = warnings
+        self.db = db; self.warnings = warnings
     }
 
-    enum CodingKeys: String, CodingKey { case key, files, carry, team, recipe, copy, warnings }
+    enum CodingKeys: String, CodingKey { case key, files, carry, team, recipe, copy, db, warnings }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -33,11 +35,12 @@ public struct ProjectBase: Codable, Sendable, Hashable {
         team = try? c.decodeIfPresent(BaseTeam.self, forKey: .team)
         recipe = try? c.decodeIfPresent(BaseRecipe.self, forKey: .recipe)
         copy = try c.decodeIfPresent(String.self, forKey: .copy).flatMap { $0.isEmpty ? nil : $0 }
+        db = try? c.decodeIfPresent(BaseDatabase.self, forKey: .db)
         warnings = (try? c.decodeIfPresent([String].self, forKey: .warnings)) ?? []
     }
 
-    /// Nothing configured: no files, no folders, no team, no recipe.
-    public var isEmpty: Bool { files.isEmpty && carry.isEmpty && team == nil && recipe == nil }
+    /// Nothing configured: no files, no folders, no team, no recipe, no database.
+    public var isEmpty: Bool { files.isEmpty && carry.isEmpty && team == nil && recipe == nil && db == nil }
     /// Copies of the carried folders share the main checkout's blocks.
     public var copiesShareBlocks: Bool { copy == "reflink" }
 }
@@ -152,25 +155,156 @@ public struct BaseRecipe: Codable, Sendable, Hashable {
     }
 }
 
+/// The worktrees' own database and Redis of a project's base (`ProjectBase.db`, docs/API.md §2.15.1).
+public struct BaseDatabase: Codable, Sendable, Hashable {
+    /// The engine every worktree runs a server of ("mysql"); nil when the base gives none.
+    public let engine: String?
+    /// Every worktree gets an empty Redis of its own.
+    public let redis: Bool
+    public let server: DatabaseServer?
+    /// The snapshot new worktrees copy.
+    public let snapshot: DatabaseSnapshot?
+    /// How many worktrees of the project have their own database.
+    public let instances: Int
+    public let problems: [String]
+
+    public init(engine: String? = nil, redis: Bool = false, server: DatabaseServer? = nil, snapshot: DatabaseSnapshot? = nil,
+                instances: Int = 0, problems: [String] = []) {
+        self.engine = engine; self.redis = redis; self.server = server; self.snapshot = snapshot; self.instances = instances
+        self.problems = problems
+    }
+
+    enum CodingKeys: String, CodingKey { case engine, redis, server, snapshot, instances, problems }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try c.decodeIfPresent(String.self, forKey: .engine).flatMap { $0.isEmpty ? nil : $0 }
+        redis = try c.decodeIfPresent(Bool.self, forKey: .redis) ?? false
+        server = try? c.decodeIfPresent(DatabaseServer.self, forKey: .server)
+        snapshot = try? c.decodeIfPresent(DatabaseSnapshot.self, forKey: .snapshot)
+        instances = try c.decodeIfPresent(Int.self, forKey: .instances) ?? 0
+        problems = (try? c.decodeIfPresent([String].self, forKey: .problems)) ?? []
+    }
+
+    /// Worktrees get a database of their own.
+    public var hasDatabase: Bool { engine != nil }
+}
+
+/// The box's database server program.
+public struct DatabaseServer: Codable, Sendable, Hashable {
+    public let program: String?
+    public let version: String?
+    /// "ok", "needs_rule" (root has to allow the worktrees' folders once) or "none".
+    public let apparmor: String?
+    /// What root runs once when AppArmor is in the way.
+    public let fix: String?
+
+    public init(program: String? = nil, version: String? = nil, apparmor: String? = nil, fix: String? = nil) {
+        self.program = program; self.version = version; self.apparmor = apparmor; self.fix = fix
+    }
+
+    public var needsAppArmorRule: Bool { apparmor == "needs_rule" }
+}
+
+/// A database snapshot: a cleanly shut down datadir every worktree's server starts on a copy of.
+public struct DatabaseSnapshot: Codable, Sendable, Hashable {
+    public let id: String
+    public let created: Date?
+    /// The MySQL version that made it.
+    public let version: String
+    public let databases: [String]
+    public let bytes: Int64
+    /// Personal data was taken out of it as it was made.
+    public let sanitized: Bool
+    /// "team" or "box".
+    public let layer: String
+
+    public init(id: String, created: Date? = nil, version: String = "", databases: [String] = [], bytes: Int64 = 0, sanitized: Bool = false,
+                layer: String = "box") {
+        self.id = id; self.created = created; self.version = version; self.databases = databases; self.bytes = bytes; self.sanitized = sanitized
+        self.layer = layer
+    }
+
+    enum CodingKeys: String, CodingKey { case id, created, version, databases, bytes, sanitized, layer }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        created = try c.decodeIfPresent(Date.self, forKey: .created)
+        version = try c.decodeIfPresent(String.self, forKey: .version) ?? ""
+        databases = (try? c.decodeIfPresent([String].self, forKey: .databases)) ?? []
+        bytes = try c.decodeIfPresent(Int64.self, forKey: .bytes) ?? 0
+        sanitized = try c.decodeIfPresent(Bool.self, forKey: .sanitized) ?? false
+        layer = try c.decodeIfPresent(String.self, forKey: .layer) ?? "box"
+    }
+
+    public var isTeams: Bool { layer == "team" }
+}
+
+/// How one of a worktree's own servers came up (`PrepareBase.servers`).
+public struct ServerReport: Codable, Sendable, Hashable, Identifiable {
+    /// "mysql" or "redis".
+    public let engine: String
+    public let port: Int
+    /// "copied" (a new copy of the snapshot), "created" (an empty Redis), "started", "running" or "failed".
+    public let action: String
+    public let snapshot: String?
+    public let snapshotCreated: Date?
+    public let layer: String?
+    public let reason: String?
+    public let ms: Int?
+
+    public var id: String { engine }
+    public var isDatabase: Bool { engine == "mysql" }
+
+    public init(engine: String, port: Int, action: String, snapshot: String? = nil, snapshotCreated: Date? = nil, layer: String? = nil,
+                reason: String? = nil, ms: Int? = nil) {
+        self.engine = engine; self.port = port; self.action = action; self.snapshot = snapshot; self.snapshotCreated = snapshotCreated
+        self.layer = layer; self.reason = reason; self.ms = ms
+    }
+
+    enum CodingKeys: String, CodingKey { case engine, port, action, snapshot, snapshotCreated = "snapshot_created", layer, reason, ms }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try c.decodeIfPresent(String.self, forKey: .engine) ?? ""
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 0
+        action = try c.decodeIfPresent(String.self, forKey: .action) ?? ""
+        snapshot = try c.decodeIfPresent(String.self, forKey: .snapshot).flatMap { $0.isEmpty ? nil : $0 }
+        snapshotCreated = try c.decodeIfPresent(Date.self, forKey: .snapshotCreated)
+        layer = try c.decodeIfPresent(String.self, forKey: .layer).flatMap { $0.isEmpty ? nil : $0 }
+        reason = try c.decodeIfPresent(String.self, forKey: .reason).flatMap { $0.isEmpty ? nil : $0 }
+        ms = try c.decodeIfPresent(Int.self, forKey: .ms)
+    }
+}
+
 /// How the project's base went into a worktree, kept with its preparation (`PrepareStatus.base`).
 public struct PrepareBase: Codable, Sendable, Hashable {
     public let files: [BaseResult]
     /// The folders copied from the main checkout.
     public let carried: [BaseResult]
+    /// The worktree's own database and Redis (capability `base.db`).
+    public let servers: [ServerReport]
+    /// The env-file keys pointed at them ("file: KEY").
+    public let connections: [String]
 
-    public init(files: [BaseResult] = [], carried: [BaseResult] = []) {
-        self.files = files; self.carried = carried
+    public init(files: [BaseResult] = [], carried: [BaseResult] = [], servers: [ServerReport] = [], connections: [String] = []) {
+        self.files = files; self.carried = carried; self.servers = servers; self.connections = connections
     }
 
-    enum CodingKeys: String, CodingKey { case files, carried }
+    enum CodingKeys: String, CodingKey { case files, carried, servers, connections }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         files = (try? c.decodeIfPresent([BaseResult].self, forKey: .files)) ?? []
         carried = (try? c.decodeIfPresent([BaseResult].self, forKey: .carried)) ?? []
+        servers = (try? c.decodeIfPresent([ServerReport].self, forKey: .servers)) ?? []
+        connections = (try? c.decodeIfPresent([String].self, forKey: .connections)) ?? []
     }
 
-    public var isEmpty: Bool { files.isEmpty && carried.isEmpty }
+    public var isEmpty: Bool { files.isEmpty && carried.isEmpty && servers.isEmpty }
+    /// The worktree's own database, when it has one.
+    public var database: ServerReport? { servers.first { $0.isDatabase } }
     /// The base files the worktree has (written now, already the base's, or changed there).
     public var filesInPlace: [BaseResult] { files.filter { $0.isInPlace } }
     /// The folders that went in, and how long the slowest took.

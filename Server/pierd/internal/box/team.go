@@ -62,6 +62,14 @@ type teamPublished struct {
 	Files map[string]teamFileMeta `json:"files,omitempty"`
 	// Config is the hash of config.json, "" without one.
 	Config string `json:"config,omitempty"`
+	// DB is the team's current database snapshot, in db/gen/<id>/ of the
+	// project's folder.
+	DB *teamSnapshot `json:"db,omitempty"`
+}
+
+type teamSnapshot struct {
+	ID       string           `json:"id"`
+	Manifest snapshotManifest `json:"manifest"`
 }
 
 type teamFileMeta struct {

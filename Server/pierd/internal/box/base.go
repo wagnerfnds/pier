@@ -44,6 +44,12 @@ type BaseConfig struct {
 	// each new worktree before its recipe runs, copy-on-write where the disk
 	// can (vendor, node_modules, a downloaded binary).
 	Carry []string `json:"carry,omitempty"`
+	// DB gives each worktree a database server of its own, started on a
+	// copy of the project's snapshot (database.go), and Redis an empty Redis
+	// of its own. Only the team's config and the box's own can turn them on:
+	// a repository's file or a recipe saved by a setup agent never does.
+	DB    *BaseDB `json:"db,omitempty"`
+	Redis bool    `json:"redis,omitempty"`
 }
 
 const (
@@ -64,15 +70,21 @@ func (c *BaseConfig) validate() error {
 			return fmt.Errorf("base.carry: %w", err)
 		}
 	}
-	return nil
+	return c.DB.validate()
 }
 
-// mergeBase lays over on base: the folders to carry add up.
+// mergeBase lays over on base: the folders to carry add up, and over's
+// servers replace base's when it says.
 func mergeBase(base, over *BaseConfig) *BaseConfig {
 	if base == nil && over == nil {
 		return nil
 	}
 	out := &BaseConfig{}
+	for _, c := range []*BaseConfig{base, over} {
+		if c != nil && (c.DB != nil || c.Redis) {
+			out.DB, out.Redis = c.DB, c.Redis
+		}
+	}
 	seen := map[string]bool{}
 	for _, c := range []*BaseConfig{base, over} {
 		if c == nil {
@@ -130,6 +142,10 @@ type BaseResult struct {
 type BaseReport struct {
 	Files   []BaseResult `json:"files,omitempty"`
 	Carried []BaseResult `json:"carried,omitempty"`
+	// Servers are the worktree's own database and Redis (database.go), and
+	// Connections the env-file keys pointed at them ("file: KEY").
+	Servers     []InstanceReport `json:"servers,omitempty"`
+	Connections []string         `json:"connections,omitempty"`
 }
 
 // The box's own base for a project: $PIER_HOME/box/base/<key>/ holds
@@ -387,8 +403,12 @@ func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []B
 	}
 	defer root.Close()
 	var out []BaseResult
+	managed := map[string]bool{}
+	if len(b.instancesFor(wt.Path)) > 0 {
+		managed = connectionKeys
+	}
 	for _, f := range files {
-		res := b.applyBaseFile(ctx, root, wt, f, mine)
+		res := b.applyBaseFile(ctx, root, wt, f, mine, managed)
 		if res.Action == "written" || res.Action == "updated" {
 			if !gitIgnores(ctx, wt.Path, f.Path) {
 				if err := excludeLocally(ctx, wt.Path, f.Path); err != nil {
@@ -403,7 +423,7 @@ func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []B
 	return out
 }
 
-func (b *Box) applyBaseFile(ctx context.Context, root *os.Root, wt Worktree, f baseFile, mine map[string]writtenFile) BaseResult {
+func (b *Box) applyBaseFile(ctx context.Context, root *os.Root, wt Worktree, f baseFile, mine map[string]writtenFile, managed map[string]bool) BaseResult {
 	res := BaseResult{Path: f.Path}
 	rel := filepath.FromSlash(f.Path)
 	if tracked, err := gitTracks(ctx, wt.Path, f.Path); err != nil {
@@ -445,7 +465,7 @@ func (b *Box) applyBaseFile(ctx context.Context, root *os.Root, wt Worktree, f b
 		return res
 	}
 	if isEnvFile(f.Path) {
-		return mergeBaseEnv(root, rel, f.Path, cur, data, mine)
+		return mergeBaseEnv(root, rel, f.Path, cur, data, mine, managed)
 	}
 	had := mine[f.Path]
 	switch sha := sha256Hex(cur); {
@@ -483,7 +503,7 @@ func recordWritten(p string, data []byte) writtenFile {
 // key by key: a key it lacks is added (unless pierd wrote it before and
 // someone took it out), one it still has as pierd wrote it gets the base's
 // value, one someone changed stays.
-func mergeBaseEnv(root *os.Root, rel, p string, cur, base []byte, mine map[string]writtenFile) BaseResult {
+func mergeBaseEnv(root *os.Root, rel, p string, cur, base []byte, mine map[string]writtenFile, managed map[string]bool) BaseResult {
 	res := BaseResult{Path: p}
 	had := mine[p].Keys
 	if had == nil {
@@ -493,6 +513,11 @@ func mergeBaseEnv(root *os.Root, rel, p string, cur, base []byte, mine map[strin
 	record := map[string]string{}
 	changed := false
 	for _, k := range from.keys() {
+		// Where the checkout's own servers are is theirs to say
+		// (rewriteConnections), whatever the base's file has.
+		if managed[k] {
+			continue
+		}
 		want, rhs, _ := from.get(k)
 		have, _, ok := file.get(k)
 		switch {
@@ -654,8 +679,11 @@ type BaseView struct {
 	Recipe *BaseRecipe `json:"recipe,omitempty"`
 	// Copy is how carried folders are copied on this disk: "reflink"
 	// (instant, sharing the main checkout's blocks) or "copy".
-	Copy     string   `json:"copy,omitempty"`
-	Warnings []string `json:"warnings"`
+	Copy string `json:"copy,omitempty"`
+	// DB is the worktrees' own database and Redis (database.go), on boxes
+	// that run them (capability base.db).
+	DB       *BaseDBView `json:"db,omitempty"`
+	Warnings []string    `json:"warnings"`
 }
 
 type BaseFileView struct {
@@ -758,6 +786,7 @@ func (b *Box) baseView(ctx context.Context, loc Location) (BaseView, error) {
 	if len(view.Carry) > 0 {
 		view.Copy = copyKind(loc.Path)
 	}
+	view.DB = b.baseDBView(ctx, loc, key, cfg)
 	if setup := cfg.Effective.Setup; setup != "" || len(cfg.Effective.Services) > 0 {
 		r := &BaseRecipe{Setup: setup}
 		for _, s := range cfg.Effective.Services {
@@ -801,23 +830,69 @@ func (b *Box) putBase(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var req struct {
-		Carry *[]string `json:"carry"`
+		Carry *[]string       `json:"carry"`
+		DB    json.RawMessage `json:"db"`
+		Redis *bool           `json:"redis"`
 	}
 	if err := decodeOptional(r, &req, 64<<10); err != nil {
 		return err
 	}
-	if req.Carry == nil {
-		return badRequest("send carry: the folders to copy from the main checkout")
+	if req.Carry == nil && req.DB == nil && req.Redis == nil {
+		return badRequest("send carry (the folders to copy from the main checkout), db or redis")
 	}
-	c := &BaseConfig{Carry: *req.Carry}
-	if err := c.validate(); err != nil {
-		return badRequest("%v", err)
+	gate := map[string]any{"location": loc.Name}
+	if req.Carry != nil {
+		c := &BaseConfig{Carry: *req.Carry}
+		if err := c.validate(); err != nil {
+			return badRequest("%v", err)
+		}
+		gate["carry"] = c.Carry
 	}
-	if err := b.before(r, "base.change", map[string]any{"location": loc.Name, "carry": c.Carry}); err != nil {
+	var db *BaseDB
+	redis := false
+	if req.DB != nil || req.Redis != nil {
+		if !dbSupported() {
+			return httpError{http.StatusNotImplemented, "this box runs no worktree servers (Linux only)"}
+		}
+		cfg, err := b.Locations.Config(r.Context(), loc.Name)
+		if err != nil {
+			return err
+		}
+		if cfg.Local.Base != nil {
+			db, redis = cfg.Local.Base.DB, cfg.Local.Base.Redis
+		}
+		if req.DB != nil {
+			db = nil
+			if string(req.DB) != "null" {
+				db = &BaseDB{}
+				if err := json.Unmarshal(req.DB, db); err != nil {
+					return badRequest("db: %v", err)
+				}
+				if err := db.validate(); err != nil {
+					return badRequest("%v", err)
+				}
+			}
+		}
+		if req.Redis != nil {
+			redis = *req.Redis
+		}
+		if (db != nil || redis) && cfg.Effective.Ports > maxPortsWithServers {
+			return badRequest("the project asks for %d ports per worktree; the worktree's own servers take the last two of its ten, so it may ask for at most %d", cfg.Effective.Ports, maxPortsWithServers)
+		}
+		gate["db"], gate["redis"] = db != nil, redis
+	}
+	if err := b.before(r, "base.change", gate); err != nil {
 		return err
 	}
-	if err := b.Locations.SetLocalCarry(loc.Name, c.Carry); err != nil {
-		return err
+	if req.Carry != nil {
+		if err := b.Locations.SetLocalCarry(loc.Name, *req.Carry); err != nil {
+			return err
+		}
+	}
+	if req.DB != nil || req.Redis != nil {
+		if err := b.Locations.SetLocalServers(loc.Name, db, redis); err != nil {
+			return err
+		}
 	}
 	b.publish(r, "base.changed", map[string]any{"location": loc.Name})
 	return b.getBase(w, r)
@@ -1002,10 +1077,12 @@ func (l *Locations) SetLocalCarry(name string, carry []string) error {
 			if all[i].Config != nil {
 				c = *all[i].Config
 			}
-			if len(carry) == 0 {
+			if c.Base == nil {
+				c.Base = &BaseConfig{}
+			}
+			c.Base.Carry = append([]string(nil), carry...)
+			if len(c.Base.Carry) == 0 && c.Base.DB == nil && !c.Base.Redis {
 				c.Base = nil
-			} else {
-				c.Base = &BaseConfig{Carry: append([]string(nil), carry...)}
 			}
 			all[i].Config = &c
 			return all, nil
@@ -1031,7 +1108,7 @@ func recipeWarnings(cfg Config, setup string, files, carry bool) []string {
 }
 
 // baseStep says a preparation's step puts the project's base in place.
-func baseStep(step string) bool { return step == "carry" }
+func baseStep(step string) bool { return step == "carry" || step == "db" }
 
 // prepareStep records what wt's running preparation does now and says so
 // (worktree.prepare.step), so the app follows it.
@@ -1046,28 +1123,35 @@ func (b *Box) prepareStep(from string, loc Location, wt Worktree, step string) {
 	b.Events.Publish(events.Event{Type: "worktree.prepare.step", Box: b.Name, Origin: from, Data: data})
 }
 
-// prepareBase puts the project's base in place in a new worktree, before
-// its recipe runs or its setup agent starts: the folders carried from the
-// main checkout (its files went in as it was made). Nothing in the main
-// checkout, the folders' source, nor in a pull request's checkout.
-func (b *Box) prepareBase(from string, loc Location, wt Worktree) {
-	if wt.Path == loc.Path {
-		return
-	}
+// prepareBase puts the project's base in place in a worktree, before its
+// recipe runs or its setup agent starts: the folders carried from the main
+// checkout (its files went in as it was made; the main checkout is the
+// folders' source), then its own servers (database.go), which fail the
+// preparation when they cannot come up. Nothing in a pull request's
+// checkout.
+func (b *Box) prepareBase(from string, loc Location, wt Worktree) error {
 	if rec, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && rec.Checkout {
-		return
+		return nil
 	}
 	ctx := context.Background()
-	entries := b.carryEntries(ctx, loc, wt)
-	if len(entries) == 0 {
-		return
+	if wt.Path != loc.Path {
+		if entries := b.carryEntries(ctx, loc, wt); len(entries) > 0 {
+			b.prepareStep(from, loc, wt, "carry")
+			var res []BaseResult
+			for _, p := range entries {
+				res = append(res, carryOne(ctx, loc.Path, wt.Path, p))
+			}
+			b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Carried = res })
+		}
 	}
-	b.prepareStep(from, loc, wt, "carry")
-	var res []BaseResult
-	for _, p := range entries {
-		res = append(res, carryOne(ctx, loc.Path, wt.Path, p))
+	if engines, _ := b.wantedServers(ctx, loc); len(engines) == 0 {
+		return nil
 	}
-	b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Carried = res })
+	b.prepareStep(from, loc, wt, "db")
+	servers, err := b.ensureInstances(ctx, loc, wt)
+	conns := b.rewriteConnections(ctx, loc, wt)
+	b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Servers, rep.Connections = servers, conns })
+	return err
 }
 
 // placeBaseFiles writes the project's base files into a checkout as it is
@@ -1078,8 +1162,9 @@ func (b *Box) placeBaseFiles(ctx context.Context, loc Location, wt Worktree) {
 		return
 	}
 	res := b.applyBaseFiles(ctx, loc, wt)
-	if res == nil {
+	conns := b.rewriteConnections(ctx, loc, wt)
+	if res == nil && conns == nil {
 		return
 	}
-	b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Files, rep.Carried = res, nil })
+	b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Files, rep.Carried, rep.Connections = res, nil, conns })
 }

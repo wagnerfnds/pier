@@ -68,6 +68,9 @@ by the box's own user over the Unix socket `$PIER_HOME/box/pierd.sock` (the `pie
 | `PUT /v1/locations/{name}/base` (`carry`; gate `before:base.change`) | `base.go` `putBase` | `pierd base carry` |
 | `POST`/`DELETE /v1/locations/{name}/base/files` (`path`, `from`; gate `before:base.change`) | `base.go` `postBaseFile`/`deleteBaseFile` | `pierd base add\|rm` |
 | `POST /v1/locations/{name}/base/apply` (`worktrees`; gate `before:base.apply`) | `base.go` `applyBase` | `pierd base apply` |
+| `GET /v1/locations/{name}/worktrees/{worktree}/db` | `database.go` `getWorktreeDB` | `pierd db status` |
+| `PUT /v1/locations/{name}/worktrees/{worktree}/db` (`from: base`; 202; gate `before:db.reset`) | `database.go` `putWorktreeDB` (drops the servers, prepares again by script) | App `resetDatabase()`: WorktreeDetails (Recomeçar do banco da base, Usar o banco da base); `pierd db reset` |
+| `DELETE /v1/locations/{name}/worktrees/{worktree}/db` (gate `before:db.drop`) | `database.go` `deleteWorktreeDB` | `pierd db drop` |
 | `GET`/`PUT /v1/locations/{name}/worktrees/{worktree}/preview` (gate `before:preview.change`) | `preview.go` `getPreview`/`putPreview` (the automatic public link: `syncPreviewShare`) | App `preview()`: WorktreeDetails (Visualização), SessionDetailsList (its inspector); `setPreview()` (no caller yet); `pierd preview get\|set` |
 | `GET /v1/worktrees[?location=]` | `worktreeops.go` `listWorktreeStatuses` | App `worktreeStatuses()`: EndSessionSheet, Housekeeper, Project/Worktree screens |
 | `GET /v1/services` | `services.go` `handleServices` | App `services()`: HomeStore, Housekeeper, WorktreeDetails, PreviewBrowser; `pierd services` |

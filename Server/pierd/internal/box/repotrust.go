@@ -89,6 +89,11 @@ func repoLayer(saved savedLocation) (RepoConfig, RepoTrust, error) {
 	if !ok {
 		return RepoConfig{}, RepoTrust{State: RepoTrustNone}, nil
 	}
+	// A repository's file never gives worktrees servers of their own: that
+	// is the team's or the box's to say.
+	if full.Base != nil {
+		full.Base.DB, full.Base.Redis = nil, false
+	}
 	if saved.RepoTrust == hash || !full.runsAnything() {
 		return full, RepoTrust{State: RepoTrustTrusted, Hash: hash}, nil
 	}

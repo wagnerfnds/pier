@@ -72,6 +72,9 @@ type Box struct {
 
 	// StateDir is pierd's own folder (environments' launchers live there).
 	StateDir string
+	// DBDir is where worktrees' databases and the box's snapshots live
+	// (database.go); empty: $XDG_DATA_HOME/pier/db.
+	DBDir string
 
 	// clones are the repositories being cloned (POST /v1/clones).
 	clones clones
@@ -83,6 +86,8 @@ type Box struct {
 	// and teamSynced when each base last copied the team's (team.go).
 	baseLocks  sync.Map
 	teamSynced sync.Map
+	// dbs guards the records of the worktrees' own servers (database.go).
+	dbs dbRegistry
 	// prep is how each worktree's preparation went (prepare.go).
 	prep prepStates
 	// leftovers are the sessions whose agent's input box holds a prompt pierd
@@ -195,6 +200,9 @@ func (b *Box) Mount(s *wire.Server) {
 	route("POST /v1/locations/{name}/base/files", b.postBaseFile)
 	route("DELETE /v1/locations/{name}/base/files", b.deleteBaseFile)
 	route("POST /v1/locations/{name}/base/apply", b.applyBase)
+	route("GET /v1/locations/{name}/worktrees/{worktree}/db", b.getWorktreeDB)
+	route("PUT /v1/locations/{name}/worktrees/{worktree}/db", b.putWorktreeDB)
+	route("DELETE /v1/locations/{name}/worktrees/{worktree}/db", b.deleteWorktreeDB)
 	route("GET /v1/locations/{name}/environment", b.getEnvironment)
 	route("PUT /v1/locations/{name}/environment", b.putEnvironment)
 	route("GET /v1/locations/{name}/branches", b.listBranches)
@@ -401,6 +409,7 @@ func (b *Box) removeLocation(w http.ResponseWriter, r *http.Request) error {
 			b.stopServices(name, wt.Name)
 		}
 		b.dropEnvironment(name, false)
+		b.stopInstances(name)
 	}
 	if err := b.Locations.Remove(name); err != nil {
 		return err
@@ -477,8 +486,13 @@ func (b *Box) createWorktree(r *http.Request, loc Location, req WorktreeRequest)
 	if checkout {
 		b.preps().markCheckout(key)
 	}
-	// The project's base files go in as it is made, even for "only the
-	// code": a quick fix still runs the app and its tests.
+	// Its own servers are reserved first, so the files below and whatever
+	// starts in it meanwhile already point at them; then the project's base
+	// files go in as it is made, even for "only the code": a quick fix still
+	// runs the app and its tests.
+	if how != "none" && !checkout {
+		b.reserveInstances(r.Context(), loc, wt)
+	}
 	b.placeBaseFiles(r.Context(), loc, wt)
 	if how == "none" {
 		b.setPrepare(loc.Name, wt.Name, "skipped", nil)
@@ -571,6 +585,7 @@ func (b *Box) removeWorktree(w http.ResponseWriter, r *http.Request) error {
 		// wrote into it.
 		b.forgetWorktree(location, name)
 		b.forgetWritten(ctx, location, dir)
+		b.dropInstances(dir)
 		b.Locations.Ports.Release(dir)
 		if branch != "" {
 			git(ctx, "-C", loc.Path, "branch", "-D", branch)

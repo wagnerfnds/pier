@@ -67,6 +67,14 @@ extension BoxAPI {
         try await get("/v1/locations/\(Self.seg(location))/base")
     }
 
+    /// Start a checkout's database over from the project's snapshot (capability `base.db`), or give one to a checkout that
+    /// has none: its servers and their data go and it is prepared again by script (answers the preparation, `running`; 409
+    /// while one runs).
+    public func resetDatabase(location: String, worktree: String) async throws -> PrepareStatus {
+        struct Body: Encodable { let from = "base" }
+        return try decode(try await call(.put, "/v1/locations/\(Self.seg(location))/worktrees/\(Self.seg(worktree))/db", body: Body()).data)
+    }
+
     /// The worktree's preview: the page to open, a test login, its public link (capability `preview`). Empty when nothing
     /// was recorded.
     public func preview(location: String, worktree: String) async throws -> WorktreePreview {

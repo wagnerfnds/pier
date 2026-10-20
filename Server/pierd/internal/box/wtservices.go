@@ -26,6 +26,9 @@ type ServiceStatus struct {
 	State string `json:"state"`
 	Unit  string `json:"unit"`
 	Port  int    `json:"port,omitempty"`
+	// Kind is "db" or "redis" for the worktree's own servers (database.go),
+	// which pierd runs and the app may start, stop and restart.
+	Kind string `json:"kind,omitempty"`
 }
 
 var ErrUnknownService = errors.New("no service with that name in this repository's config")
@@ -45,6 +48,7 @@ func (b *Box) WorktreeServices(ctx context.Context, location, worktree string) (
 		return nil, err
 	}
 	out := []ServiceStatus{}
+	taken := map[string]bool{}
 	for _, s := range cfg.Effective.Services {
 		st := ServiceStatus{Name: s.Name, Run: s.Run, Autostart: s.Autostart, State: "stopped", Unit: serviceUnit(loc.Name, wt.Name, s.Name), Port: wt.Port}
 		if b.Units != nil {
@@ -52,9 +56,55 @@ func (b *Box) WorktreeServices(ctx context.Context, location, worktree string) (
 				st.State = u.State
 			}
 		}
+		taken[s.Name] = true
 		out = append(out, st)
 	}
-	return out, nil
+	return append(out, b.instanceServices(wt.Path, taken)...), nil
+}
+
+// instanceServices are a checkout's own servers as services, named db and
+// redis unless the project has services of those names.
+func (b *Box) instanceServices(path string, taken map[string]bool) []ServiceStatus {
+	var out []ServiceStatus
+	for _, inst := range b.instancesFor(path) {
+		name := "db"
+		run := "MySQL"
+		if inst.Engine == engineRedis {
+			name, run = "redis", "Redis"
+		}
+		if inst.Version != "" {
+			run += " " + inst.Version
+		}
+		if inst.Snapshot != "" {
+			run += " · " + inst.Snapshot
+		}
+		if taken[name] {
+			name = "base-" + name
+		}
+		st := ServiceStatus{Name: name, Run: run, State: "stopped", Unit: inst.Unit, Port: inst.Port, Kind: inst.Engine}
+		if b.Units != nil {
+			if u, err := b.Units.Get(inst.Unit); err == nil {
+				st.State = u.State
+			}
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
+// instanceNamed is the checkout's own server a service name means.
+func (b *Box) instanceNamed(path, name string, taken map[string]bool) (dbInstance, bool) {
+	for _, st := range b.instanceServices(path, taken) {
+		if st.Name != name {
+			continue
+		}
+		for _, inst := range b.instancesFor(path) {
+			if inst.Unit == st.Unit {
+				return inst, true
+			}
+		}
+	}
+	return dbInstance{}, false
 }
 
 // StartService (re)installs and starts one service of a worktree.
@@ -68,12 +118,22 @@ func (b *Box) StartService(ctx context.Context, location, worktree, name string)
 		return ServiceStatus{}, err
 	}
 	var svc *WorktreeService
+	taken := map[string]bool{}
 	for i := range cfg.Effective.Services {
+		taken[cfg.Effective.Services[i].Name] = true
 		if cfg.Effective.Services[i].Name == name {
 			svc = &cfg.Effective.Services[i]
 		}
 	}
 	if svc == nil {
+		// One of its own servers: brought up the way its preparation does.
+		if inst, ok := b.instanceNamed(wt.Path, name, taken); ok {
+			if _, err := b.ensureInstances(ctx, loc, wt); err != nil {
+				return ServiceStatus{}, err
+			}
+			b.Events.Publish(eventf(b, "service.started", map[string]any{"location": loc.Name, "name": wt.Name, "path": wt.Path, "service": name, "port": inst.Port}))
+			return b.serviceStatus(ctx, location, worktree, name)
+		}
 		return ServiceStatus{}, ErrUnknownService
 	}
 	if b.Units == nil {
@@ -115,8 +175,18 @@ func (b *Box) StopService(ctx context.Context, location, worktree, name string) 
 	if err != nil {
 		return ServiceStatus{}, err
 	}
+	unit := serviceUnit(loc.Name, wt.Name, name)
+	if cfg, err := b.Locations.Config(ctx, loc.Name); err == nil {
+		taken := map[string]bool{}
+		for _, s := range cfg.Effective.Services {
+			taken[s.Name] = true
+		}
+		if inst, ok := b.instanceNamed(wt.Path, name, taken); ok {
+			unit = inst.Unit
+		}
+	}
 	if b.Units != nil {
-		if _, err := b.Units.Remove(serviceUnit(loc.Name, wt.Name, name)); err != nil && !errors.Is(err, ErrUnknownUnit) {
+		if _, err := b.Units.Remove(unit); err != nil && !errors.Is(err, ErrUnknownUnit) {
 			return ServiceStatus{}, err
 		}
 	}

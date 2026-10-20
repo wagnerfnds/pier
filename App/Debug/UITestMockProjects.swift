@@ -229,6 +229,12 @@ struct MockProjects {
             agentRuns["\(p[2])/\(p[4])"] = nil
             prepared["\(p[2])/\(p[4])"] = .some(Date())
             return (202, prepareJSON(p[2], p[4]))
+        case (.put, 6, "locations") where p[3] == "worktrees" && p[5] == "db":
+            // The worktree's database starts over: prepared again by script, a copy of the base again.
+            if isPreparing("\(p[2])/\(p[4])") { return (409, Self.json(["error": "this worktree is being prepared", "code": "conflict"])) }
+            agentRuns["\(p[2])/\(p[4])"] = nil
+            prepared["\(p[2])/\(p[4])"] = .some(Date())
+            return (202, prepareJSON(p[2], p[4]))
         case (.post, 8, "locations") where p[3] == "worktrees" && p[5] == "services":
             let key = "\(p[2])/\(p[4])/\(p[6])"
             if p[7] == "stop" { stopped.insert(key) } else { stopped.remove(key) }
@@ -467,6 +473,12 @@ struct MockProjects {
             "team": ["dir": "/srv/pier/team/projects/octocat__sandbox", "published": at],
             "recipe": ["setup": "composer install && npm install --prefer-offline && php artisan migrate --force", "services": ["dev"], "from": "team"],
             "copy": "reflink",
+            "db": [
+                "engine": "mysql", "redis": true, "instances": 2,
+                "server": ["program": "/usr/sbin/mysqld", "version": "8.0.46", "apparmor": "ok"],
+                "snapshot": ["id": "20261020-100000", "created": at, "version": "8.0.46", "databases": ["brokerfy", "brokerfy_test"],
+                             "bytes": 48_318_382_080, "sanitized": true, "layer": "team"],
+            ] as JSON,
             "warnings": [] as [Any],
         ])
     }
@@ -483,7 +495,13 @@ struct MockProjects {
         // The base's files go in as a worktree is made; its folders only once it is prepared.
         if location == "sandbox" {
             var report = Self.sandboxBaseReport
-            if case .some(nil) = prepared[key] { report["carried"] = nil }
+            if hasServers(key) {
+                let at = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3 * 3600))
+                report["servers"] = [["engine": "mysql", "port": 41009, "action": "copied", "snapshot": "20261020-100000", "snapshot_created": at,
+                                      "layer": "team", "ms": 1240], ["engine": "redis", "port": 41008, "action": "created", "ms": 80]] as [Any]
+            } else {
+                report["carried"] = nil
+            }
             out["base"] = report
         }
         if let run = agentRuns[key] {
@@ -560,7 +578,20 @@ struct MockProjects {
     }
 
     private func worktreeServices(_ location: String, _ worktree: String) -> Data {
-        Self.json([serviceJSON(location, worktree, name: "dev"), serviceJSON(location, worktree, name: "worker")])
+        var all = [serviceJSON(location, worktree, name: "dev"), serviceJSON(location, worktree, name: "worker")]
+        // sandbox's prepared worktrees have their own database and Redis (the base's).
+        if location == "sandbox", hasServers("\(location)/\(worktree)") {
+            all.append(["name": "db", "run": "MySQL 8.0.46 · 20261020-100000", "state": "running", "unit": "db-sandbox-\(worktree)-a1b2c3",
+                        "port": 41009, "kind": "mysql"])
+            all.append(["name": "redis", "run": "Redis", "state": "running", "unit": "redis-sandbox-\(worktree)-d4e5f6", "port": 41008, "kind": "redis"])
+        }
+        return Self.json(all)
+    }
+
+    /// A worktree prepared since the base had a database (not one made with only its code).
+    private func hasServers(_ key: String) -> Bool {
+        if case .some(nil) = prepared[key] { return false }
+        return true
     }
 
     private func serviceJSON(_ location: String, _ worktree: String, name: String) -> JSON {

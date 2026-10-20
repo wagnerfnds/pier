@@ -107,6 +107,9 @@ func (b *Box) Capabilities() []string {
 		caps = append(caps, "mcp")
 	}
 	caps = append(caps, "prepare.agent", "preview", "base")
+	if dbSupported() {
+		caps = append(caps, "base.db")
+	}
 	if b.Turns != nil {
 		caps = append(caps, "turns", "queue", "ask", "controls")
 	}
