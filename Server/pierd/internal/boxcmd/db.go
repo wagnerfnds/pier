@@ -148,7 +148,7 @@ func printServers(out io.Writer, v box.BaseView) {
 // the command, as the box's user: it takes hours for a big one, and pierd
 // reads the new current snapshot from the disk.
 func dbImport(ctx context.Context, c *box.Client, fs *flag.FlagSet, args []string, out io.Writer) error {
-	usage := "db import LOC --server HOST[:PORT] --user U --password-file F (--databases A,B|--all-databases) --sanitize FILE.sql [--check FILE.sql]… [--users FILE.sql] [--clear-tables A,B] [--keep-queues] [--real-data] [--no-rebuild] [--memory 4G] [--keep 2]"
+	usage := "db import LOC --server HOST[:PORT] --user U --password-file F (--databases A,B|--all-databases) --sanitize FILE.sql [--check FILE.sql]… [--users FILE.sql] [--clear-tables A,B] [--keep-queues] [--real-data] [--no-rebuild] [--schema-only] [--memory 4G] [--keep 2]"
 	server := fs.String("server", "", "")
 	dbUser := fs.String("user", "", "")
 	passwordFile := fs.String("password-file", "", "")
@@ -163,6 +163,7 @@ func dbImport(ctx context.Context, c *box.Client, fs *flag.FlagSet, args []strin
 	keepQueues := fs.Bool("keep-queues", false, "")
 	realData := fs.Bool("real-data", false, "")
 	noRebuild := fs.Bool("no-rebuild", false, "")
+	schemaOnly := fs.Bool("schema-only", false, "")
 	memory := fs.String("memory", "", "")
 	keep := fs.Int("keep", 2, "")
 	pos, err := parse(fs, args)
@@ -187,7 +188,7 @@ func dbImport(ctx context.Context, c *box.Client, fs *flag.FlagSet, args []strin
 	}
 	o := box.ImportOptions{
 		Server: *server, User: *dbUser, Password: password, SSLMode: *sslMode, AllDatabases: *all,
-		Sanitize: sanitize, Checks: checks, RealData: *realData, UsersSQL: *usersSQL, KeepQueues: *keepQueues, NoRebuild: *noRebuild,
+		Sanitize: sanitize, Checks: checks, RealData: *realData, UsersSQL: *usersSQL, KeepQueues: *keepQueues, NoRebuild: *noRebuild, SchemaOnly: *schemaOnly,
 		Memory: *memory, Dest: filepath.Join(box.DefaultDBRoot(), "base", v.Key), Progress: out, EnvFiles: map[string][]byte{},
 		// Where the worktrees' servers' sockets go too, which the AppArmor
 		// lines allow.
@@ -220,6 +221,9 @@ func dbImport(ctx context.Context, c *box.Client, fs *flag.FlagSet, args []strin
 	m, err := box.ImportSnapshot(ctx, o)
 	if err != nil {
 		return err
+	}
+	if o.SchemaOnly {
+		return nil
 	}
 	for _, id := range box.PruneSnapshots(o.Dest, *keep) {
 		fmt.Fprintln(out, "removed the older snapshot "+id)

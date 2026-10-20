@@ -134,6 +134,8 @@ sudo pierd team base octocat/shop files add auth.json --from /root/shop/auth.jso
 sudo pierd team base octocat/shop config set /root/shop/recipe.json   # or: config from-user alice shop
 sudo pierd team base octocat/shop db enable --redis
 sudo pierd team base octocat/shop db import --server replica.internal --user ro --password-file /root/ro.pass \
+  --databases shop --sanitize /root/shop/anon.sql --check /root/shop/checks.sql --schema-only   # a minute's test first
+sudo pierd team base octocat/shop db import --server replica.internal --user ro --password-file /root/ro.pass \
   --databases shop --sanitize /root/shop/anon.sql --check /root/shop/checks.sql
 sudo pierd team status
 ```
@@ -156,7 +158,9 @@ own: `DB_USERNAME=root` is refused, since a worktree's server keeps root for pie
 server's buffer pool is an eighth of the memory the machine has free, up to 8 GB (`--memory` says otherwise). One
 import of a project runs at a time; one stopped (Ctrl-C, the terminal gone) ends its servers and deletes its raw data
 and the source's password on the way out, and what one killed outright left goes when the next starts. Run it in
-tmux. `db rm` takes a snapshot's id as `db ls` shows it. Members' pierds take what root publishes within seconds;
+tmux, after a `--schema-only` run: the source's tables without their rows, the sanitize SQL and the checks run on them
+in a minute and nothing is published, so a mistake in that SQL shows before an import of hours. `db rm` takes a
+snapshot's id as `db ls` shows it. Members' pierds take what root publishes within seconds;
 their existing worktrees keep their copy until `pierd db reset`. Everything the team publishes is readable by every
 member and every member's agents: publish development keys and anonymized data.
 

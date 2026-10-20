@@ -56,6 +56,11 @@ type ImportOptions struct {
 	// NoRebuild keeps A as the snapshot: what an UPDATE replaced stays in
 	// its files, so only for data with nothing taken out (RealData).
 	NoRebuild bool
+	// SchemaOnly imports the source's tables without their rows and runs
+	// the sanitize SQL and the checks on them, publishing nothing: a
+	// minute's test of that SQL against the source's own schema before an
+	// import of hours.
+	SchemaOnly bool
 	// Memory is each import server's buffer pool ("8G"); "" picks one from
 	// the memory the machine has free (importMemory).
 	Memory string
@@ -257,11 +262,15 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 	}
 	defer a.stop()
 	start := time.Now()
-	n, err := tools.pipe(ctx, src, a.cnf, dbs, o.Progress)
+	n, err := tools.pipe(ctx, src, a.cnf, dbs, o.SchemaOnly, o.Progress)
 	if err != nil {
 		return m, fmt.Errorf("importing: %w", err)
 	}
-	say("imported %s in %s", gib(n), time.Since(start).Round(time.Second))
+	if o.SchemaOnly {
+		say("imported the tables of %s, without their rows", strings.Join(dbs, ", "))
+	} else {
+		say("imported %s in %s", gib(n), time.Since(start).Round(time.Second))
+	}
 	// The accounts the data's triggers run as, or every UPDATE on a table
 	// with one fails.
 	if err := makeDefiners(ctx, tools, a.cnf, dbs, grantOn); err != nil {
@@ -297,6 +306,10 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 	if checks > 0 {
 		say("%d checks answered 0", checks)
 	}
+	if o.SchemaOnly {
+		say("the sanitize SQL and the checks ran on the source's schema: nothing was published")
+		return m, nil
+	}
 	final := a
 	if !o.NoRebuild {
 		say("rebuilding it from a dump, so nothing taken out stays in its files…")
@@ -305,7 +318,7 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 			return m, err
 		}
 		defer b.stop()
-		if _, err := tools.pipe(ctx, a.cnf, b.cnf, dbs, nil); err != nil {
+		if _, err := tools.pipe(ctx, a.cnf, b.cnf, dbs, false, nil); err != nil {
 			return m, fmt.Errorf("rebuilding: %w", err)
 		}
 		a.stop()
@@ -639,13 +652,17 @@ func (s *importServer) stop() {
 	}
 }
 
-// pipe streams a dump of dbs from the server fromCnf names into the one
-// toCnf names, never through a file; it says how many bytes went. A load
-// that stops (an SQL error) stops the dump too, which would otherwise wait
-// forever to write.
-func (t mysqlTools) pipe(ctx context.Context, fromCnf, toCnf string, dbs []string, progress io.Writer) (int64, error) {
+// pipe streams a dump of dbs (their tables alone with noData) from the
+// server fromCnf names into the one toCnf names, never through a file; it
+// says how many bytes went. A load that stops (an SQL error) stops the dump
+// too, which would otherwise wait forever to write.
+func (t mysqlTools) pipe(ctx context.Context, fromCnf, toCnf string, dbs []string, noData bool, progress io.Writer) (int64, error) {
 	args := []string{"--defaults-file=" + fromCnf, "--single-transaction", "--quick", "--routines", "--triggers", "--events",
-		"--hex-blob", "--set-gtid-purged=OFF", "--no-tablespaces", "--column-statistics=0", "--databases"}
+		"--hex-blob", "--set-gtid-purged=OFF", "--no-tablespaces", "--column-statistics=0"}
+	if noData {
+		args = append(args, "--no-data")
+	}
+	args = append(args, "--databases")
 	dumpCmd := exec.CommandContext(ctx, t.dump, append(args, dbs...)...)
 	loadCmd := exec.CommandContext(ctx, t.client, "--defaults-file="+toCnf, "--max-allowed-packet=1G")
 	dumpCmd.Env, loadCmd.Env = t.env, t.env

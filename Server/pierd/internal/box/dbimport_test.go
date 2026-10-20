@@ -153,6 +153,10 @@ func fakeMySQLDump(args []string) int {
 			fmt.Fprintln(os.Stderr, "Access denied")
 			return 2
 		}
+		if strings.Contains(strings.Join(args, " "), "--no-data") {
+			fmt.Println("-- the source's tables\nCREATE TABLE app.leads (id INT, name TEXT, email TEXT, phone TEXT);")
+			return 0
+		}
 		fmt.Println("-- dump from the source\nINSERT INTO app.leads VALUES ('Maria Souza','maria@real.example','+55 11 99999-0000');")
 		if os.Getenv("FAKE_DUMP_BIG") != "" {
 			// More than a pipe holds: a load that stopped reading leaves
@@ -593,5 +597,33 @@ func TestAnImportsMemoryFitsTheMachine(t *testing.T) {
 	o.Memory = "1G\n[mysqld]\ninit-file=/tmp/x.sql"
 	if _, err := ImportSnapshot(context.Background(), o); err == nil || !strings.Contains(err.Error(), "--memory") {
 		t.Fatalf("a memory with a config in it = %v", err)
+	}
+}
+
+// --schema-only runs the sanitize SQL and the checks on the source's tables
+// without their rows, in a minute, and publishes nothing: what an import of
+// hours would find wrong with that SQL, found first.
+func TestASchemaOnlyImportTestsTheSQLAndPublishesNothing(t *testing.T) {
+	o, tracePath := importOptions(t)
+	var progress strings.Builder
+	o.SchemaOnly, o.Progress = true, &progress
+	m, err := ImportSnapshot(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != "" {
+		t.Fatalf("a schema-only run made a snapshot: %+v", m)
+	}
+	if !strings.Contains(readFile(t, tracePath), "--no-data") {
+		t.Fatal("the source's rows were dumped")
+	}
+	if !strings.Contains(progress.String(), "2 checks answered 0") || !strings.Contains(progress.String(), "nothing was published") {
+		t.Fatalf("progress:\n%s", progress.String())
+	}
+	if gens, current := SnapshotGens(o.Dest); len(gens) != 0 || current != "" {
+		t.Fatalf("published %+v (current %q)", gens, current)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(o.Dest, "build")); len(entries) > 0 {
+		t.Fatalf("its build stayed: %v", entries)
 	}
 }

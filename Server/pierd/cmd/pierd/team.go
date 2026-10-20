@@ -40,7 +40,7 @@ const teamUsage = `usage:
   pierd team base OWNER/REPO db import --server HOST[:PORT] --user USER --password-file FILE
         (--databases A,B | --all-databases) --sanitize FILE.sql [--sanitize …] [--check FILE.sql]…
         [--users FILE.sql] [--clear-tables A,B] [--keep-queues] [--ssl-mode MODE] [--memory 8G]
-        [--real-data] [--no-rebuild] [--keep 2]
+        [--real-data] [--no-rebuild] [--schema-only] [--keep 2]
   pierd team base OWNER/REPO db ls|prune [--keep 2]|rm ID`
 
 // teamRun runs a system command for team init; tests replace it.
@@ -422,7 +422,7 @@ func reorder(args []string) []string {
 
 func boolFlag(a string) bool {
 	switch strings.TrimLeft(a, "-") {
-	case "redis", "allow-copy", "all-databases", "keep-queues", "real-data", "no-rebuild", "dry-run":
+	case "redis", "allow-copy", "all-databases", "keep-queues", "real-data", "no-rebuild", "schema-only", "dry-run":
 		return true
 	}
 	return false
@@ -608,6 +608,7 @@ func teamImport(p *box.TeamProject, owner box.TeamOwner, fs *flag.FlagSet, args 
 	keepQueues := fs.Bool("keep-queues", false, "")
 	realData := fs.Bool("real-data", false, "")
 	noRebuild := fs.Bool("no-rebuild", false, "")
+	schemaOnly := fs.Bool("schema-only", false, "")
 	memory := fs.String("memory", "", "")
 	keep := fs.Int("keep", 2, "")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
@@ -631,7 +632,7 @@ func teamImport(p *box.TeamProject, owner box.TeamOwner, fs *flag.FlagSet, args 
 	o := box.ImportOptions{
 		Server: *server, User: *dbUser, Password: password, SSLMode: *sslMode, AllDatabases: *all,
 		Sanitize: sanitize, Checks: checks, RealData: *realData, UsersSQL: *usersSQL, KeepQueues: *keepQueues,
-		NoRebuild: *noRebuild, Memory: *memory, Dest: p.DBDir(), RunDir: "/run/pier-team", Shared: true, Progress: out,
+		NoRebuild: *noRebuild, SchemaOnly: *schemaOnly, Memory: *memory, Dest: p.DBDir(), RunDir: "/run/pier-team", Shared: true, Progress: out,
 		EnvFiles: map[string][]byte{},
 	}
 	if *databases != "" {
@@ -662,6 +663,9 @@ func teamImport(p *box.TeamProject, owner box.TeamOwner, fs *flag.FlagSet, args 
 	signal.Ignore(syscall.SIGPIPE)
 	if _, err := box.ImportSnapshot(ctx, o); err != nil {
 		return err
+	}
+	if o.SchemaOnly {
+		return nil
 	}
 	if err := p.PublishDB(); err != nil {
 		return err
