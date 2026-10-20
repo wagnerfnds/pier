@@ -1003,3 +1003,44 @@ func TestRealDataGetsNoPublicLinkByItself(t *testing.T) {
 		t.Fatal("worktrees on real data get public links by themselves")
 	}
 }
+
+// A checkout without servers of its own in a project whose base gives them
+// (one from before the base, one made with only its code) gets none of the
+// base's dotenv files, whose database settings are its servers'; when it gets
+// its servers it takes the base's users and databases, whatever its env file
+// said before.
+func TestACheckoutFromBeforeTheBaseTakesItsUsersWithItsServers(t *testing.T) {
+	bx, do, events, _ := dbBox(t)
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	snapshotFor(t, bx, key, "8.0.46")
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql", "allow_copy": true}}, nil)
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "older", "prepare_with": "none"}, &wt)
+	if _, err := os.Stat(filepath.Join(wt.Path, ".env")); err == nil {
+		t.Fatal("a checkout without servers got the base's .env")
+	}
+	// Its own .env from before, on the box's database.
+	os.WriteFile(filepath.Join(wt.Path, ".env"), []byte("APP_KEY=base64:mine\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=cal_older\nDB_USERNAME=me\nDB_PASSWORD=mine\n"), 0o600)
+	do("POST", "/v1/locations/cal/worktrees/older/prepare", nil, nil)
+	waitFor(t, events, "worktree.prepare.finished")
+	if _, err := os.Stat(filepath.Join(wt.Path, ".env.testing")); err == nil {
+		t.Fatal("preparing it again added the base's .env.testing")
+	}
+	if env := envOf(t, filepath.Join(wt.Path, ".env")); env["DB_DATABASE"] != "cal_older" || env["DB_USERNAME"] != "me" {
+		t.Fatalf("its .env changed: %v", env)
+	}
+	if code := do("PUT", "/v1/locations/cal/worktrees/older/db", map[string]string{"from": "base"}, nil); code != 202 {
+		t.Fatalf("asking for the base's database = %d", code)
+	}
+	waitFor(t, events, "worktree.prepare.finished")
+	env := envOf(t, filepath.Join(wt.Path, ".env"))
+	if env["DB_DATABASE"] != "shop" || env["DB_USERNAME"] != "app" || env["DB_PASSWORD"] != "s3cret" || env["APP_KEY"] != "base64:mine" {
+		t.Fatalf("with its servers, .env = %v", env)
+	}
+	if inst := bx.instancesFor(wt.Path); len(inst) != 1 || env["DB_PORT"] != strconv.Itoa(inst[0].Port) {
+		t.Fatalf("its server: %+v, .env port %s", inst, env["DB_PORT"])
+	}
+	if testEnv := envOf(t, filepath.Join(wt.Path, ".env.testing")); testEnv["DB_DATABASE"] != "shop_test" {
+		t.Fatalf(".env.testing = %v", testEnv)
+	}
+}

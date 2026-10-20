@@ -790,7 +790,9 @@ What every new worktree of a project gets that git does not bring, configured on
   one the checkout still has as pierd wrote it is updated when the base changes; one someone changed there stays. A
   dotenv file (`.env`, `.env.*`) goes the same way key by key. A path git tracks in that checkout is skipped (so is
   one git cannot say about), and one git does not ignore is added to the repository's `.git/info/exclude` (the app
-  commits with `git add -A`). pierd keeps the files in `$PIER_HOME/box/base/<key>/`
+  commits with `git add -A`). In a project whose base gives worktrees servers of their own (2.15.1), a checkout without
+  them (one from before the base, one made with only its code) gets none of the base's dotenv files, whose database
+  settings are its servers'; it gets them with its servers. pierd keeps the files in `$PIER_HOME/box/base/<key>/`
   (0600) and, of what it wrote into each checkout, only hashes.
 * **Carried folders**: ignored folders or files of the main checkout (`vendor`, `node_modules`, a downloaded binary)
   copied into each new worktree before its recipe runs or its setup agent starts (`cp -a --reflink=auto` on Linux,
@@ -905,7 +907,8 @@ work); `GET /v1/services` leaves their ports out.
   services stop, its servers and their data go, and it is prepared again by script (202 with the preparation; 409
   while one runs, or when the base gives no servers), which copies the snapshot afresh and runs the recipe (its
   pending migrations). The main checkout, or a worktree made before the base had a database, gets its servers the
-  same way. `DELETE …/worktrees/{wt}/db` ends them and deletes their data. Gates `before:db.reset`, `before:db.drop`.
+  same way, and takes the base's `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD` over what its env files had (its
+  server has the base's users and databases alone). `DELETE …/worktrees/{wt}/db` ends them and deletes their data. Gates `before:db.reset`, `before:db.drop`.
 * A snapshot nobody took personal data out of (`sanitized: false`: made with `--real-data`, or kept without the
   rebuild) reads as such in the app,
   and the project's worktrees get no public link by themselves (2.12.1); one made by hand still works.

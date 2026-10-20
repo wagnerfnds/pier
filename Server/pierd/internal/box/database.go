@@ -752,6 +752,11 @@ func (b *Box) instanceEnv(path string) serverEnv {
 	return env
 }
 
+// databaseCredentials are the dotenv keys a checkout takes from the base's
+// files when it gets its servers: its server has the base's users and
+// databases, whatever its env files said before.
+var databaseCredentials = map[string]bool{"DB_DATABASE": true, "DB_USERNAME": true, "DB_PASSWORD": true}
+
 // connectionKeys are the env-file keys a checkout's servers decide, by
 // engine: a base's dotenv file never changes them in a checkout that has
 // that server.
@@ -938,7 +943,9 @@ func (b *Box) putWorktreeDB(w http.ResponseWriter, r *http.Request) error {
 	b.stopServices(loc.Name, wt.Name)
 	b.dropInstances(wt.Path)
 	b.reserveInstances(r.Context(), loc, wt)
-	b.placeBaseFiles(r.Context(), loc, wt)
+	// A checkout from before the base (its own database elsewhere) takes the
+	// base's users and databases: its new server has those alone.
+	b.placeBase(r.Context(), loc, wt, databaseCredentials)
 	if !b.beginPrepare(r, loc, wt, "script", false) {
 		return httpError{http.StatusConflict, "this worktree is being prepared"}
 	}
