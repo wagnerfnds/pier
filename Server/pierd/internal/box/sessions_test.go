@@ -223,3 +223,22 @@ func TestEnvVarAsksTmuxOnce(t *testing.T) {
 		t.Fatalf("asked tmux %d times", asked)
 	}
 }
+
+// tmux's answers when there is no server to list: none yet, or the one that
+// exited as the client reached it (the last session had just ended). Both
+// are no sessions, never an error.
+func TestNoTmuxServerMeansNoSessions(t *testing.T) {
+	for _, out := range []string{
+		"no server running on /tmp/tmux-1000/pier",
+		"error connecting to /tmp/tmux-1000/pier (No such file or directory)",
+		"server exited unexpectedly",
+		"lost server",
+	} {
+		if !noTmuxServer([]byte(out)) {
+			t.Errorf("%q read as a failure", out)
+		}
+	}
+	if noTmuxServer([]byte("can't find session: agent-1")) {
+		t.Error("another error read as no server")
+	}
+}
