@@ -210,8 +210,10 @@ func ImportSnapshot(ctx context.Context, o ImportOptions) (snapshotManifest, err
 			return m, err
 		}
 	}
+	// The servers run as RunAs: theirs to reach their sockets through, and
+	// nobody else's (a server's root signs in by its socket alone).
 	if o.RunAs != nil {
-		for _, d := range []string{filepath.Join(o.Dest, "build"), build, run} {
+		for _, d := range []string{o.RunDir, filepath.Join(o.Dest, "build"), build, run} {
 			os.Chown(d, int(o.RunAs.Uid), int(o.RunAs.Gid))
 		}
 	}
