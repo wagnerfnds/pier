@@ -21,6 +21,14 @@ func TestMain(m *testing.M) {
 	if tool := os.Getenv("FAKE_DB_SERVER"); tool != "" {
 		os.Exit(fakeDBServer(tool, os.Args[1:]))
 	}
+	// A session's program behind `pierd env-exec` (sessionenv_test.go):
+	// this binary stands in for pierd.
+	if len(os.Args) > 1 && os.Args[1] == "env-exec" {
+		if err := EnvExec(os.Args[2:]); err != nil {
+			os.Stderr.WriteString(err.Error() + "\n")
+			os.Exit(1)
+		}
+	}
 	for k, v := range map[string]string{
 		"GIT_AUTHOR_NAME": "pier test", "GIT_AUTHOR_EMAIL": "test@example.com",
 		"GIT_COMMITTER_NAME": "pier test", "GIT_COMMITTER_EMAIL": "test@example.com",

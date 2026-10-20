@@ -93,6 +93,12 @@ type Sessions struct {
 	// Env is added to every session's environment: where pierd's socket is
 	// (PIER_HOME, see cmd/pierd), so an agent's hooks reach this pierd.
 	Env []string
+	// Exe is pierd's own program. With it, a session's variables that may
+	// hold secrets (the box's variables, a project's env, MCP tokens) reach
+	// its program through `pierd env-exec FILE --` (sessionenv.go) instead
+	// of tmux's command line, which every user of the box can read in /proc
+	// while it runs.
+	Exe string
 	// Scopes, when set, gives each new session a systemd scope of its own
 	// (scopes.go); MemoryHigh is the ceiling a new scope gets (0: none).
 	Scopes     scopeManager
@@ -325,6 +331,14 @@ func (s *Sessions) createSized(ctx context.Context, name, location, dir, command
 	env = append(append(append([]string(nil), s.Env...), env...), "PIER_SESSION="+name)
 	if agent != "" {
 		env = append(env, "PIER_AGENT="+agent)
+	}
+	if public, secret := splitSessionEnv(env); len(secret) > 0 && s.Exe != "" && s.Commands != "" {
+		file, err := s.writeEnvFile(name, secret)
+		if err != nil {
+			return Session{}, err
+		}
+		wrap = append([]string{s.Exe, "env-exec", file, "--"}, wrap...)
+		env = public
 	}
 	for _, kv := range env {
 		args = append(args, "-e", kv)
