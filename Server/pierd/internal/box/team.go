@@ -62,6 +62,14 @@ type teamPublished struct {
 	Files map[string]teamFileMeta `json:"files,omitempty"`
 	// Config is the hash of config.json, "" without one.
 	Config string `json:"config,omitempty"`
+	// DB is the team's current database snapshot, in db/gen/<id>/ of the
+	// project's folder.
+	DB *teamSnapshot `json:"db,omitempty"`
+}
+
+type teamSnapshot struct {
+	ID       string           `json:"id"`
+	Manifest snapshotManifest `json:"manifest"`
 }
 
 type teamFileMeta struct {
@@ -277,6 +285,16 @@ func (b *Box) applyTeam(location, mirror string) {
 	}
 	at := pub.At
 	b.Locations.SetTeam(location, cfg, &at)
+}
+
+// refreshTeam copies the team's base for location now, however recently it
+// was: what follows starts from what root published last (a worktree's
+// copy of the snapshot).
+func (b *Box) refreshTeam(ctx context.Context, location string) {
+	if key, err := b.Locations.BaseKey(ctx, location); err == nil {
+		b.teamSynced.Delete(key)
+		b.syncTeam(ctx, location)
+	}
 }
 
 // dropTeam forgets the team's base for location: the machine has no team any

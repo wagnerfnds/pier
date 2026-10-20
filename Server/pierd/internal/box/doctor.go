@@ -62,6 +62,7 @@ func (b *Box) Doctor(ctx context.Context) []doctor.Check {
 	}
 	checks = append(checks, b.ghChecks(ctx)...)
 	checks = append(checks, b.eventChecks()...)
+	checks = append(checks, b.dbChecks(ctx)...)
 	locs, err := b.Locations.List(ctx)
 	if err != nil {
 		checks = append(checks, doctor.Check{Area: "Locations", Name: "locations", Status: doctor.Fail, Detail: err.Error()})

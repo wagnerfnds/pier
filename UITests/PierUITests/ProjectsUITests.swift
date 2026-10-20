@@ -151,6 +151,37 @@ final class ProjectsUITests: XCTestCase {
         XCTAssertTrue(vendor.exists && element("base-carry-node_modules").exists, "the carried folders are not listed")
         XCTAssertTrue(text("divide os blocos").exists, "the instant copy is not explained")
         shot("project-base")
+        let snapshot = element("base-db-snapshot")
+        for _ in 0..<3 where !snapshot.exists { app.swipeUp() }
+        XCTAssertTrue(snapshot.exists && text("anonimizado").exists, "the database's snapshot is not shown")
+        shot("project-base-database")
+    }
+
+    /// sandbox's main checkout has its own database (the base's): Detalhes says so, its services show it as the
+    /// worktree's own, and starting it over asks first, then prepares the checkout again.
+    func testAWorktreesDatabaseStartsOverFromDetalhes() throws {
+        try launch()
+        let project = app.staticTexts["sandbox"].firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 10))
+        if element("projects-worktree-sandbox/subtract").exists { element("projects-disclosure-sandbox").tap() }
+        project.tap()
+        let details = app.buttons["Detalhes: serviços e visualização"]
+        XCTAssertTrue(details.waitForExistence(timeout: 10))
+        details.tap()
+        XCTAssertTrue(element("prepare-base-db").waitForExistence(timeout: 10), "the worktree's own database is not in Preparação")
+        let reset = element("db-reset")
+        XCTAssertTrue(reset.exists, "no way to start the database over")
+        shot("details-database")
+        reset.tap()
+        XCTAssertTrue(text("o que mudou no banco desta worktree se perde").waitForExistence(timeout: 5), "starting over did not ask first, or not what is lost")
+        // The dialog's own button, not the row's of the same name.
+        let confirm = app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "Recomeçar do banco da base", "db-reset")).firstMatch
+        XCTAssertTrue(confirm.exists, "the confirmation has no button to start over")
+        confirm.tap()
+        XCTAssertTrue(text("Rodando a receita").waitForExistence(timeout: 10) || text("Preparando").exists, "the checkout is not prepared again")
+        let service = element("service-db")
+        for _ in 0..<4 where !service.exists { app.swipeUp() }
+        XCTAssertTrue(service.exists && text("banco desta worktree").exists, "the database is not among its services")
     }
 
     func testProjectsFolderSpacesAndEnvironment() throws {

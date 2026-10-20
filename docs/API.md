@@ -52,7 +52,7 @@ notifications).
 | Origin header | Optional `X-Pier-Origin: <[a-z0-9][a-z0-9-]{0,31}>` sets the `origin` of the events a call causes (default `pier`). The app sends `ios` (and `ios-push` for push routes). Hooks see a paired client as `client:<name>` whatever the header says. |
 | Gates | Many mutating calls run `before:<action>` hooks the box owner configured (`~/.pier/hooks.json` or a trusted repository config). A refusal is 403 `refused` with the hook's output as `error`. |
 | Capabilities | `GET /v1/info` → `capabilities[]` names optional features: `transcript history diff titles answer session.home session.chat draft journal touched files projects environments accounts box.env prepare`, `prepare.agent` (`prepare_with` and setup agents, 2.6.1), `preview` (a worktree's preview, 2.12.1), `answer.mcp` (Claude Code's question about a repository's MCP servers,
-5.4.1), `tools` (2.13), `logins` (2.10.1) and `mcp` (2.14), `base` (the project's base, 2.15), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
+5.4.1), `tools` (2.13), `logins` (2.10.1) and `mcp` (2.14), `base` (the project's base, 2.15), `base.db` (worktrees' own database and Redis, 2.15.1; Linux boxes), `shares` (with a relay), `tty` (a terminal stream, 4.8; boxes with pseudo-terminals), plus `turns queue ask controls` (turn ledger) and `pair.invite`. |
 
 ### 0.3 Naming and addressing
 
@@ -234,6 +234,7 @@ recent commit first; a branch that exists locally and on origin appears once wit
 | `POST .../services/{service}/{start\|stop\|restart}` | run as systemd user units named `svc-<location>-<worktree>-<service>` |
 | `GET`/`POST /v1/locations/{loc}/worktrees/{wt}/prepare` | the worktree's preparation, and preparing it now (2.6.1) |
 | `GET`/`PUT /v1/locations/{loc}/base`, `POST`/`DELETE …/base/files`, `POST …/base/apply` | the project's base: files every worktree gets, folders carried from the main checkout (2.15) |
+| `GET`/`PUT`/`DELETE /v1/locations/{loc}/worktrees/{wt}/db` | the checkout's own database and Redis: how they stand, starting its database over from the snapshot, ending them (2.15.1) |
 | `POST /v1/locations/{loc}/worktrees/{wt}/prepare/done` | a setup agent says it is done, or why it could not finish (2.6.1) |
 | `PUT /v1/locations/{name}/setup-agent` | the person's consent to setup agents for the project, `{"allowed": true\|false}` (2.6.1) |
 | `GET`/`PUT /v1/locations/{loc}/worktrees/{wt}/preview` | the worktree's preview: its page, a test login, its public link (2.12.1) |
@@ -323,8 +324,8 @@ name (`prepare_with: "agent"`) works without it: the app asks for the consent fi
 * A setup agent's preparation is `running` while its turn runs. When the turn ends it is `ready` if the agent said it
   was done (`prepare/done`) or recorded a preview with a port during it, `failed` otherwise, and when its turn ended
   on an error or its session went. A person writing to it again starts a new turn: `running` again until it ends.
-* `step` (while `running`): what it does now, `carry` (the base's folders), `setup` (the setup script), `agent` (the
-  setup agent's session) or `services`; each change is published as `worktree.prepare.step {location, name, path,
+* `step` (while `running`): what it does now, `carry` (the base's folders), `db` (the worktree's own servers, 2.15.1),
+  `setup` (the setup script), `agent` (the setup agent's session) or `services`; each change is published as `worktree.prepare.step {location, name, path,
   step}`. `base`: how the project's base went into the worktree (2.15), kept after it ends.
 * `setup`: the script that runs (absent when there is none); `services`: the autostart services; `prepare_with`: how
   preparing it now goes by default (`script` for a pull request's worktree). An older box sends none of `kind`,
@@ -842,8 +843,72 @@ own by path. A clone of a project the team has a recipe for runs it (2.8, `setup
   `failed`.
 * Gates `before:base.change`, `before:base.apply`; event `base.changed {location, files?}` (never a value).
 * `pierd base status|add|rm|carry|apply` does the same on the box.
-* A worktree's preparation (2.6.1) reports how the base went in as `base {files, carried}`, each `{path, action,
-  reason?, keys?, ms?}`.
+* A worktree's preparation (2.6.1) reports how the base went in as `base {files, carried, servers?, connections?}`,
+  files and folders each `{path, action, reason?, keys?, ms?}` (servers and connections: 2.15.1).
+
+#### 2.15.1 Each worktree's own database and Redis (capability `base.db`)
+
+A base with `base.db` (`{"engine": "mysql", "options"?: {…}, "allow_copy"?: bool}`) gives each worktree a MySQL server
+of its own, started as the box's user on a copy of the project's **snapshot** (a cleanly shut down datadir: root's for
+the team, 2.15, or the box's own), and `base.redis` an empty Redis of its own. Only the team's config and the box's own
+turn them on: a repository's file or a recipe a setup agent saves never does. They listen on 127.0.0.1 at the last two
+ports of the worktree's block (`PIER_DB_PORT` = `PIER_PORT`+9, `PIER_REDIS_PORT` = +8; a project with them asks for at
+most 8 ports, 400 otherwise, and a team's config asking for more gets 8 and a problem in `GET …/base`), run as managed
+units (`db-…`, `redis-…`) that stay down when stopped and get minutes to
+shut down, and appear in `GET …/services` as `db` and `redis` with `kind` `mysql` / `redis` (start, stop and restart
+work); `GET /v1/services` leaves their ports out.
+
+* **The copy** shares the snapshot's blocks (`cp --reflink=always`: btrfs, XFS made with reflink; seconds, whatever
+  its size); where the disk cannot, the preparation fails unless `allow_copy`. It drops what a copy must not keep
+  (`auto.cnf`, the warm-up list, temporary and persisted settings, binary logs, the server's keys) and is the box
+  user's alone (0600). Below the larger of 50 GB and 10 % free on the disk, no copy is made. A server older than the
+  one that made the snapshot cannot start it: refused, with both versions.
+* **The server** runs the box's own `mysqld` with pierd's `my.cnf`: its port and a socket in `$XDG_RUNTIME_DIR`, no X
+  Protocol, no binary log, no performance schema, no native AIO (the host's budget is shared), a 256 MB buffer pool;
+  the project's `options` add only server options from a list (`sql_mode`, `character_set_server`,
+  `innodb_buffer_pool_size`, `max_connections`…; never an init file or a plugin). Each start sets root to a password
+  of the server's own, so nobody else on the box reaches it as root. The snapshot's databases, users and passwords
+  are the copy's: the project's `.env` works in every worktree, only host and port change. Path values in its option
+  files are quoted, so a folder's name with `#` or a space stays whole.
+* **The Redis** keeps nothing on disk and asks for a password of its own, made with it and never shown, so nobody else
+  on the box reaches it. Nothing that reaches it can change where it writes or load code: `CONFIG`, `MODULE` and
+  `DEBUG` are off (Redis 7's `enable-protected-configs`, `enable-module-command`, `enable-debug-command`; an older
+  Redis, where `CONFIG SET dir` writes a file anywhere its user can, has them renamed away).
+* **Its address**: everything run in a checkout with servers gets `PIER_DB_HOST`, `PIER_DB_PORT`, `PIER_DB_SOCKET`,
+  `PIER_DB_ENGINE`, `PIER_REDIS_PORT`, and `DB_HOST`, `DB_PORT`, `REDIS_HOST`, `REDIS_PORT`, `MYSQL_TCP_PORT`,
+  `MYSQL_UNIX_PORT` over what the box's and the project's env say, `DB_SOCKET`, `DB_URL`, `DATABASE_URL` and
+  `REDIS_URL` empty (they would lead elsewhere), and the Redis's own `REDIS_PASSWORD`; never the database's password.
+  The box's and the project's `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `MYSQL_HOST`, `MYSQL_PWD` and
+  `REDIS_USERNAME` are left out there (they were set for another server): the app takes them from its env files, whose
+  users its server has. Its env files (`.env`, `.env.*`, never one git tracks) get the same
+  `DB_HOST`/`DB_PORT`/`REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`, a socket, URL, `REDIS_USERNAME` or
+  `MYSQL_ATTR_SSL_CA` emptied, and the project's env keys that name `$PIER_DB_*` or `$PIER_REDIS_*`; never
+  `DB_DATABASE`, the database's user or password, so `.env.testing`'s test database is still the test one, in the
+  worktree's own server. Laravel's cached config goes. A recipe that points
+  them elsewhere is put right after it runs. `connections` in the preparation's `base` says what changed
+  (`"file: KEY"`), and `servers` how each server came up: `{engine, port, action (copied, created, started, running,
+  failed), snapshot?, snapshot_created?, layer?, reason?, ms?}`.
+* A new worktree gets them as it is made (reserved at once, so a task's agent has their address from its first
+  second; copied and started as its preparation's `db` step, before the recipe), never with `prepare: false` nor
+  from a pull request's `pr`/`ref`. A server that cannot come up fails the preparation with why: no snapshot yet,
+  AppArmor (the box's MySQL server is confined to its own folders until root adds, once, the lines `pierd db
+  apparmor` prints to its local profile: `pierd team init` does it), a version, the disk.
+* `GET …/worktrees/{wt}/db` → `{"servers": [{engine, state, port, socket?, unit, snapshot?, layer?, version?,
+  created, error?, log?}]}`. `PUT …/worktrees/{wt}/db {"from": "base"}` starts the checkout's database over: its
+  services stop, its servers and their data go, and it is prepared again by script (202 with the preparation; 409
+  while one runs, or when the base gives no servers), which copies the snapshot afresh and runs the recipe (its
+  pending migrations). The main checkout, or a worktree made before the base had a database, gets its servers the
+  same way. `DELETE …/worktrees/{wt}/db` ends them and deletes their data. Gates `before:db.reset`, `before:db.drop`.
+* Removing a worktree ends its servers and deletes their data, after its archive script ran (they stay up for it;
+  its recipe's services stop first), and stops a copy or a start under way; forgetting the project stops them and
+  keeps it; removing it from the disk deletes them, and its base too only with `?base=1` (its secrets exist nowhere
+  else, a snapshot takes hours to make), unless another project of the box shares the base. Servers whose worktree
+  went while pierd was down go when it starts. A copy starts from the snapshot root published last.
+* `GET …/base` adds `db {engine?, redis, server? {program, version, apparmor ("ok" | "needs_rule" | "none"), fix?},
+  snapshot? {id, created, version, databases, bytes, sanitized, layer}, instances, problems?}`; `PUT …/base {"db": {…}
+  | null, "redis": bool}` sets the box's own (501 on a box without `base.db`).
+* `pierd db status|reset|drop [LOC/WORKTREE]`, `pierd db enable LOC [--redis] [--option K=V] [--allow-copy]`, `pierd
+  db disable LOC`, `pierd db apparmor`; `pierd doctor` checks the server, AppArmor and the disk.
 
 ---
 
@@ -1385,7 +1450,8 @@ exit_code}` (every client's exec, the app's own background commands included: ne
 `worktree.setup.{started,finished,failed}` and `worktree.archive.{started,finished,failed}` `{location, name,
 path, script, log}` (failures set the envelope `error`), `worktree.prepare.{started,finished,failed}` `{location, name,
 path, kind?, session?}` (2.6.1; `kind` `agent` with the setup agent's `session`), `worktree.prepare.step {location,
-name, path, step}` (2.6.1), `base.changed {location, files?}` (2.15, never a value), `location.added`, `location.removed` (`purged`, `freed`
+name, path, step}` (2.6.1), `base.changed {location, files?}` (2.15, never a value), `worktree.db.reset` and
+`worktree.db.dropped {location, name, path}` (2.15.1), `location.added`, `location.removed` (`purged`, `freed`
 after a removal from the disk), `clone.started|finished|failed` (2.8), `settings.changed`, `space.added|removed`,
 `environment.changed|started|ready|failed` (2.9), `account.added|changed|removed`, `location.accounts` (2.10),
 `login.changed {id, tool, account?, state}` (2.10.1), `tool.installed|failed` (2.13),

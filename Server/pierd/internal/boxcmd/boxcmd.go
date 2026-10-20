@@ -44,6 +44,12 @@ var usageSections = []struct {
 		{"pierd base rm LOC PATH...", "Stop keeping files"},
 		{"pierd base carry LOC [PATH...|--clear]", "The ignored folders (vendor, node_modules) copied from the\nmain checkout into each new worktree"},
 		{"pierd base apply LOC [WORKTREE...]", "Write the base's files into existing worktrees"},
+		{"pierd db status [LOC/WORKTREE]", "The worktree's own database and Redis servers"},
+		{"pierd db reset [LOC/WORKTREE]", "Start its database over from the project's snapshot (it is\nprepared again: its pending migrations run)"},
+		{"pierd db drop [LOC/WORKTREE]", "End its servers and delete their data"},
+		{"pierd db enable LOC [--redis] [--option NAME=VALUE]... [--allow-copy]", "Give the project's worktrees a MySQL server of their own\n(and a Redis), each on a copy of its snapshot"},
+		{"pierd db disable LOC", "Stop giving new worktrees servers of their own"},
+		{"pierd db apparmor", "The AppArmor lines root adds once for the worktrees' MySQL"},
 	}},
 	{"Preparation and previews (LOC/WORKTREE: the session's own when left out)", [][2]string{
 		{"pierd prepare status|wait [LOC/WORKTREE] [--timeout 30m]", "How its preparation stands; wait blocks until it is ready\nor failed"},
@@ -99,7 +105,7 @@ var Commands = map[string]int{
 	"locations": 1, "location": 2, "worktree": 2, "services": 1, "service": 2,
 	"sessions": 1, "session": 2, "task": 2, "exec": 1,
 	"info": 1, "stats": 1, "emit": 1, "events": 1,
-	"prepare": 2, "preview": 2, "base": 2,
+	"prepare": 2, "preview": 2, "base": 2, "db": 2,
 }
 
 // Run executes args, which start with the command words, against c.
@@ -137,6 +143,8 @@ func Run(ctx context.Context, c *box.Client, args []string, out io.Writer) error
 		return locationConfig(ctx, c, rest, out)
 	case "base status", "base add", "base rm", "base carry", "base apply":
 		return baseCmd(ctx, c, args[1], rest, out)
+	case "db status", "db reset", "db drop", "db enable", "db disable", "db apparmor":
+		return dbCmd(ctx, c, args[1], rest, out)
 	case "prepare status", "prepare wait", "prepare start", "prepare done":
 		return prepareCmd(ctx, c, strings.TrimPrefix(cmd, "prepare "), rest, out)
 	case "preview get", "preview set":

@@ -138,8 +138,15 @@ func layOver(base, over RepoConfig) RepoConfig {
 		out.AutoShare = base.AutoShare
 	}
 	// The person's consent to setup agents is SetPrepareWith's alone: a
-	// recipe saved over the config (a setup agent's) never gives it.
+	// recipe saved over the config (a setup agent's) never gives it, nor
+	// servers of their own to the worktrees (PUT …/base does).
 	out.PrepareWith = base.PrepareWith
+	if out.Base != nil {
+		out.Base.DB, out.Base.Redis = nil, false
+		if base.Base != nil {
+			out.Base.DB, out.Base.Redis = base.Base.DB, base.Base.Redis
+		}
+	}
 	// The recipe is whoever wrote it last: no longer only pierd's guess,
 	// and a setup agent's only while a setup agent wrote it.
 	if over.recipe() {
@@ -544,13 +551,24 @@ func (b *Box) WorktreeEnv(ctx context.Context, location string, wt Worktree) ([]
 		"PIER_WORKTREE_SLUG": b.Locations.slug(loc.Name, wt),
 		"PIER_BRANCH":        wt.Branch,
 	}
+	// A checkout with servers of its own (database.go) has them on the last
+	// two ports of its block: those are not the app's to use.
+	srv := b.instanceEnv(wt.Path)
+	srvVars := srv.Vars
 	if port, err := b.Locations.Ports.For(wt.Path); err != nil {
 		return nil, err
 	} else if port > 0 {
 		vars["PIER_PORT"] = strconv.Itoa(port)
-		for i := 1; i < max(cfg.Effective.Ports, 1); i++ {
+		ports := max(cfg.Effective.Ports, 1)
+		if len(srvVars) > 0 {
+			ports = min(ports, maxPortsWithServers)
+		}
+		for i := 1; i < ports; i++ {
 			vars["PIER_PORT_"+strconv.Itoa(i)] = strconv.Itoa(port + i)
 		}
+	}
+	for k, v := range srvVars {
+		vars[k] = v
 	}
 	// The box's own environment comes first; the project's overrides it.
 	boxEnv, err := loadBoxEnv(b.EnvFile)
@@ -575,6 +593,15 @@ func (b *Box) WorktreeEnv(ctx context.Context, location string, wt Worktree) ([]
 		}
 	}
 	for k, v := range cfg.Effective.Env {
+		merged[k] = v
+	}
+	// The checkout's own servers win over what the box and the project say
+	// about where the database is: the app reaches its own, with the users
+	// its env files name (its server has those).
+	for _, k := range srv.Drop {
+		delete(merged, k)
+	}
+	for k, v := range srv.Over {
 		merged[k] = v
 	}
 	// Many dev servers read PORT (Express, Next.js): give it the worktree's

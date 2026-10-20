@@ -240,6 +240,29 @@ func (c *Client) ApplyBase(ctx context.Context, location string, worktrees []str
 	return res.Results, err
 }
 
+// WorktreeDB is a checkout's own servers.
+func (c *Client) WorktreeDB(ctx context.Context, location, worktree string) (out WorktreeDB, err error) {
+	return out, c.call(ctx, http.MethodGet, worktreePath(location, worktree, "/db"), nil, &out)
+}
+
+// ResetWorktreeDB starts a checkout's database over from the project's
+// snapshot, preparing it again.
+func (c *Client) ResetWorktreeDB(ctx context.Context, location, worktree string) (out PrepareStatus, err error) {
+	return out, c.call(ctx, http.MethodPut, worktreePath(location, worktree, "/db"), map[string]string{"from": "base"}, &out)
+}
+
+// DropWorktreeDB ends a checkout's servers and deletes their data.
+func (c *Client) DropWorktreeDB(ctx context.Context, location, worktree string) (out WorktreeDB, err error) {
+	return out, c.call(ctx, http.MethodDelete, worktreePath(location, worktree, "/db"), nil, &out)
+}
+
+// SetBaseServers turns a project's worktrees' own database (db nil: off) and
+// Redis on or off in the box's own config.
+func (c *Client) SetBaseServers(ctx context.Context, location string, db *BaseDB, redis bool) (out BaseView, err error) {
+	body := map[string]any{"db": db, "redis": redis}
+	return out, c.call(ctx, http.MethodPut, "/v1/locations/"+url.PathEscape(location)+"/base", body, &out)
+}
+
 func worktreePath(location, worktree, rest string) string {
 	return "/v1/locations/" + url.PathEscape(location) + "/worktrees/" + url.PathEscape(worktree) + rest
 }

@@ -559,7 +559,7 @@ func (b *Box) detectPreviews(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	services := Services(ports, locs)
+	services := b.withoutServers(Services(ports, locs))
 	for _, loc := range locs {
 		if !loc.Repo {
 			continue

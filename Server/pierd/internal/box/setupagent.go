@@ -239,7 +239,10 @@ func (b *Box) runSetupAgent(from, gateFrom string, loc Location, wt Worktree, na
 	// A fresh run puts the project's base in place first; one taking over
 	// a recipe that failed has it already.
 	if failure == "" {
-		b.prepareBase(from, loc, wt)
+		if err := b.prepareBase(from, loc, wt); err != nil {
+			b.finishPrepare(from, loc, wt, err)
+			return
+		}
 	}
 	// Its session's grace (settleVanished) starts now that it is about to
 	// start.
@@ -585,6 +588,8 @@ type setupPromptData struct {
 	// worktree, and Carried the folders it copied from the main checkout.
 	BaseFiles []string
 	Carried   []string
+	// DBPort and RedisPort are the worktree's own servers' (database.go).
+	DBPort, RedisPort int
 }
 
 const setupPromptText = `You are the setup agent of a Pier box: you prepare a fresh checkout of the project {{.Location}} so that it runs, alone and unattended. Nobody is watching and nobody will answer a question, so never ask one: decide, act, and say what you did. Work on the box's environment only: another agent may be changing the project's code in this folder at the same time.
@@ -598,7 +603,7 @@ const setupPromptText = `You are the setup agent of a Pier box: you prepare a fr
 - Box: {{.OS}}{{if .User}}, user {{.User}}{{end}}.
 - System packages: {{if .Sudo}}` + "`sudo -n`" + ` works on this box: install what is missing with the system's package manager through ` + "`sudo -n`" + ` (for example ` + "`sudo -n apt-get install -y php8.3-cli`" + `).{{else}}there is no password-free sudo on this box, so never call sudo: install what is missing in your own user space (mise or asdf for language runtimes, ` + "`uv python install`" + `, prebuilt binaries in ~/.local/bin).{{end}}
 {{- if .Port}}
-- Ports: this worktree owns {{.Port}} to {{.PortLast}}. ` + "`$PIER_PORT`" + ` ({{.Port}}) is the dev server's; the others are free for a database or a second server. Other worktrees of this project run on this box at the same time: never take a port outside this block, nor a fixed one such as 3000 or 8000.
+- Ports: this worktree owns {{.Port}} to {{.PortLast}}. ` + "`$PIER_PORT`" + ` ({{.Port}}) is the dev server's; {{if or .DBPort .RedisPort}}the last two are its own servers' (below), the others are free for a second server{{else}}the others are free for a database or a second server{{end}}. Other worktrees of this project run on this box at the same time: never take a port outside this block, nor a fixed one such as 3000 or 8000.
 {{- end}}
 - Your environment already has ` + "`PIER_PORT`, `PIER_LOCATION`, `PIER_WORKTREE_NAME`, `PIER_WORKTREE_PATH`, `PIER_ROOT_PATH`, `PIER_BRANCH` and `PIER_WORKTREE_SLUG`" + ` (safe in database and user names, at most 32 characters).
 {{- if .Isolated}}
@@ -606,6 +611,12 @@ const setupPromptText = `You are the setup agent of a Pier box: you prepare a fr
 {{- end}}
 {{- if .BaseFiles}}
 - The project's base already put these untracked files here: {{range $i, $f := .BaseFiles}}{{if $i}}, {{end}}` + "`{{$f}}`" + `{{end}}. They are the project's own: use them as they are, never write them again (no .env from .env.example), and change only a value this worktree alone needs.
+{{- end}}
+{{- if .DBPort}}
+- This worktree has a MySQL server of its own on 127.0.0.1:{{.DBPort}} (` + "`$PIER_DB_PORT`" + `), started by pierd on a copy of the project's database snapshot: the same databases, users and passwords as the project's .env, which already points DB_HOST and DB_PORT at it. Use it as it is: never create databases or users on another server (the box's on 3306), never start a mysqld of your own, never change DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME or DB_PASSWORD, never import into it, and never run seeders, migrate:fresh or db:wipe over its data. ` + "`{{.Pierd}} db reset`" + ` starts it over from the snapshot.
+{{- end}}
+{{- if .RedisPort}}
+- It has a Redis of its own on 127.0.0.1:{{.RedisPort}} (` + "`$PIER_REDIS_PORT`" + `), empty, already in its .env.
 {{- end}}
 {{- if .Carried}}
 - These ignored folders were copied from the main checkout: {{range $i, $f := .Carried}}{{if $i}}, {{end}}` + "`{{$f}}`" + `{{end}}. Bring them up to date with the project's install (composer install, npm install --prefer-offline --no-audit --no-fund, bundle install, uv sync), never a clean one: no npm ci (it deletes node_modules first), and never delete them.
@@ -619,9 +630,9 @@ const setupPromptText = `You are the setup agent of a Pier box: you prepare a fr
 1. Understand the project: its README and docs, lockfiles, framework, ` + "`.env.example`" + `, any compose or Docker files (read them only, to learn which services the app expects), CI config, seeders.
 2. Install the runtimes and system packages it needs and the box lacks (language and extensions, database server, build tools).
 3. Install its dependencies (composer install, npm ci, bundle install, uv sync…).
-4. Database: give it what it expects (MySQL/MariaDB or Postgres, installed as above), with one database and user for this worktree named after ` + "`$PIER_WORKTREE_SLUG`" + `; SQLite only when the project supports it and nothing else works. Write ` + "`.env`" + ` from ` + "`.env.example`" + ` with this worktree's port, URL and database. What you make for this worktree outside its folder (its database and database user) goes away with it: the recipe's archive script (step 8) removes it.
-5. Run the migrations and the seeders.
-6. If the app has a sign-in, create a test user through its seeders or its own console (artisan tinker, rails runner, a management command) with a password you choose, and check that it can sign in.
+4. {{if .DBPort}}Database: this worktree's own server already holds the project's data (above): run only the pending migrations (php artisan migrate --force and the like) and nothing that creates, imports or seeds.{{else}}Database: give it what it expects (MySQL/MariaDB or Postgres, installed as above), with one database and user for this worktree named after ` + "`$PIER_WORKTREE_SLUG`" + `; SQLite only when the project supports it and nothing else works. Write ` + "`.env`" + ` from ` + "`.env.example`" + ` with this worktree's port, URL and database. What you make for this worktree outside its folder (its database and database user) goes away with it: the recipe's archive script (step 8) removes it.{{end}}
+5. {{if .DBPort}}No seeders: the data is the project's.{{else}}Run the migrations and the seeders.{{end}}
+6. If the app has a sign-in, create a test user through its seeders or its own console (artisan tinker, rails runner, a management command) with a password you choose, and check that it can sign in.{{if .DBPort}} Make a new user (pier+{{.Worktree}}@example.invalid): never change an existing account's password or email.{{end}}
 7. Run the dev server as a Pier service on ` + "`$PIER_PORT`" + `, listening on 0.0.0.0. Anyone with its public link can open it ({{if .Domain}}https://p-….{{.Domain}}{{else}}a link on the box's public link domain{{end}}, through a proxy that sends X-Forwarded-Proto and X-Forwarded-Host), so make the app work behind it: trust the proxy, take the scheme and host from the request (APP_URL, allowed hosts, trusted origins). The link reaches ` + "`$PIER_PORT`" + ` alone: build the assets (npm run build) that a second dev server would serve on a port of its own (Laravel's or Rails' Vite), but run a dev server that serves the whole page on ` + "`$PIER_PORT`" + ` (Vite, Next.js, Astro) as it is, since its hot reload passes the link and the person's browser follows the code. Turn off every interactive debug console the link would hand to its visitors: Rails' web-console, the Werkzeug debugger, Django's debug toolbar, Laravel Ignition's runnable solutions and the like (the page may still show its errors). Define the service in the recipe (next step), start it with ` + "`{{.Pierd}} service start {{.Ref}} <service>`" + ` and check it with ` + "`curl -sS -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:$PIER_PORT/`" + `.
 {{- if .OwnRecipe}}
 8. This project already has a setup recipe someone wrote (below): it is theirs. Use it, fix only what this worktree lacks around it, and do not save a recipe over it.
@@ -711,6 +722,14 @@ func (b *Box) setupPrompt(ctx context.Context, loc Location, wt Worktree, failur
 	}
 	if r, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && r.Base != nil {
 		d.BaseFiles, d.Carried = writtenPaths(r.Base.Files), carriedPaths(r.Base.Carried)
+	}
+	for _, inst := range b.instancesFor(wt.Path) {
+		switch inst.Engine {
+		case engineMySQL:
+			d.DBPort = inst.Port
+		case engineRedis:
+			d.RedisPort = inst.Port
+		}
 	}
 	return renderSetupPrompt(d)
 }

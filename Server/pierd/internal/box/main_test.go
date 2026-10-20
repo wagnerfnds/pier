@@ -16,6 +16,11 @@ func TestMain(m *testing.M) {
 	if tool := os.Getenv("FAKE_AGENT_CLI"); tool != "" {
 		os.Exit(fakeAgentCLI(tool, os.Args[1:]))
 	}
+	// So are the database servers of the worktree database tests
+	// (database_test.go).
+	if tool := os.Getenv("FAKE_DB_SERVER"); tool != "" {
+		os.Exit(fakeDBServer(tool, os.Args[1:]))
+	}
 	for k, v := range map[string]string{
 		"GIT_AUTHOR_NAME": "pier test", "GIT_AUTHOR_EMAIL": "test@example.com",
 		"GIT_COMMITTER_NAME": "pier test", "GIT_COMMITTER_EMAIL": "test@example.com",
@@ -48,9 +53,18 @@ func TestMain(m *testing.M) {
 	autoSetupAgents = false
 	canSudo = func(context.Context) bool { return false }
 	runningAsRoot = func() bool { return false }
-	// No machine's team folder reaches a test unless it makes one.
+	// No machine's team folder reaches a test unless it makes one, nor the
+	// machine's own MySQL or Redis, nor its data folder.
 	teamSettingsPath = "/nonexistent/pier-team.json"
+	mysqlServer = func() string { return "" }
+	redisServer = func() string { return "" }
+	dataHome, err := os.MkdirTemp("", "pierd-data-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("XDG_DATA_HOME", dataHome)
 	code := m.Run()
+	os.RemoveAll(dataHome)
 	os.RemoveAll(home)
 	os.Exit(code)
 }

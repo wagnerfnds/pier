@@ -32,6 +32,8 @@ final class WorktreeDetailsStore {
     private(set) var prepare: PrepareStatus?
     /// The worktree's preview: the page, its public link, the app's test login.
     private(set) var preview: WorktreePreview?
+    /// The project's base gives its worktrees a database of their own (capability `base.db`).
+    private(set) var baseHasDatabase = false
     var error: String?
     var prepareError: String?
 
@@ -52,6 +54,10 @@ final class WorktreeDetailsStore {
             if let s = await svc, s != services { services = s }
             if let s = await st, let mine = s.first(where: { $0.name == worktree }), mine != status { status = mine }
             if conn.info?.has("prepare") == true, let p = try? await api.prepareStatus(location: location, worktree: worktree), p != prepare { prepare = p }
+            if conn.info?.has("base.db") == true, let b = try? await api.projectBase(location: location) {
+                let has = b.db?.hasDatabase == true
+                if has != baseHasDatabase { baseHasDatabase = has }
+            }
         }
         // The session's inspector shows a server's public link before its address on the box, so these come every time.
         if conn.info?.has("shares") == true, let all = try? await api.publicLinks() {
@@ -103,6 +109,17 @@ final class WorktreeDetailsStore {
         } catch { prepareError = ComposeErrorText.message(error) }
     }
 
+    /// Starts the worktree's database over from the project's snapshot (or gives it one): it is prepared again.
+    func resetDatabase(model: AppModel) async {
+        guard let conn = model.connection(for: box) else { return }
+        busy.insert("prepare")
+        defer { busy.remove("prepare") }
+        do {
+            prepare = try await BoxAPI(transport: conn.raw).resetDatabase(location: location, worktree: worktree)
+            prepareError = nil
+        } catch { prepareError = ComposeErrorText.message(error) }
+    }
+
     func act(_ action: String, on service: String, model: AppModel) async {
         guard let conn = model.connection(for: box) else { return }
         busy.insert(service)
@@ -136,6 +153,8 @@ struct WorktreeDetailsView: View {
     @State private var store: WorktreeDetailsStore
     /// A setup agent asked for in a project that has not allowed them: the consent sheet is up.
     @State private var askingConsent = false
+    /// Starting the worktree's database over: asked first, it loses what changed there.
+    @State private var confirmingReset = false
 
     init(box: String, location: String, worktree: String) {
         self.box = box; self.location = location; self.worktree = worktree
@@ -229,6 +248,7 @@ struct WorktreeDetailsView: View {
                 Text("Depois sobem: \(p.services.joined(separator: ", "))").font(.caption).foregroundStyle(Theme.textDim)
             }
             if let base = p.base { BaseReportLines(base: base) }
+            if store.baseHasDatabase, !running { databaseButton(p) }
             if p.state == .failed, let e = p.error, !e.isEmpty {
                 Text(e).font(.mono(11)).foregroundStyle(Theme.red).lineLimit(8).textSelection(.enabled)
             }
@@ -269,6 +289,26 @@ struct WorktreeDetailsView: View {
             else if p.byAgent && running { Text("Um agente instala o que falta, sobe o servidor e cria um login de teste; no fim salva a receita, e as próximas worktrees a repetem sem agente.") }
         }
         .listRowBackground(Theme.card)
+    }
+
+    /// Starts its database over from the project's snapshot, or gives a checkout without one (the main checkout, a worktree
+    /// made before the base had a database) its own.
+    @ViewBuilder private func databaseButton(_ p: PrepareStatus) -> some View {
+        let has = p.base?.database != nil || store.services.contains { $0.kind == "mysql" }
+        Button {
+            if has { confirmingReset = true } else { Task { await store.resetDatabase(model: model) } }
+        } label: {
+            Label(has ? "Recomeçar do banco da base" : "Usar o banco da base", systemImage: has ? "arrow.counterclockwise.circle" : "cylinder.split.1x2")
+                .font(.subheadline)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier(has ? "db-reset" : "db-use-base")
+        .confirmationDialog("Recomeçar o banco desta worktree?", isPresented: $confirmingReset, titleVisibility: .visible) {
+            Button("Recomeçar do banco da base", role: .destructive) { Task { await store.resetDatabase(model: model) } }
+                .accessibilityIdentifier("db-reset-confirm")
+        } message: {
+            Text("Ele volta a ser uma cópia da base do projeto: o que mudou no banco desta worktree se perde. Depois a receita roda de novo e aplica as migrations do branch.")
+        }
     }
 
     /// A setup agent can prepare it: the box has them, and Claude Code.
@@ -433,6 +473,10 @@ struct WorktreeDetailsView: View {
                 Circle().fill(s.isRunning ? Theme.green : Theme.textFaint).frame(width: 8, height: 8)
                 Text(s.name).font(.body.weight(.semibold)).foregroundStyle(Theme.text)
                 Text(stateLabel(s.state)).font(.caption).foregroundStyle(s.isRunning ? Theme.green : Theme.textDim)
+                if let kind = s.kind {
+                    Text(kind == "redis" ? "Redis desta worktree" : "banco desta worktree").font(.caption2.weight(.semibold)).foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 5).padding(.vertical, 1).background(Theme.accent.opacity(0.15), in: Capsule())
+                }
                 if s.autostart { Text("auto").font(.caption2.weight(.semibold)).foregroundStyle(Theme.textDim)
                     .padding(.horizontal, 5).padding(.vertical, 1).background(Theme.cardRaised, in: Capsule()) }
                 Spacer(minLength: 4)

@@ -38,6 +38,7 @@ import Testing
             "prepare_agent_running.json": d(PrepareStatus.self), "prepare_agent_failed.json": d(PrepareStatus.self),
             "prepare_running_step.json": d(PrepareStatus.self),
             "base.json": d(ProjectBase.self), "base_none.json": d(ProjectBase.self), "base_team_unreadable.json": d(ProjectBase.self),
+            "base_db.json": d(ProjectBase.self), "prepare_base_db.json": d(PrepareStatus.self), "services_wt_db.json": d([WorktreeServiceDetail].self),
             "mcp_question.json": d(MCPQuestion.self),
             "preview.json": d(WorktreePreview.self), "preview_empty.json": d(WorktreePreview.self),
             "transcript.json": d(TranscriptPage.self), "transcript_poll_empty.json": d(TranscriptPage.self),

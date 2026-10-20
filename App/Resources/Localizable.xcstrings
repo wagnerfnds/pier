@@ -17670,6 +17670,182 @@
           }
         }
       }
+    },
+    "Recomeçar do banco da base" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start over from the base's database"
+          }
+        }
+      }
+    },
+    "Usar o banco da base" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use the base's database"
+          }
+        }
+      }
+    },
+    "Recomeçar o banco desta worktree?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start this worktree's database over?"
+          }
+        }
+      }
+    },
+    "Ele volta a ser uma cópia da base do projeto: o que mudou no banco desta worktree se perde. Depois a receita roda de novo e aplica as migrations do branch." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It becomes a copy of the project's base again: what changed in this worktree's database is lost. Then the recipe runs again and applies the branch's migrations."
+          }
+        }
+      }
+    },
+    "Redis desta worktree" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "this worktree's Redis"
+          }
+        }
+      }
+    },
+    "banco desta worktree" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "this worktree's database"
+          }
+        }
+      }
+    },
+    "MySQL próprio em cada worktree" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A MySQL of its own in each worktree"
+          }
+        }
+      }
+    },
+    "Redis próprio em cada worktree" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Redis of its own in each worktree"
+          }
+        }
+      }
+    },
+    "Banco base" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Base database"
+          }
+        }
+      }
+    },
+    "anonimizado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "anonymized"
+          }
+        }
+      }
+    },
+    "Dados reais" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Real data"
+          }
+        }
+      }
+    },
+    "%lld worktrees com banco próprio" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld worktrees with their own database"
+          }
+        }
+      }
+    },
+    "Banco de dados" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database"
+          }
+        }
+      }
+    },
+    "Cada worktree nova ganha um servidor só dela, sobre uma cópia instantânea do banco base: os mesmos bancos, usuários e senhas do .env, só a porta muda. Para recomeçar o banco de uma worktree, abra Detalhes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every new worktree gets a server of its own, on an instant copy of the base database: the same databases, users and passwords as the .env, only the port changes. To start a worktree's database over, open Details."
+          }
+        }
+      }
+    },
+    "Banco próprio na porta %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its own database on port %lld"
+          }
+        }
+      }
+    },
+    "Redis próprio na porta %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its own Redis on port %lld"
+          }
+        }
+      }
+    },
+    "Banco próprio: cópia de %@, porta %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its own database: a copy of %1$@, port %2$lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banco próprio: cópia de %1$@, porta %2$lld"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

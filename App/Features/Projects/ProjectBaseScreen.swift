@@ -29,6 +29,7 @@ struct ProjectBaseScreen: View {
                     if let team = base.team { teamSection(team) }
                     filesSection(base)
                     carrySection(base)
+                    if let db = base.db { databaseSection(db) }
                     if let recipe = base.recipe { recipeSection(recipe) }
                     if !base.warnings.isEmpty { warningsSection(base.warnings) }
                 }
@@ -167,6 +168,64 @@ struct ProjectBaseScreen: View {
         .listRowBackground(Theme.card)
     }
 
+    private func databaseSection(_ db: BaseDatabase) -> some View {
+        Section {
+            if db.hasDatabase {
+                HStack(spacing: 10) {
+                    Image(systemName: "cylinder.split.1x2").font(.caption).foregroundStyle(Theme.textFaint).frame(width: 16)
+                    Text("MySQL próprio em cada worktree").font(.subheadline).foregroundStyle(Theme.text)
+                    Spacer(minLength: 8)
+                    if let v = db.server?.version { Text(verbatim: "MySQL \(v)").font(.caption).foregroundStyle(Theme.textFaint) }
+                }
+                .accessibilityIdentifier("base-db-mysql")
+            }
+            if db.redis {
+                HStack(spacing: 10) {
+                    Image(systemName: "bolt.horizontal").font(.caption).foregroundStyle(Theme.textFaint).frame(width: 16)
+                    Text("Redis próprio em cada worktree").font(.subheadline).foregroundStyle(Theme.text)
+                    Spacer(minLength: 8)
+                }
+            }
+            if let s = db.snapshot {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text("Banco base").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                        if let created = s.created { Text(created, format: .dateTime.day().month().hour().minute()).font(.caption).foregroundStyle(Theme.textDim) }
+                        Spacer(minLength: 4)
+                        BaseOrigin(from: s.layer)
+                    }
+                    HStack(spacing: 8) {
+                        if s.bytes > 0 { Text(ByteCountFormatter.string(fromByteCount: s.bytes, countStyle: .file)).font(.caption).foregroundStyle(Theme.textDim) }
+                        if s.sanitized {
+                            Label("anonimizado", systemImage: "checkmark.shield").font(.caption).foregroundStyle(Theme.green)
+                        } else {
+                            Label("Dados reais", systemImage: "exclamationmark.shield").font(.caption.weight(.semibold)).foregroundStyle(Theme.orange)
+                        }
+                    }
+                    if !s.databases.isEmpty {
+                        Text(verbatim: s.databases.joined(separator: ", ")).font(.mono(11)).foregroundStyle(Theme.textFaint).lineLimit(2)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("base-db-snapshot")
+            }
+            if db.instances > 0 {
+                Text("\(db.instances) worktrees com banco próprio").font(.caption).foregroundStyle(Theme.textDim)
+            }
+            ForEach(db.problems, id: \.self) { p in
+                Label { Text(verbatim: p).font(.subheadline).foregroundStyle(Theme.text) } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.orange)
+                }
+            }
+            if let fix = db.server?.fix {
+                MonoText(fix, size: 11, color: Theme.textDim).lineLimit(14).textSelection(.enabled)
+            }
+        } header: { Text("Banco de dados") } footer: {
+            Text("Cada worktree nova ganha um servidor só dela, sobre uma cópia instantânea do banco base: os mesmos bancos, usuários e senhas do .env, só a porta muda. Para recomeçar o banco de uma worktree, abra Detalhes.")
+        }
+        .listRowBackground(Theme.card)
+    }
+
     private func recipeSection(_ r: BaseRecipe) -> some View {
         Section {
             if let setup = r.setup { MonoText(setup, size: 11, color: Theme.textDim).lineLimit(8).textSelection(.enabled) }
@@ -240,6 +299,18 @@ struct BaseReportLines: View {
             Label("Da cópia principal: \(carried.map(\.path).joined(separator: ", ")) (\(Self.seconds(base.carriedMS)))", systemImage: "folder.badge.plus")
                 .font(.caption).foregroundStyle(Theme.textDim).lineLimit(3)
                 .accessibilityIdentifier("prepare-base-carried")
+        }
+        ForEach(base.servers) { s in
+            if s.action == "failed" {
+                Text(verbatim: "\(s.engine): \(s.reason ?? s.action)").font(.mono(11)).foregroundStyle(Theme.red).lineLimit(6).textSelection(.enabled)
+            } else if s.isDatabase {
+                Label(s.snapshotCreated.map { String(localized: "Banco próprio: cópia de \($0.formatted(.dateTime.day().month())), porta \(s.port)") }
+                      ?? String(localized: "Banco próprio na porta \(s.port)"), systemImage: "cylinder.split.1x2")
+                    .font(.caption).foregroundStyle(Theme.textDim)
+                    .accessibilityIdentifier("prepare-base-db")
+            } else {
+                Label(String(localized: "Redis próprio na porta \(s.port)"), systemImage: "bolt.horizontal").font(.caption).foregroundStyle(Theme.textDim)
+            }
         }
         ForEach(base.problems) { r in
             Text(verbatim: "\(r.path): \(r.reason ?? r.action)").font(.mono(11)).foregroundStyle(Theme.red).lineLimit(3).textSelection(.enabled)

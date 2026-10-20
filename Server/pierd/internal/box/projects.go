@@ -387,6 +387,7 @@ func (b *Box) runClone(from string, cl Clone, src repoSource, setup, adopt bool)
 		b.syncTeam(ctx, loc.Name)
 		for _, wt := range loc.Worktrees {
 			if wt.Main {
+				b.reserveInstances(ctx, loc, wt)
 				b.placeBaseFiles(ctx, loc, wt)
 			}
 		}
@@ -726,6 +727,19 @@ func (b *Box) purge(r *http.Request, loc Location, d DiskUse) error {
 	}
 	b.dropEnvironment(name, true)
 	b.forgetWorktree(name, "")
+	// Its worktrees' servers and their data go with it; the project's base
+	// (its secrets exist nowhere else, a snapshot takes hours to make) only
+	// when asked (base=1).
+	for _, wt := range loc.Worktrees {
+		b.dropInstances(wt.Path)
+		b.forgetWritten(context.Background(), name, wt.Path)
+	}
+	if r.URL.Query().Get("base") == "1" {
+		if key, err := b.Locations.BaseKey(context.Background(), name); err == nil && !b.baseShared(context.Background(), name, key) {
+			os.RemoveAll(b.baseDir(key))
+			os.RemoveAll(filepath.Join(b.dbRoot(), "base", key))
+		}
+	}
 	// Forgotten first: a location whose folder is half gone is worse than
 	// a folder nothing points at.
 	if err := b.Locations.Remove(name); err != nil {

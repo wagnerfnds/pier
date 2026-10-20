@@ -195,14 +195,20 @@ public struct WorktreeServiceDetail: Codable, Sendable, Hashable, Identifiable {
     public let state: String
     public let unit: String
     public let port: Int?
+    /// "mysql" or "redis" for the worktree's own servers that pierd runs from the project's base (capability `base.db`);
+    /// nil for the project's services.
+    public let kind: String?
     public var id: String { name }
     public var isRunning: Bool { state == "running" }
+    /// One of the worktree's own servers.
+    public var isServer: Bool { kind != nil }
 
-    public init(name: String, run: String = "", autostart: Bool = false, state: String = "stopped", unit: String = "", port: Int? = nil) {
-        self.name = name; self.run = run; self.autostart = autostart; self.state = state; self.unit = unit; self.port = port
+    public init(name: String, run: String = "", autostart: Bool = false, state: String = "stopped", unit: String = "", port: Int? = nil,
+                kind: String? = nil) {
+        self.name = name; self.run = run; self.autostart = autostart; self.state = state; self.unit = unit; self.port = port; self.kind = kind
     }
 
-    enum CodingKeys: String, CodingKey { case name, run, autostart, state, unit, port }
+    enum CodingKeys: String, CodingKey { case name, run, autostart, state, unit, port, kind }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -212,5 +218,6 @@ public struct WorktreeServiceDetail: Codable, Sendable, Hashable, Identifiable {
         state = try c.decodeIfPresent(String.self, forKey: .state) ?? "stopped"
         unit = try c.decodeIfPresent(String.self, forKey: .unit) ?? ""
         port = try c.decodeIfPresent(Int.self, forKey: .port)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind).flatMap { $0.isEmpty ? nil : $0 }
     }
 }

@@ -376,6 +376,8 @@ func serve(b boxHome, args []string) error {
 	// Setup agents outlive a restart: followed again before the hooks
 	// spooled meanwhile are published.
 	bx.ResumePrepare()
+	// Worktrees' servers whose worktree went while pierd was down go too.
+	go bx.CollectInstances()
 	go bx.StartShares(ctx)
 	go bx.EndStaleSignIns(ctx)
 	bx.Mount(s)

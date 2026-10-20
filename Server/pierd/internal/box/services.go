@@ -92,8 +92,24 @@ func (b *Box) handleServices(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	writeJSON(w, Services(ports, locs))
+	writeJSON(w, b.withoutServers(Services(ports, locs)))
 	return nil
+}
+
+// withoutServers leaves out the worktrees' own database and Redis servers
+// (database.go): they are not dev servers to open a page on.
+func (b *Box) withoutServers(all []Service) []Service {
+	ports := b.instancePorts()
+	if len(ports) == 0 {
+		return all
+	}
+	out := all[:0]
+	for _, s := range all {
+		if !ports[s.Port] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Tools reports which agent CLIs this box has.

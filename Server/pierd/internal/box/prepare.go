@@ -377,13 +377,21 @@ func (b *Box) prepareWorktree(from string, loc Location, wt Worktree) error {
 // agentFallback allows it.
 func (b *Box) prepareByScript(from, gateFrom string, loc Location, wt Worktree, fallback bool) error {
 	b.Events.Publish(events.Event{Type: "worktree.prepare.started", Box: b.Name, Origin: from, Data: b.prepareData(loc, wt)})
-	b.prepareBase(from, loc, wt)
+	if err := b.prepareBase(from, loc, wt); err != nil {
+		b.finishPrepare(from, loc, wt, err)
+		return err
+	}
 	var err error
 	if loc.Scripts.Setup != "" {
 		b.prepareStep(from, loc, wt, "setup")
 		err = b.lifecycle(from, "setup", loc, wt.Path, wt.Name, loc.Scripts.Setup, nil)
 	}
 	if err == nil {
+		// A recipe written before the worktree had servers of its own may
+		// have pointed the app back at the box's: put it right.
+		if fixed := b.rewriteConnections(context.Background(), loc, wt); len(fixed) > 0 {
+			b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Connections = append(rep.Connections, fixed...) })
+		}
 		// Services start once setup has made the worktree ready for them.
 		b.prepareStep(from, loc, wt, "services")
 		b.startAutostart(loc.Name, wt.Name)

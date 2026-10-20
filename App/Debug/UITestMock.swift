@@ -503,7 +503,7 @@ final class MockBox: PierTransport, @unchecked Sendable {
                 // Terminals stream (`-mockTTY 0`: a box before them, its screen read every second).
                 + (UserDefaults.standard.string(forKey: "mockTTY") == "0" ? [] : ["tty"])
             // Setup agents and previews (UITestMockProjects.swift).
-            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["prepare.agent", "preview", "base"]
+            info["capabilities"] = ((info["capabilities"] as? [String]) ?? []) + ["prepare.agent", "preview", "base", "base.db"]
             return (200, Self.json(info))
         case (.get, "doctor"): return (200, Self.json(doctorChecks()))
         case (.get, "stats"):
