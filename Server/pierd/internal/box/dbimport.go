@@ -575,6 +575,9 @@ func startImportServer(ctx context.Context, o ImportOptions, t mysqlTools, progr
 	fmt.Fprintf(&c, "[mysqld]\ndatadir=%s\nsocket=%s\npid-file=%s\nlog-error=%s\ntmpdir=%s\n", cnfValue(s.data), cnfValue(s.sock),
 		cnfValue(filepath.Join(build, name+".pid")), cnfValue(s.log), cnfValue(build))
 	c.WriteString("skip-networking\nmysqlx=OFF\nsecure-file-priv=NULL\nskip-log-bin\nperformance_schema=OFF\nevent_scheduler=OFF\n")
+	// The source's tables are taken as they are: one created there before
+	// its server checked row sizes (strict mode on) would be refused here.
+	c.WriteString("innodb_strict_mode=OFF\n")
 	fmt.Fprintf(&c, "innodb_buffer_pool_size=%s\ninnodb_doublewrite=OFF\ninnodb_flush_log_at_trx_commit=0\n", importMemory(o))
 	c.WriteString("innodb_change_buffering=none\nmax_allowed_packet=1G\ninnodb_use_native_aio=OFF\n")
 	if compareVersions(version, "8.0.30") >= 0 {
