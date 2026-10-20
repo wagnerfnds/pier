@@ -375,11 +375,20 @@ const (
 // it does not ignore is added to the repository's local excludes. Callers
 // leave a pull request's checkout out unless asked (placeBaseFiles): its code
 // could read the secrets.
-func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []BaseResult {
+//
+// In a project whose base gives worktrees servers of their own, a checkout
+// without them (one from before, one made with only its code) gets none of
+// the base's dotenv files: their database settings are its servers', which
+// it lacks; it gets them with its servers. take are the keys a checkout that
+// just got its servers takes from the base's dotenv files whatever it had
+// (databaseCredentials).
+func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree, take map[string]bool) []BaseResult {
 	key, err := b.Locations.BaseKey(ctx, loc.Name)
 	if err != nil {
 		return nil
 	}
+	engines, _ := b.wantedServers(ctx, loc)
+	noServers := len(engines) > 0 && len(b.instancesFor(wt.Path)) == 0
 	mu := b.baseLock(key)
 	mu.Lock()
 	defer mu.Unlock()
@@ -405,7 +414,12 @@ func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []B
 	var out []BaseResult
 	managed := b.managedKeys(wt.Path)
 	for _, f := range files {
-		res := b.applyBaseFile(ctx, root, wt, f, mine, managed)
+		if noServers && isEnvFile(f.Path) {
+			out = append(out, BaseResult{Path: f.Path, Action: "skipped",
+				Reason: "its database settings are for servers of its own, which this checkout does not have: it gets them with its servers"})
+			continue
+		}
+		res := b.applyBaseFile(ctx, root, wt, f, mine, managed, take)
 		if res.Action == "written" || res.Action == "updated" {
 			if !gitIgnores(ctx, wt.Path, f.Path) {
 				if err := excludeLocally(ctx, wt.Path, f.Path); err != nil {
@@ -420,7 +434,7 @@ func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []B
 	return out
 }
 
-func (b *Box) applyBaseFile(ctx context.Context, root *os.Root, wt Worktree, f baseFile, mine map[string]writtenFile, managed map[string]bool) BaseResult {
+func (b *Box) applyBaseFile(ctx context.Context, root *os.Root, wt Worktree, f baseFile, mine map[string]writtenFile, managed, take map[string]bool) BaseResult {
 	res := BaseResult{Path: f.Path}
 	rel := filepath.FromSlash(f.Path)
 	if tracked, err := gitTracks(ctx, wt.Path, f.Path); err != nil {
@@ -462,7 +476,7 @@ func (b *Box) applyBaseFile(ctx context.Context, root *os.Root, wt Worktree, f b
 		return res
 	}
 	if isEnvFile(f.Path) {
-		return mergeBaseEnv(root, rel, f.Path, cur, data, mine, managed)
+		return mergeBaseEnv(root, rel, f.Path, cur, data, mine, managed, take)
 	}
 	had := mine[f.Path]
 	switch sha := sha256Hex(cur); {
@@ -500,7 +514,7 @@ func recordWritten(p string, data []byte) writtenFile {
 // key by key: a key it lacks is added (unless pierd wrote it before and
 // someone took it out), one it still has as pierd wrote it gets the base's
 // value, one someone changed stays.
-func mergeBaseEnv(root *os.Root, rel, p string, cur, base []byte, mine map[string]writtenFile, managed map[string]bool) BaseResult {
+func mergeBaseEnv(root *os.Root, rel, p string, cur, base []byte, mine map[string]writtenFile, managed, take map[string]bool) BaseResult {
 	res := BaseResult{Path: p}
 	had := mine[p].Keys
 	if had == nil {
@@ -513,6 +527,16 @@ func mergeBaseEnv(root *os.Root, rel, p string, cur, base []byte, mine map[strin
 		// Where the checkout's own servers are is theirs to say
 		// (rewriteConnections), whatever the base's file has.
 		if managed[k] {
+			continue
+		}
+		// Its servers' users and databases are the base's alone.
+		if take[k] {
+			want, rhs, _ := from.get(k)
+			if have, _, ok := file.get(k); !ok || have != want {
+				file.set(k, rhs)
+				changed = true
+			}
+			record[k] = envValueHash(want)
 			continue
 		}
 		want, rhs, _ := from.get(k)
@@ -996,7 +1020,7 @@ func (b *Box) applyBase(w http.ResponseWriter, r *http.Request) error {
 		Results []BaseApplied `json:"results"`
 	}{Results: []BaseApplied{}}
 	for _, wt := range targets {
-		res := b.applyBaseFiles(r.Context(), loc, wt)
+		res := b.applyBaseFiles(r.Context(), loc, wt, nil)
 		b.recordBase(loc.Name, wt.Name, func(rep *BaseReport) { rep.Files = res })
 		out.Results = append(out.Results, BaseApplied{Worktree: wt.Name, Path: wt.Path, Results: nonNil(res)})
 	}
@@ -1175,10 +1199,16 @@ func (b *Box) prepareBase(from string, loc Location, wt Worktree) error {
 // made or prepared again, and keeps how it went; nothing in a pull
 // request's checkout.
 func (b *Box) placeBaseFiles(ctx context.Context, loc Location, wt Worktree) {
+	b.placeBase(ctx, loc, wt, nil)
+}
+
+// placeBase is placeBaseFiles, with the dotenv keys a checkout takes from the
+// base whatever it had (take).
+func (b *Box) placeBase(ctx context.Context, loc Location, wt Worktree, take map[string]bool) {
 	if rec, ok := b.preps().get(prepKey(loc.Name, wt.Name)); ok && rec.Checkout {
 		return
 	}
-	res := b.applyBaseFiles(ctx, loc, wt)
+	res := b.applyBaseFiles(ctx, loc, wt, take)
 	conns := b.rewriteConnections(ctx, loc, wt)
 	if res == nil && conns == nil {
 		return

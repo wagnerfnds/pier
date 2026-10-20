@@ -180,7 +180,7 @@ func TestTheBaseLeavesTrackedFilesAndLinksAlone(t *testing.T) {
 	os.WriteFile(other, []byte("MINE=1\n"), 0o600)
 	os.Symlink(other, filepath.Join(wt.Path, ".env"))
 	loc, _ := bx.Locations.Get(ctx, "cal")
-	res := bx.applyBaseFiles(ctx, loc, wt)
+	res := bx.applyBaseFiles(ctx, loc, wt, nil)
 	byPath := map[string]BaseResult{}
 	for _, r := range res {
 		byPath[r.Path] = r
@@ -198,7 +198,7 @@ func TestTheBaseLeavesTrackedFilesAndLinksAlone(t *testing.T) {
 	os.WriteFile(filepath.Join(wt.Path, "local.php"), []byte("<?php // tracked\n"), 0o644)
 	exec.Command("git", "-C", wt.Path, "add", "-f", "local.php").Run()
 	exec.Command("git", "-C", wt.Path, "commit", "-q", "-m", "track").Run()
-	for _, r := range bx.applyBaseFiles(ctx, loc, wt) {
+	for _, r := range bx.applyBaseFiles(ctx, loc, wt, nil) {
 		if r.Path == "local.php" && r.Action != "skipped" {
 			t.Fatalf("a tracked file = %+v", r)
 		}
@@ -624,7 +624,7 @@ func TestPierdsTemporaryFilesStayOutOfCommits(t *testing.T) {
 	os.Remove(filepath.Join(repo, ".env"))
 	loc, _ := bx.Locations.Get(context.Background(), "cal")
 	main := loc.Worktrees[0]
-	for _, r := range bx.applyBaseFiles(context.Background(), loc, main) {
+	for _, r := range bx.applyBaseFiles(context.Background(), loc, main, nil) {
 		if r.Action != "written" {
 			t.Fatalf("applied = %+v", r)
 		}
