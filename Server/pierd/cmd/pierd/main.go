@@ -144,7 +144,12 @@ func run(args []string) error {
 		fmt.Print(helpText())
 		return nil
 	}
-	if args[0] == "version" || args[0] == "--version" {
+	// A session's program, given its secret variables through a file
+	// (box/sessionenv.go): nothing else is read or set up first.
+	if args[0] == "env-exec" {
+		return box.EnvExec(args[1:])
+	}
+		if args[0] == "version" || args[0] == "--version" {
 		fmt.Println(version.Line("pierd"))
 		return nil
 	}
@@ -309,6 +314,13 @@ func serve(b boxHome, args []string) error {
 	}
 	// Agents' hooks find this pierd through PIER_HOME.
 	sessions.Env = []string{"PIER_HOME=" + b.home()}
+	// A session's secret variables reach it through pierd itself, never
+	// tmux's command line (box/sessionenv.go).
+	if exe, err := os.Executable(); err == nil {
+		if exe, err = stableExecutable(exe); err == nil {
+			sessions.Exe = exe
+		}
+	}
 	if sock := os.Getenv("PIER_TMUX_SOCKET"); sock != "" {
 		sessions.Env = append(sessions.Env, "PIER_TMUX_SOCKET="+sock)
 	}
