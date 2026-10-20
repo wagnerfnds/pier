@@ -108,6 +108,12 @@ type savedLocation struct {
 	Environment *Environment `json:"environment,omitempty"`
 	// Accounts are the agent accounts it uses (accounts.go).
 	Accounts map[string]string `json:"accounts,omitempty"`
+	// Slugs keeps, by path, the longer $PIER_WORKTREE_SLUG of the worktrees
+	// that were already here when slugs were cut to 32 characters, so what
+	// a recipe named after one (a database, a cookie) keeps its name.
+	// SlugsCut says they were looked for (KeepLongSlugs).
+	Slugs    map[string]string `json:"slugs,omitempty"`
+	SlugsCut bool              `json:"slugs_cut,omitempty"`
 }
 
 func (l *Locations) Add(ctx context.Context, name, path string) (Location, error) {
@@ -133,7 +139,7 @@ func (l *Locations) Add(ctx context.Context, name, path string) (Location, error
 			}
 			out = append(out, s)
 		}
-		return append(out, savedLocation{Name: name, Path: abs}), nil
+		return append(out, savedLocation{Name: name, Path: abs, SlugsCut: true}), nil
 	})
 	if err != nil {
 		return Location{}, err
@@ -351,6 +357,7 @@ func (l *Locations) RemoveWorktree(ctx context.Context, location, name string, f
 		if out, err := gitWithin(ctx, gitCheckoutTimeout, args...); err != nil {
 			return fmt.Errorf("git worktree remove: %s", strings.TrimSpace(string(out)))
 		}
+		l.forgetSlug(location, w.Path)
 		return nil
 	}
 	return ErrUnknownWorktree
