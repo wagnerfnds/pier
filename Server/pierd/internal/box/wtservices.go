@@ -196,7 +196,8 @@ func (b *Box) StopService(ctx context.Context, location, worktree, name string) 
 
 // stopServices stops every service of a worktree that is going away, before
 // its archive script runs: a dev server holding the worktree's database
-// would stop the script from dropping it.
+// would stop the script from dropping it. The worktree's own servers stay
+// up for the script; what removes it drops them after (dropInstances).
 func (b *Box) stopServices(location, worktree string) {
 	if b.Units == nil {
 		return
@@ -206,7 +207,9 @@ func (b *Box) stopServices(location, worktree string) {
 		return
 	}
 	for _, s := range all {
-		b.Units.Remove(s.Unit)
+		if s.Kind == "" {
+			b.Units.Remove(s.Unit)
+		}
 	}
 }
 

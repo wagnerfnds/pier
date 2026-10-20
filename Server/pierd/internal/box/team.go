@@ -287,6 +287,16 @@ func (b *Box) applyTeam(location, mirror string) {
 	b.Locations.SetTeam(location, cfg, &at)
 }
 
+// refreshTeam copies the team's base for location now, however recently it
+// was: what follows starts from what root published last (a worktree's
+// copy of the snapshot).
+func (b *Box) refreshTeam(ctx context.Context, location string) {
+	if key, err := b.Locations.BaseKey(ctx, location); err == nil {
+		b.teamSynced.Delete(key)
+		b.syncTeam(ctx, location)
+	}
+}
+
 // dropTeam forgets the team's base for location: the machine has no team any
 // more, or the team no base for the project.
 func (b *Box) dropTeam(location, mirror string) {

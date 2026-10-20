@@ -735,7 +735,7 @@ func (b *Box) purge(r *http.Request, loc Location, d DiskUse) error {
 		b.forgetWritten(context.Background(), name, wt.Path)
 	}
 	if r.URL.Query().Get("base") == "1" {
-		if key, err := b.Locations.BaseKey(context.Background(), name); err == nil {
+		if key, err := b.Locations.BaseKey(context.Background(), name); err == nil && !b.baseShared(context.Background(), name, key) {
 			os.RemoveAll(b.baseDir(key))
 			os.RemoveAll(filepath.Join(b.dbRoot(), "base", key))
 		}

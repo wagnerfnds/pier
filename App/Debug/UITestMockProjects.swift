@@ -476,7 +476,7 @@ struct MockProjects {
             "db": [
                 "engine": "mysql", "redis": true, "instances": 2,
                 "server": ["program": "/usr/sbin/mysqld", "version": "8.0.46", "apparmor": "ok"],
-                "snapshot": ["id": "20261020-100000", "created": at, "version": "8.0.46", "databases": ["brokerfy", "brokerfy_test"],
+                "snapshot": ["id": "20261020-100000", "created": at, "version": "8.0.46", "databases": ["shop", "shop_test"],
                              "bytes": 48_318_382_080, "sanitized": true, "layer": "team"],
             ] as JSON,
             "warnings": [] as [Any],

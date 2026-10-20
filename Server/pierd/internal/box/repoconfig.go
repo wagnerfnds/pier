@@ -553,7 +553,8 @@ func (b *Box) WorktreeEnv(ctx context.Context, location string, wt Worktree) ([]
 	}
 	// A checkout with servers of its own (database.go) has them on the last
 	// two ports of its block: those are not the app's to use.
-	srvVars, srvOver := b.instanceEnv(wt.Path)
+	srv := b.instanceEnv(wt.Path)
+	srvVars := srv.Vars
 	if port, err := b.Locations.Ports.For(wt.Path); err != nil {
 		return nil, err
 	} else if port > 0 {
@@ -595,8 +596,12 @@ func (b *Box) WorktreeEnv(ctx context.Context, location string, wt Worktree) ([]
 		merged[k] = v
 	}
 	// The checkout's own servers win over what the box and the project say
-	// about where the database is: the app reaches its own.
-	for k, v := range srvOver {
+	// about where the database is: the app reaches its own, with the users
+	// its env files name (its server has those).
+	for _, k := range srv.Drop {
+		delete(merged, k)
+	}
+	for k, v := range srv.Over {
 		merged[k] = v
 	}
 	// Many dev servers read PORT (Express, Next.js): give it the worktree's

@@ -403,10 +403,7 @@ func (b *Box) applyBaseFiles(ctx context.Context, loc Location, wt Worktree) []B
 	}
 	defer root.Close()
 	var out []BaseResult
-	managed := map[string]bool{}
-	if len(b.instancesFor(wt.Path)) > 0 {
-		managed = connectionKeys
-	}
+	managed := b.managedKeys(wt.Path)
 	for _, f := range files {
 		res := b.applyBaseFile(ctx, root, wt, f, mine, managed)
 		if res.Action == "written" || res.Action == "updated" {
@@ -1064,6 +1061,23 @@ func (l *Locations) BaseKey(ctx context.Context, name string) (string, error) {
 		return nil, ErrUnknownLocation
 	})
 	return key, err
+}
+
+// baseShared says another project of the box (a second clone of the same
+// repository) uses the base key: its base stays when this one goes.
+func (b *Box) baseShared(ctx context.Context, location, key string) bool {
+	locs, err := b.Locations.List(ctx)
+	if err != nil {
+		return true
+	}
+	for _, l := range locs {
+		if l.Name != location {
+			if k, err := b.Locations.BaseKey(ctx, l.Name); err != nil || k == key {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // SetLocalCarry replaces the folders the box's own config carries.

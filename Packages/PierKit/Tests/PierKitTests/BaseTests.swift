@@ -55,7 +55,7 @@ import Testing
         #expect(db.hasDatabase && db.redis && db.instances == 3 && db.problems.count == 1)
         #expect(db.server?.version == "8.0.46" && db.server?.needsAppArmorRule == true && db.server?.fix?.contains("pierd team init") == true)
         let snap = try #require(db.snapshot)
-        #expect(snap.isTeams && snap.sanitized && snap.databases == ["brokerfy", "brokerfy_test"] && snap.bytes == 48_318_382_080)
+        #expect(snap.isTeams && snap.sanitized && snap.databases == ["shop", "shop_test"] && snap.bytes == 48_318_382_080)
         let st = try Fixture.decode("prepare_base_db.json", as: PrepareStatus.self)
         let dbServer = try #require(st.base?.database)
         #expect(dbServer.port == 41009 && dbServer.action == "copied" && dbServer.snapshotCreated != nil && dbServer.layer == "team")

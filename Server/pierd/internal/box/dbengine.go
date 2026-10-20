@@ -71,7 +71,9 @@ func (b *Box) dbRoot() string {
 }
 
 // currentSnapshot is the snapshot a project's new worktrees start their
-// database from: the box's own when it has one, else the team's.
+// database from: the box's own when it has one, else the team's (as the
+// box's copy of the team's base names it: refreshTeam first for the one
+// published last).
 func (b *Box) currentSnapshot(key string) *snapshot {
 	dir := filepath.Join(b.dbRoot(), "base", key)
 	if target, err := os.Readlink(filepath.Join(dir, "current")); err == nil {
@@ -84,8 +86,12 @@ func (b *Box) currentSnapshot(key string) *snapshot {
 		}
 	}
 	var pub teamPublished
-	if loadJSON(filepath.Join(b.baseDir(key), "team", "published.json"), &pub) == nil && pub.DB != nil && pub.DB.ID != "" {
-		if set, ok := readTeamSettings(); ok {
+	mu := b.baseLock(key)
+	mu.Lock()
+	err := loadJSON(filepath.Join(b.baseDir(key), "team", "published.json"), &pub)
+	mu.Unlock()
+	if err == nil && pub.DB != nil && pub.DB.ID != "" {
+		if set, ok, _ := readTeamSettings(); ok {
 			return &snapshot{Manifest: pub.DB.Manifest, Data: filepath.Join(set.Dir, "projects", key, "db", "gen", pub.DB.ID, "data"), Layer: "team"}
 		}
 	}
@@ -176,11 +182,12 @@ func mysqlConfig(dir, run string, port int, version string, m snapshotManifest, 
 	var b bytes.Buffer
 	b.WriteString("[mysqld]\n")
 	set := func(k, v string) { fmt.Fprintf(&b, "%s=%s\n", k, v) }
-	set("datadir", filepath.Join(dir, "data"))
-	set("tmpdir", filepath.Join(dir, "tmp"))
-	set("log-error", filepath.Join(dir, "error.log"))
-	set("socket", filepath.Join(run, "mysqld.sock"))
-	set("pid-file", filepath.Join(run, "mysqld.pid"))
+	setPath := func(k, v string) { set(k, cnfValue(v)) }
+	setPath("datadir", filepath.Join(dir, "data"))
+	setPath("tmpdir", filepath.Join(dir, "tmp"))
+	setPath("log-error", filepath.Join(dir, "error.log"))
+	setPath("socket", filepath.Join(run, "mysqld.sock"))
+	setPath("pid-file", filepath.Join(run, "mysqld.pid"))
 	set("port", strconv.Itoa(port))
 	set("bind-address", "127.0.0.1")
 	// Every worktree's server would want X Protocol's port 33060.
@@ -188,7 +195,7 @@ func mysqlConfig(dir, run string, port int, version string, m snapshotManifest, 
 	// The default folder is the system server's, which the box's user
 	// cannot read: the server would not start.
 	set("secure-file-priv", "NULL")
-	set("init-file", filepath.Join(dir, "init.sql"))
+	setPath("init-file", filepath.Join(dir, "init.sql"))
 	set("lower_case_table_names", strconv.Itoa(m.LowerCaseTableNames))
 	// What one server of many needs: a modest buffer pool, no binary log,
 	// no statistics schema, settings the snapshot persisted ignored, and no
@@ -233,9 +240,18 @@ func mysqlInit(password string) []byte {
 	return []byte("ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '" + password + "';\n")
 }
 
-// mysqlClient is the client options pierd itself connects with.
+// mysqlClient is the client options pierd itself connects with (read with
+// --defaults-file, so nothing in the user's own ~/.my.cnf changes them).
 func mysqlClient(sock, password string) []byte {
-	return []byte("[client]\nuser=root\npassword=" + password + "\nsocket=" + sock + "\n")
+	return []byte("[client]\nuser=root\npassword=" + cnfValue(password) + "\nsocket=" + cnfValue(sock) + "\nprotocol=SOCKET\n")
+}
+
+// cnfValue puts a value in a MySQL option file whole: in double quotes, with
+// its backslashes, quotes and line breaks escaped, so a # or a space in it
+// (a password, a folder's name) stays part of it.
+func cnfValue(v string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "\t", `\t`)
+	return `"` + r.Replace(v) + `"`
 }
 
 func newSecret() string {
@@ -329,25 +345,40 @@ var (
 const apparmorMarker = "# pier: per-worktree MySQL servers"
 
 // apparmorRule is what root adds to the MySQL server's local AppArmor rules
-// once, so the box's users can run it on their own folders.
-func apparmorRule() string {
+// once, so the box's users can run it on their own folders: the worktrees'
+// copies (~/.local/share/pier/db), their sockets (the runtime folder, or
+// /tmp/pier-<uid> without one) and the team's imports in teamDir.
+func apparmorRule(teamDir string) string {
 	return apparmorMarker + "\n" +
 		"owner @{HOME}/.local/share/pier/db/ r,\n" +
 		"owner @{HOME}/.local/share/pier/db/** rwk,\n" +
 		"owner /run/user/[0-9]*/pier/ r,\n" +
 		"owner /run/user/[0-9]*/pier/** rwk,\n" +
-		"owner /srv/pier/team/projects/*/db/build/** rwk,\n" +
+		"owner /tmp/pier-[0-9]*/db/ r,\n" +
+		"owner /tmp/pier-[0-9]*/db/** rwk,\n" +
+		"owner " + teamDir + "/projects/*/db/build/** rwk,\n" +
 		"owner /run/pier-team/ r,\n" +
 		"owner /run/pier-team/** rwk,\n"
 }
 
-// AppArmorRule is apparmorRule, for `pierd db apparmor`.
-func AppArmorRule() string { return apparmorRule() }
+// DefaultTeamDir is the team's folder `pierd team init` makes unless told
+// another.
+const DefaultTeamDir = "/srv/pier/team"
+
+// AppArmorRule is apparmorRule for this machine's team folder, for `pierd db
+// apparmor`.
+func AppArmorRule() string {
+	dir := DefaultTeamDir
+	if set, ok, _ := readTeamSettings(); ok {
+		dir = set.Dir
+	}
+	return apparmorRule(dir)
+}
 
 // apparmorFix is the root-once fix for a server AppArmor stopped.
 func apparmorFix() string {
 	return "AppArmor confines the box's MySQL server to its own folders. Once, as root: sudo pierd team init, " +
-		"or add these lines to " + apparmorLocal + " and run apparmor_parser -r " + apparmorProfile + ":\n" + apparmorRule()
+		"or add these lines to " + apparmorLocal + " and run apparmor_parser -r " + apparmorProfile + ":\n" + AppArmorRule()
 }
 
 // deniedByAppArmor says a server's log reads like AppArmor kept it from its
@@ -365,14 +396,47 @@ var redisServer = func() string {
 	return ""
 }
 
-func redisConfig(dir string, port int, password string) []byte {
+var redisVersionRE = regexp.MustCompile(`v=(\d+\.\d+\.\d+)`)
+
+// redisVersion is a Redis server program's version ("7.0.15").
+func redisVersion(ctx context.Context, program string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, program, "--version").CombinedOutput()
+	if m := redisVersionRE.FindSubmatch(out); m != nil {
+		return string(m[1]), nil
+	}
+	if err == nil {
+		err = errors.New("no version in its output")
+	}
+	return "", fmt.Errorf("%s --version: %v", program, err)
+}
+
+// redisConfig is a worktree's Redis's config: on 127.0.0.1 alone, with a
+// password of its own, keeping nothing on disk. Nothing that reaches it can
+// change where it writes or load code: CONFIG, MODULE and DEBUG are off
+// (Redis 7 has settings for that; an older one, where CONFIG SET dir would
+// let it write a file anywhere its user can, has them renamed away).
+func redisConfig(dir, run string, port int, password, version string) []byte {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "port %d\nbind 127.0.0.1\ndir %s\n", port, filepath.Join(dir, "data"))
+	fmt.Fprintf(&b, "port %d\nbind 127.0.0.1\ndir %s\npidfile %s\n", port, redisQuote(filepath.Join(dir, "data")), redisQuote(filepath.Join(run, "redis.pid")))
 	b.WriteString("save \"\"\nappendonly no\ndaemonize no\nprotected-mode yes\nmaxmemory 256mb\nmaxmemory-policy noeviction\n")
 	if password != "" {
-		fmt.Fprintf(&b, "requirepass %s\n", password)
+		fmt.Fprintf(&b, "requirepass %s\n", redisQuote(password))
+	}
+	if version != "" && compareVersions(version, "7.0.0") >= 0 {
+		b.WriteString("enable-protected-configs no\nenable-debug-command no\nenable-module-command no\n")
+	} else {
+		b.WriteString("rename-command CONFIG \"\"\nrename-command DEBUG \"\"\nrename-command MODULE \"\"\n")
 	}
 	return b.Bytes()
+}
+
+// redisQuote puts a value in a Redis config file whole: in double quotes,
+// with its backslashes and quotes escaped.
+func redisQuote(v string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`)
+	return `"` + r.Replace(v) + `"`
 }
 
 // redisReady says a Redis server answers PING on port (or asks for its
@@ -396,24 +460,4 @@ func redisReady(ctx context.Context, port int) error {
 		return fmt.Errorf("not a Redis server: %q", strings.TrimSpace(line))
 	}
 	return nil
-}
-
-// redisPassword is the REDIS_PASSWORD the project's base .env gives its app,
-// which a worktree's own Redis then asks for ("null" and empty: none).
-func (b *Box) redisPassword(key string) string {
-	for _, f := range b.baseFiles(key) {
-		if f.Path != ".env" {
-			continue
-		}
-		data, err := os.ReadFile(f.Source)
-		if err != nil {
-			return ""
-		}
-		v, _, ok := parseEnvFile(data).get("REDIS_PASSWORD")
-		if !ok || v == "" || strings.EqualFold(v, "null") {
-			return ""
-		}
-		return v
-	}
-	return ""
 }

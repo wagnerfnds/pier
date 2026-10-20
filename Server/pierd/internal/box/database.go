@@ -87,9 +87,13 @@ type dbInstance struct {
 	Created  time.Time `json:"created"`
 	CloneMS  int64     `json:"clone_ms,omitempty"`
 	StartMS  int64     `json:"start_ms,omitempty"`
-	// State is "pending" (reserved, not made yet), "running" or "failed".
+	// State is "pending" (reserved, not made yet), "running", "failed" or
+	// "dropping" (going away: pierd stopped halfway if it stays).
 	State string `json:"state"`
 	Error string `json:"error,omitempty"`
+	// Secret is a Redis's password, its own: nobody else on the box reaches
+	// it. Never shown.
+	Secret string `json:"secret,omitempty"`
 }
 
 // InstanceReport is how a worktree's server came up, kept with its
@@ -115,9 +119,17 @@ func dbSupported() bool { return runtime.GOOS == "linux" || dbForceSupported }
 var dbForceSupported = false
 
 // dbRegistry keeps one change to the box's servers' records at a time.
+// starts keeps one bring-up of a server at a time (by id), and cancels says
+// how a drop stops the one under way.
 type dbRegistry struct {
-	mu sync.Mutex
+	mu      sync.Mutex
+	starts  sync.Map
+	cancels sync.Map
 }
+
+// errDropped is a server's bring-up when it was dropped meanwhile: its
+// worktree went away, or its database started over.
+var errDropped = errors.New("the worktree's server was dropped while it came up")
 
 func (b *Box) instancesPath() string { return filepath.Join(b.baseRoot(), "instances.json") }
 
@@ -127,17 +139,25 @@ func (b *Box) loadInstances() map[string]dbInstance {
 	return m
 }
 
+// instancesFor are a checkout's servers, less any going away.
 func (b *Box) instancesFor(path string) []dbInstance {
 	b.dbs.mu.Lock()
 	defer b.dbs.mu.Unlock()
 	var out []dbInstance
 	for _, inst := range b.loadInstances() {
-		if inst.Path == path {
+		if inst.Path == path && inst.State != "dropping" {
 			out = append(out, inst)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Engine < out[j].Engine })
 	return out
+}
+
+func (b *Box) instanceByID(id string) (dbInstance, bool) {
+	b.dbs.mu.Lock()
+	defer b.dbs.mu.Unlock()
+	inst, ok := b.loadInstances()[id]
+	return inst, ok && inst.State != "dropping"
 }
 
 // updateInstances changes the registry with change and saves it.
@@ -209,22 +229,28 @@ func (b *Box) reserveInstances(ctx context.Context, loc Location, wt Worktree) {
 	if err != nil || start == 0 {
 		return
 	}
-	have := map[string]bool{}
-	for _, inst := range b.instancesFor(wt.Path) {
-		have[inst.Engine] = true
-	}
+	// What the checkout has is read with the records held: two
+	// reservations at once give it one server of each.
 	b.updateInstances(func(m map[string]dbInstance) {
+		have := map[string]bool{}
+		for _, inst := range m {
+			if inst.Path == wt.Path && inst.State != "dropping" {
+				have[inst.Engine] = true
+			}
+		}
 		for _, e := range engines {
 			if have[e] {
 				continue
 			}
 			id := newSecret()[:12]
-			port := start + redisPortOffset
-			if e == engineMySQL {
-				port = start + mysqlPortOffset
-			}
-			m[id] = dbInstance{ID: id, Engine: e, Location: loc.Name, Worktree: wt.Name, Path: wt.Path, Key: key, Port: port,
+			inst := dbInstance{ID: id, Engine: e, Location: loc.Name, Worktree: wt.Name, Path: wt.Path, Key: key, Port: start + redisPortOffset,
 				Unit: instanceUnit(e, loc.Name, wt.Name, id), Created: time.Now().UTC(), State: "pending"}
+			if e == engineMySQL {
+				inst.Port = start + mysqlPortOffset
+			} else {
+				inst.Secret = newSecret()
+			}
+			m[id] = inst
 		}
 	})
 }
@@ -243,18 +269,11 @@ func (b *Box) ensureInstances(ctx context.Context, loc Location, wt Worktree) ([
 	_, db := b.wantedServers(ctx, loc)
 	var reports []InstanceReport
 	for _, inst := range insts {
-		var rep InstanceReport
-		var err error
-		switch inst.Engine {
-		case engineMySQL:
-			rep, err = b.upMySQL(ctx, inst, db)
-		case engineRedis:
-			rep, err = b.upRedis(ctx, inst)
-		}
+		rep, err := b.bringUp(ctx, inst.ID, db)
 		reports = append(reports, rep)
 		if err != nil {
 			b.updateInstances(func(m map[string]dbInstance) {
-				if cur, ok := m[inst.ID]; ok {
+				if cur, ok := m[inst.ID]; ok && cur.State != "dropping" {
 					cur.State, cur.Error = "failed", err.Error()
 					m[inst.ID] = cur
 				}
@@ -263,6 +282,55 @@ func (b *Box) ensureInstances(ctx context.Context, loc Location, wt Worktree) ([
 		}
 	}
 	return reports, nil
+}
+
+// bringUp brings one server up, one bring-up of it at a time: a second (its
+// service started while its worktree is prepared) finds it running. A drop
+// meanwhile cancels it, and what it made goes.
+func (b *Box) bringUp(ctx context.Context, id string, db *BaseDB) (InstanceReport, error) {
+	lock, _ := b.dbs.starts.LoadOrStore(id, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	inst, ok := b.instanceByID(id)
+	if !ok {
+		return InstanceReport{Action: "failed", Reason: errDropped.Error()}, errDropped
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	handle := &cancel
+	b.dbs.cancels.Store(id, handle)
+	defer b.dbs.cancels.CompareAndDelete(id, handle)
+	var rep InstanceReport
+	var err error
+	switch inst.Engine {
+	case engineMySQL:
+		rep, err = b.upMySQL(ctx, inst, db)
+	case engineRedis:
+		rep, err = b.upRedis(ctx, inst)
+	default:
+		rep, err = InstanceReport{Engine: inst.Engine, Action: "failed"}, fmt.Errorf("no such engine: %s", inst.Engine)
+	}
+	if err != nil {
+		if _, ok := b.instanceByID(id); !ok {
+			b.discard(inst)
+			rep.Reason, err = errDropped.Error(), errDropped
+		}
+	}
+	return rep, err
+}
+
+// keepInstance records a server as it came up, unless it was dropped
+// meanwhile: then the caller ends what it started.
+func (b *Box) keepInstance(inst dbInstance) bool {
+	kept := false
+	b.updateInstances(func(m map[string]dbInstance) {
+		if cur, ok := m[inst.ID]; ok && cur.State != "dropping" {
+			m[inst.ID] = inst
+			kept = true
+		}
+	})
+	return kept
 }
 
 // diskRoom refuses a copy when the disk holding dir is nearly full.
@@ -298,8 +366,14 @@ func (b *Box) upMySQL(ctx context.Context, inst dbInstance, db *BaseDB) (Instanc
 	}
 	dir, run := b.instanceDir(inst.ID), instanceRun(inst.ID)
 	data := filepath.Join(dir, "data")
+	_, statErr := os.Stat(data)
+	if statErr != nil {
+		// A copy starts from the snapshot root published last, not the one
+		// this box saw a while ago (pruned since, perhaps).
+		b.refreshTeam(ctx, inst.Location)
+	}
 	snap := b.currentSnapshot(inst.Key)
-	if _, err := os.Stat(data); err != nil {
+	if statErr != nil {
 		if snap == nil {
 			return fail(errors.New("the project's base has no database snapshot yet: root makes the team's with `pierd team base … db import`, or `pierd db import` this box's"))
 		}
@@ -313,7 +387,7 @@ func (b *Box) upMySQL(ctx context.Context, inst dbInstance, db *BaseDB) (Instanc
 			return fail(err)
 		}
 		start := time.Now()
-		if err := b.copySnapshot(ctx, inst.Key, snap, dir, db != nil && db.AllowCopy); err != nil {
+		if snap, err = b.copySnapshot(ctx, inst.Location, inst.Key, snap, dir, db != nil && db.AllowCopy); err != nil {
 			return fail(err)
 		}
 		rep.Action, rep.MS = "copied", time.Since(start).Milliseconds()
@@ -387,51 +461,59 @@ func (b *Box) upMySQL(ctx context.Context, inst dbInstance, db *BaseDB) (Instanc
 		}
 	}
 	inst.Version, inst.State, inst.Error = version, "running", ""
-	b.updateInstances(func(m map[string]dbInstance) { m[inst.ID] = inst })
+	if !b.keepInstance(inst) {
+		b.discard(inst)
+		return fail(errDropped)
+	}
 	return rep, nil
 }
 
 // copySnapshot copies a snapshot's datadir into a new instance folder, whole
-// or not at all, sharing blocks: a plain copy only where allowed.
-func (b *Box) copySnapshot(ctx context.Context, key string, snap *snapshot, dir string, allowCopy bool) error {
+// or not at all, sharing blocks: a plain copy only where allowed. It says
+// which snapshot it copied.
+func (b *Box) copySnapshot(ctx context.Context, location, key string, snap *snapshot, dir string, allowCopy bool) (*snapshot, error) {
 	tmp := dir + ".tmp"
 	os.RemoveAll(tmp)
 	if err := os.MkdirAll(tmp, 0o700); err != nil {
-		return err
+		return snap, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	var err error
-	// A snapshot removed while it was being copied (root published another)
-	// is copied again from the current one.
+	// A snapshot removed while it was being copied (root published another
+	// and pruned this one) is copied again from the current one.
 	for attempt := 0; attempt < 2; attempt++ {
 		err = cloneTree(ctx, snap.Data, filepath.Join(tmp, "data"), !allowCopy)
-		if err == nil {
+		if err == nil || ctx.Err() != nil {
 			break
 		}
 		os.RemoveAll(filepath.Join(tmp, "data"))
+		b.refreshTeam(ctx, location)
 		if next := b.currentSnapshot(key); next != nil && next.Data != snap.Data {
 			snap = next
 			continue
 		}
 		break
 	}
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		os.RemoveAll(tmp)
 		if !allowCopy && (strings.Contains(err.Error(), "reflink") || strings.Contains(err.Error(), "Operation not supported")) {
-			return fmt.Errorf("this disk cannot copy the snapshot sharing its blocks, and a full copy is as big as the snapshot: set base.db.allow_copy to copy it anyway (%v)", err)
+			return snap, fmt.Errorf("this disk cannot copy the snapshot sharing its blocks, and a full copy is as big as the snapshot: set base.db.allow_copy to copy it anyway (%v)", err)
 		}
-		return err
+		return snap, err
 	}
 	if err := cleanDatadir(filepath.Join(tmp, "data")); err != nil {
 		os.RemoveAll(tmp)
-		return err
+		return snap, err
 	}
 	if err := os.Rename(tmp, dir); err != nil {
 		os.RemoveAll(tmp)
-		return err
+		return snap, err
 	}
-	return nil
+	return snap, nil
 }
 
 func (b *Box) upRedis(ctx context.Context, inst dbInstance) (InstanceReport, error) {
@@ -448,7 +530,8 @@ func (b *Box) upRedis(ctx context.Context, inst dbInstance) (InstanceReport, err
 	if err := os.MkdirAll(filepath.Join(dir, "data"), 0o700); err != nil {
 		return fail(err)
 	}
-	conf := append(redisConfig(dir, inst.Port, b.redisPassword(inst.Key)), []byte("pidfile "+filepath.Join(run, "redis.pid")+"\n")...)
+	version, _ := redisVersion(ctx, program)
+	conf := redisConfig(dir, run, inst.Port, inst.Secret, version)
 	if err := os.WriteFile(filepath.Join(dir, "redis.conf"), conf, 0o600); err != nil {
 		return fail(err)
 	}
@@ -470,7 +553,10 @@ func (b *Box) upRedis(ctx context.Context, inst dbInstance) (InstanceReport, err
 		rep.MS = time.Since(start).Milliseconds()
 	}
 	inst.State, inst.Error = "running", ""
-	b.updateInstances(func(m map[string]dbInstance) { m[inst.ID] = inst })
+	if !b.keepInstance(inst) {
+		b.discard(inst)
+		return fail(errDropped)
+	}
 	return rep, nil
 }
 
@@ -498,7 +584,8 @@ func portFree(port int) error {
 	return nil
 }
 
-// waitServer waits for a server to answer, giving up when its unit died.
+// waitServer waits for a server to answer, giving up when its unit died or
+// ctx ends (it was dropped).
 func (b *Box) waitServer(ctx context.Context, inst dbInstance, ready func(context.Context) error) error {
 	deadline := time.Now().Add(dbStartTimeout)
 	var last error
@@ -506,7 +593,11 @@ func (b *Box) waitServer(ctx context.Context, inst dbInstance, ready func(contex
 		if last = ready(ctx); last == nil {
 			return nil
 		}
-		time.Sleep(200 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
 		if u, err := b.Units.Get(inst.Unit); err == nil && u.State != "running" {
 			// One more look: it may have answered just before going.
 			if last = ready(ctx); last == nil {
@@ -520,15 +611,40 @@ func (b *Box) waitServer(ctx context.Context, inst dbInstance, ready func(contex
 
 // dropInstances ends a worktree's servers and deletes their data: the
 // worktree is going away, or its database starts over. Nothing waits for a
-// clean shutdown of data about to be deleted.
+// clean shutdown of data about to be deleted. Each is marked first, so a
+// bring-up under way stops and leaves nothing running, and one pierd did not
+// finish dropping is dropped as it starts again (CollectInstances).
 func (b *Box) dropInstances(path string) {
-	for _, inst := range b.instancesFor(path) {
-		b.killInstance(inst)
-		os.RemoveAll(b.instanceDir(inst.ID))
-		os.RemoveAll(b.instanceDir(inst.ID) + ".tmp")
-		os.RemoveAll(instanceRun(inst.ID))
-		b.updateInstances(func(m map[string]dbInstance) { delete(m, inst.ID) })
+	var gone []dbInstance
+	b.updateInstances(func(m map[string]dbInstance) {
+		for id, inst := range m {
+			if inst.Path == path {
+				inst.State = "dropping"
+				m[id] = inst
+				gone = append(gone, inst)
+			}
+		}
+	})
+	for _, inst := range gone {
+		b.dropInstance(inst)
 	}
+}
+
+func (b *Box) dropInstance(inst dbInstance) {
+	if c, ok := b.dbs.cancels.Load(inst.ID); ok {
+		(*c.(*context.CancelFunc))()
+	}
+	b.discard(inst)
+	b.updateInstances(func(m map[string]dbInstance) { delete(m, inst.ID) })
+	b.dbs.starts.Delete(inst.ID)
+}
+
+// discard ends a server and deletes what it had.
+func (b *Box) discard(inst dbInstance) {
+	b.killInstance(inst)
+	os.RemoveAll(b.instanceDir(inst.ID))
+	os.RemoveAll(b.instanceDir(inst.ID) + ".tmp")
+	os.RemoveAll(instanceRun(inst.ID))
 }
 
 func (b *Box) killInstance(inst dbInstance) {
@@ -547,16 +663,22 @@ func (b *Box) killInstance(inst dbInstance) {
 }
 
 // stopInstances stops a location's servers and keeps their data: the
-// location is forgotten, not deleted.
+// location is forgotten, not deleted. They shut down cleanly, all at once.
 func (b *Box) stopInstances(location string) {
 	if b.Units == nil {
 		return
 	}
+	var wg sync.WaitGroup
 	for _, inst := range b.loadInstancesLocked() {
 		if inst.Location == location {
-			b.Units.Remove(inst.Unit)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				b.Units.Remove(inst.Unit)
+			}()
 		}
 	}
+	wg.Wait()
 }
 
 func (b *Box) loadInstancesLocked() map[string]dbInstance {
@@ -567,11 +689,11 @@ func (b *Box) loadInstancesLocked() map[string]dbInstance {
 
 // CollectInstances drops the servers of worktrees that went away while pierd
 // was not looking (a folder removed by hand, pierd stopped halfway through a
-// removal); pierd runs it as it starts.
+// removal) and those it did not finish dropping; pierd runs it as it starts.
 func (b *Box) CollectInstances() {
 	for _, inst := range b.loadInstancesLocked() {
-		if _, err := os.Stat(inst.Path); errors.Is(err, fs.ErrNotExist) {
-			b.dropInstances(inst.Path)
+		if _, err := os.Stat(inst.Path); errors.Is(err, fs.ErrNotExist) || inst.State == "dropping" {
+			b.dropInstance(inst)
 		}
 	}
 }
@@ -585,51 +707,83 @@ func (b *Box) instancePorts() map[int]bool {
 	return out
 }
 
-// instanceEnv is what everything run in a checkout with servers of its own
-// gets: pierd's variables for them (vars), and the app's connection
-// variables pointed at them (over), which win over the box's and the
-// project's. Never a password.
-func (b *Box) instanceEnv(path string) (vars, over map[string]string) {
+// serverEnv is what everything run in a checkout with servers of its own
+// gets (instanceEnv).
+type serverEnv struct {
+	// Vars are pierd's variables for them (PIER_DB_PORT…).
+	Vars map[string]string
+	// Over are the app's connection variables pointed at them, which win
+	// over the box's and the project's.
+	Over map[string]string
+	// Drop are the box's and the project's variables that name another
+	// server's database, user or password: the checkout takes those from
+	// its env files, whose users its own server has.
+	Drop []string
+}
+
+// instanceEnv is serverEnv for the checkout at path. Its database's
+// password is never in it: the snapshot's users are the base's .env's.
+// Its Redis's is, since it is the Redis's own.
+func (b *Box) instanceEnv(path string) serverEnv {
 	insts := b.instancesFor(path)
 	if len(insts) == 0 {
-		return nil, nil
+		return serverEnv{}
 	}
-	vars, over = map[string]string{}, map[string]string{}
+	env := serverEnv{Vars: map[string]string{}, Over: map[string]string{}}
 	for _, inst := range insts {
 		port := strconv.Itoa(inst.Port)
 		switch inst.Engine {
 		case engineMySQL:
 			sock := filepath.Join(instanceRun(inst.ID), "mysqld.sock")
-			vars["PIER_DB_ENGINE"], vars["PIER_DB_HOST"], vars["PIER_DB_PORT"], vars["PIER_DB_SOCKET"] = engineMySQL, "127.0.0.1", port, sock
-			over["DB_HOST"], over["DB_PORT"] = "127.0.0.1", port
+			env.Vars["PIER_DB_ENGINE"], env.Vars["PIER_DB_HOST"], env.Vars["PIER_DB_PORT"], env.Vars["PIER_DB_SOCKET"] = engineMySQL, "127.0.0.1", port, sock
+			env.Over["DB_HOST"], env.Over["DB_PORT"] = "127.0.0.1", port
 			// A socket or a URL would take the app past host and port.
-			over["DB_SOCKET"], over["DB_URL"], over["DATABASE_URL"] = "", "", ""
+			env.Over["DB_SOCKET"], env.Over["DB_URL"], env.Over["DATABASE_URL"] = "", "", ""
 			// The mysql client in a worktree's shell reaches its own server.
-			over["MYSQL_UNIX_PORT"], over["MYSQL_TCP_PORT"] = sock, port
+			env.Over["MYSQL_UNIX_PORT"], env.Over["MYSQL_TCP_PORT"] = sock, port
+			env.Drop = append(env.Drop, "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD", "MYSQL_HOST", "MYSQL_PWD")
 		case engineRedis:
-			vars["PIER_REDIS_PORT"] = port
-			over["REDIS_HOST"], over["REDIS_PORT"], over["REDIS_URL"] = "127.0.0.1", port, ""
+			env.Vars["PIER_REDIS_PORT"] = port
+			env.Over["REDIS_HOST"], env.Over["REDIS_PORT"], env.Over["REDIS_URL"] = "127.0.0.1", port, ""
+			env.Over["REDIS_PASSWORD"] = inst.Secret
+			env.Drop = append(env.Drop, "REDIS_USERNAME")
 		}
 	}
-	return vars, over
+	return env
 }
 
-// connectionKeys are the env-file keys a checkout's servers decide.
-var connectionKeys = map[string]bool{
-	"DB_HOST": true, "DB_PORT": true, "DB_SOCKET": true, "DB_URL": true, "DATABASE_URL": true, "MYSQL_ATTR_SSL_CA": true,
-	"REDIS_HOST": true, "REDIS_PORT": true, "REDIS_URL": true,
+// connectionKeys are the env-file keys a checkout's servers decide, by
+// engine: a base's dotenv file never changes them in a checkout that has
+// that server.
+var connectionKeys = map[string]map[string]bool{
+	engineMySQL: {"DB_HOST": true, "DB_PORT": true, "DB_SOCKET": true, "DB_URL": true, "DATABASE_URL": true, "MYSQL_ATTR_SSL_CA": true},
+	engineRedis: {"REDIS_HOST": true, "REDIS_PORT": true, "REDIS_URL": true, "REDIS_PASSWORD": true, "REDIS_USERNAME": true},
+}
+
+// managedKeys are connectionKeys for the servers the checkout at path has.
+func (b *Box) managedKeys(path string) map[string]bool {
+	out := map[string]bool{}
+	for _, inst := range b.instancesFor(path) {
+		for k := range connectionKeys[inst.Engine] {
+			out[k] = true
+		}
+	}
+	return out
 }
 
 // rewriteConnections points a checkout's env files (.env, .env.*) at its own
 // servers: host and port, a socket, URL or TLS authority emptied so they
-// cannot lead elsewhere, and the project's env keys that name pierd's
-// variables ($PIER_DB_PORT). Never a database name, user or password: the
-// test database of .env.testing stays the test database, in the worktree's
-// own server. Laravel's cached config goes, so it reads them again. Says
-// which keys it changed.
+// cannot lead elsewhere, its Redis's own password, and the project's env
+// keys that name pierd's variables ($PIER_DB_PORT). Never a database name,
+// user or password: the test database of .env.testing stays the test
+// database, in the worktree's own server. A file git tracks stays as it is
+// (the worktree's environment points the app at its servers all the same).
+// Laravel's cached config goes, so it reads them again. Says which keys it
+// changed.
 func (b *Box) rewriteConnections(ctx context.Context, loc Location, wt Worktree) []string {
-	vars, over := b.instanceEnv(wt.Path)
-	if len(over) == 0 {
+	srv := b.instanceEnv(wt.Path)
+	vars := srv.Vars
+	if len(srv.Over) == 0 {
 		return nil
 	}
 	set := map[string]string{}
@@ -643,7 +797,8 @@ func (b *Box) rewriteConnections(ctx context.Context, loc Location, wt Worktree)
 	}
 	if _, ok := vars["PIER_REDIS_PORT"]; ok {
 		set["REDIS_HOST"], set["REDIS_PORT"], set["REDIS_URL"] = "127.0.0.1", vars["PIER_REDIS_PORT"], ""
-		always["REDIS_HOST"], always["REDIS_PORT"] = true, true
+		set["REDIS_PASSWORD"], set["REDIS_USERNAME"] = srv.Over["REDIS_PASSWORD"], ""
+		always["REDIS_HOST"], always["REDIS_PORT"], always["REDIS_PASSWORD"] = true, true, true
 	}
 	if cfg, err := b.Locations.Config(ctx, loc.Name); err == nil {
 		for k, v := range cfg.Effective.Env {
@@ -662,6 +817,9 @@ func (b *Box) rewriteConnections(ctx context.Context, loc Location, wt Worktree)
 	for _, e := range entries {
 		name := e.Name()
 		if !isEnvFile(name) || name == ".env.example" || !e.Type().IsRegular() {
+			continue
+		}
+		if tracked, err := gitTracks(ctx, wt.Path, name); err != nil || tracked {
 			continue
 		}
 		data, err := root.ReadFile(name)
@@ -766,6 +924,8 @@ func (b *Box) putWorktreeDB(w http.ResponseWriter, r *http.Request) error {
 	if req.From != "" && req.From != "base" {
 		return badRequest("from is base")
 	}
+	// The snapshot is the one root published last.
+	b.refreshTeam(r.Context(), loc.Name)
 	if engines, _ := b.wantedServers(r.Context(), loc); len(engines) == 0 {
 		return httpError{http.StatusConflict, "the project's base gives its worktrees no servers: turn base.db or base.redis on first"}
 	}
@@ -881,6 +1041,9 @@ func (b *Box) baseDBView(ctx context.Context, loc Location, key string, cfg Conf
 	}
 	if v.Redis && redisServer() == "" {
 		v.Problems = append(v.Problems, "this box has no Redis server (redis-server)")
+	}
+	if (v.Engine != "" || v.Redis) && cfg.Effective.Ports > maxPortsWithServers {
+		v.Problems = append(v.Problems, fmt.Sprintf("the project asks for %d ports per worktree, and the worktrees' own servers take the last two of ten: only %d are given", cfg.Effective.Ports, maxPortsWithServers))
 	}
 	return v
 }

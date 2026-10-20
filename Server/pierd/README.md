@@ -200,8 +200,8 @@ What every new worktree of a project gets that git does not bring, configured on
 - **a database of its own** (Linux): `pierd db enable shop --redis` gives each new worktree a MySQL server of its own,
   started as your user on a copy of the project's snapshot that shares its blocks (btrfs: seconds, whatever its size),
   with the snapshot's databases, users and passwords, so the same `.env` serves every worktree and only host and port
-  change, and an empty Redis of its own; both on the last two ports of the worktree's block, gone with it. `pierd db
-  reset` starts a worktree's database over. Ubuntu confines its MySQL server with AppArmor: root adds the lines `pierd
+  change, and an empty Redis of its own, with a password of its own that pierd writes into the worktree's `.env`; both
+  on the last two ports of the worktree's block, gone with it. `pierd db reset` starts a worktree's database over. Ubuntu confines its MySQL server with AppArmor: root adds the lines `pierd
   db apparmor` prints to `/etc/apparmor.d/local/usr.sbin.mysqld` once (`pierd team init` does it).
 
 `pierd base status shop` shows what the base holds and whose each part is. On a machine where each person runs their

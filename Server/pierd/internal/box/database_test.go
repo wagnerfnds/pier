@@ -29,6 +29,10 @@ import (
 // server AppArmor confines does.
 func fakeDBServer(tool string, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
+		if tool == "redis-server" {
+			fmt.Printf("Redis server v=%s sha=00000000:0 malloc=libc bits=64 build=fake\n", envOr("FAKE_REDIS_VERSION", "7.0.15"))
+			return 0
+		}
 		fmt.Printf("%s  Ver %s for Linux on x86_64 (fake)\n", tool, envOr("FAKE_MYSQLD_VERSION", "8.0.46"))
 		return 0
 	}
@@ -47,9 +51,9 @@ func fakeDBServer(tool string, args []string) int {
 		for _, l := range strings.Split(string(raw), "\n") {
 			l = strings.TrimSpace(l)
 			if k, v, ok := strings.Cut(l, "="); ok && tool == "mysqld" {
-				conf[k] = v
+				conf[k] = unquoteConf(v)
 			} else if k, v, ok := strings.Cut(l, " "); ok && tool != "mysqld" {
-				conf[k] = v
+				conf[k] = unquoteConf(v)
 			}
 		}
 	}
@@ -120,6 +124,17 @@ func fakeDBServer(tool string, args []string) int {
 	}
 	logf("Shutdown complete")
 	return 0
+}
+
+// unquoteConf reads a config value the way MySQL and Redis do: one in
+// double quotes, escapes and all.
+func unquoteConf(v string) string {
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		if u, err := strconv.Unquote(v); err == nil {
+			return u
+		}
+	}
+	return v
 }
 
 func envOr(k, def string) string {
@@ -265,11 +280,11 @@ func snapshotFor(t *testing.T, bx *Box, key, version string) string {
 	dir := filepath.Join(bx.dbRoot(), "base", key)
 	gen := filepath.Join(dir, "gen", "20261020-100000")
 	data := filepath.Join(gen, "data")
-	for _, p := range []string{"mysql.ibd", "ibdata1", "undo_001", "auto.cnf", "ib_buffer_pool", "server-key.pem", "brokerfy/leads.ibd"} {
+	for _, p := range []string{"mysql.ibd", "ibdata1", "undo_001", "auto.cnf", "ib_buffer_pool", "server-key.pem", "shop/orders.ibd"} {
 		os.MkdirAll(filepath.Dir(filepath.Join(data, p)), 0o750)
 		os.WriteFile(filepath.Join(data, p), []byte("page of "+p), 0o640)
 	}
-	m := snapshotManifest{ID: "20261020-100000", Engine: "mysql", Version: version, Databases: []string{"brokerfy", "brokerfy_test"},
+	m := snapshotManifest{ID: "20261020-100000", Engine: "mysql", Version: version, Databases: []string{"shop", "shop_test"},
 		Created: time.Now().UTC().Truncate(time.Second), Sanitized: true}
 	raw, _ := json.Marshal(m)
 	os.WriteFile(filepath.Join(gen, "manifest.json"), raw, 0o600)
@@ -284,8 +299,8 @@ func dbBox(t *testing.T) (*Box, func(method, path string, body, out any) int, <-
 	t.Setenv("SHELL", "/bin/sh")
 	fakeDBTools(t)
 	repo := baseRepo(t)
-	os.WriteFile(filepath.Join(repo, ".env"), []byte("APP_KEY=base64:x\nDB_HOST=localhost\nDB_PORT=3306\nDB_DATABASE=brokerfy\nDB_USERNAME=app\nDB_PASSWORD=s3cret\nDB_SOCKET=/var/run/mysqld/mysqld.sock\nREDIS_HOST=127.0.0.1\nREDIS_PORT=6379\n"), 0o644)
-	os.WriteFile(filepath.Join(repo, ".env.testing"), []byte("DB_HOST=localhost\nDB_DATABASE=brokerfy_test\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, ".env"), []byte("APP_KEY=base64:x\nDB_HOST=localhost\nDB_PORT=3306\nDB_DATABASE=shop\nDB_USERNAME=app\nDB_PASSWORD=s3cret\nDB_SOCKET=/var/run/mysqld/mysqld.sock\nREDIS_HOST=127.0.0.1\nREDIS_PORT=6379\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, ".env.testing"), []byte("DB_HOST=localhost\nDB_DATABASE=shop_test\n"), 0o644)
 	var bx *Box
 	c, bus := servedBox(t, func(b *Box) {
 		b.LogDir, b.StateDir, b.DBDir = t.TempDir(), t.TempDir(), t.TempDir()
@@ -348,11 +363,11 @@ func TestAWorktreeGetsItsOwnDatabaseCopiedFromTheSnapshot(t *testing.T) {
 	}
 	env := envOf(t, filepath.Join(wt.Path, ".env"))
 	if env["DB_HOST"] != "127.0.0.1" || env["DB_PORT"] != strconv.Itoa(dbPort) || env["DB_SOCKET"] != "" || env["REDIS_PORT"] != strconv.Itoa(redisPort) ||
-		env["DB_DATABASE"] != "brokerfy" || env["DB_PASSWORD"] != "s3cret" {
+		env["DB_DATABASE"] != "shop" || env["DB_PASSWORD"] != "s3cret" {
 		t.Fatalf(".env = %v", env)
 	}
 	testEnv := envOf(t, filepath.Join(wt.Path, ".env.testing"))
-	if testEnv["DB_DATABASE"] != "brokerfy_test" || testEnv["DB_HOST"] != "127.0.0.1" || testEnv["DB_PORT"] != strconv.Itoa(dbPort) {
+	if testEnv["DB_DATABASE"] != "shop_test" || testEnv["DB_HOST"] != "127.0.0.1" || testEnv["DB_PORT"] != strconv.Itoa(dbPort) {
 		t.Fatalf(".env.testing = %v", testEnv)
 	}
 	insts := bx.instancesFor(wt.Path)
@@ -365,7 +380,7 @@ func TestAWorktreeGetsItsOwnDatabaseCopiedFromTheSnapshot(t *testing.T) {
 			t.Errorf("the copy kept %s", gone)
 		}
 	}
-	if info, err := os.Stat(filepath.Join(data, "brokerfy", "leads.ibd")); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(filepath.Join(data, "shop", "orders.ibd")); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("the copy's table: %v %v", info, err)
 	}
 	cnf := readFile(t, filepath.Join(bx.instanceDir(insts[0].ID), "my.cnf"))
@@ -427,7 +442,7 @@ func TestAWorktreesDatabaseStartsOverFromTheSnapshot(t *testing.T) {
 	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "dirty"}, &wt)
 	waitFor(t, events, "worktree.prepare.finished")
 	inst := bx.instancesFor(wt.Path)[0]
-	os.WriteFile(filepath.Join(bx.instanceDir(inst.ID), "data", "brokerfy", "scratch.ibd"), []byte("a test's table"), 0o600)
+	os.WriteFile(filepath.Join(bx.instanceDir(inst.ID), "data", "shop", "scratch.ibd"), []byte("a test's table"), 0o600)
 	var st PrepareStatus
 	if code := do("PUT", "/v1/locations/cal/worktrees/dirty/db", map[string]string{"from": "base"}, &st); code != 202 || st.State != "running" {
 		t.Fatalf("reset = %d %+v", code, st)
@@ -437,7 +452,7 @@ func TestAWorktreesDatabaseStartsOverFromTheSnapshot(t *testing.T) {
 	if len(again) != 1 || again[0].ID == inst.ID || again[0].State != "running" {
 		t.Fatalf("after the reset = %+v", again)
 	}
-	if _, err := os.Stat(filepath.Join(bx.instanceDir(again[0].ID), "data", "brokerfy", "scratch.ibd")); err == nil {
+	if _, err := os.Stat(filepath.Join(bx.instanceDir(again[0].ID), "data", "shop", "scratch.ibd")); err == nil {
 		t.Fatal("the reset kept what the worktree wrote")
 	}
 	if _, err := os.Stat(bx.instanceDir(inst.ID)); err == nil {
@@ -501,7 +516,7 @@ func TestAServerAppArmorStoppedSaysWhatRootDoesOnce(t *testing.T) {
 	if view.DB == nil || view.DB.Server == nil || view.DB.Server.AppArmor != "needs_rule" || view.DB.Server.Fix == "" {
 		t.Fatalf("base's db = %+v", view.DB)
 	}
-	os.WriteFile(apparmorLocal, []byte(apparmorRule()), 0o644)
+	os.WriteFile(apparmorLocal, []byte(AppArmorRule()), 0o644)
 	if apparmorMySQL() != "ok" {
 		t.Fatal("the rule did not count")
 	}
@@ -627,5 +642,315 @@ func TestAnExistingWorktreeKeepsItsDatabaseUntilAsked(t *testing.T) {
 	waitFor(t, events, "worktree.prepare.finished")
 	if insts := bx.instancesFor(wt.Path); len(insts) != 1 || insts[0].State != "running" {
 		t.Fatalf("after asking = %+v", insts)
+	}
+}
+
+// A worktree's Redis asks for a password of its own, which its env files and
+// environment carry, and nothing that reaches it can change where it writes
+// or load code: Redis 7 has settings for that, an older one the commands
+// renamed away.
+func TestAWorktreesRedisIsItsOwnAlone(t *testing.T) {
+	bx, do, events, _ := dbBox(t)
+	do("PUT", "/v1/locations/cal/base", map[string]any{"redis": true}, nil)
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "queue"}, &wt)
+	waitFor(t, events, "worktree.prepare.finished")
+	insts := bx.instancesFor(wt.Path)
+	if len(insts) != 1 || insts[0].Secret == "" {
+		t.Fatalf("instances = %+v", insts)
+	}
+	secret := insts[0].Secret
+	conf := readFile(t, filepath.Join(bx.instanceDir(insts[0].ID), "redis.conf"))
+	for _, want := range []string{`requirepass "` + secret + `"`, "enable-protected-configs no", "enable-module-command no", "enable-debug-command no", "bind 127.0.0.1"} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("redis.conf lacks %s:\n%s", want, conf)
+		}
+	}
+	if env := envOf(t, filepath.Join(wt.Path, ".env")); env["REDIS_PASSWORD"] != secret || env["REDIS_PORT"] != strconv.Itoa(insts[0].Port) {
+		t.Fatalf(".env = %v", env)
+	}
+	full, _ := bx.WorktreeEnv(context.Background(), "cal", wt)
+	if !slicesContains(full, "REDIS_PASSWORD="+secret) {
+		t.Fatalf("env = %v", full)
+	}
+	var db WorktreeDB
+	do("GET", "/v1/locations/cal/worktrees/queue/db", nil, &db)
+	if raw, _ := json.Marshal(db); strings.Contains(string(raw), secret) {
+		t.Fatalf("GET …/db shows the password: %s", raw)
+	}
+	old := string(redisConfig("/d", "/r", 41008, `pa"ss\word`, "6.0.16"))
+	for _, want := range []string{`rename-command CONFIG ""`, `rename-command MODULE ""`, `rename-command DEBUG ""`, `requirepass "pa\"ss\\word"`} {
+		if !strings.Contains(old, want) {
+			t.Errorf("Redis 6's config lacks %s:\n%s", want, old)
+		}
+	}
+	if strings.Contains(old, "enable-protected-configs") {
+		t.Error("Redis 6 would refuse a setting it does not know")
+	}
+}
+
+func slicesContains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// The box's and the project's database names, users and passwords were set
+// for another server: a worktree with its own takes those from its env
+// files, whose users its server has.
+func TestAWorktreesOwnServersTakeTheirUsersFromItsEnvFiles(t *testing.T) {
+	bx, do, events, _ := dbBox(t)
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	snapshotFor(t, bx, key, "8.0.46")
+	bx.EnvFile = filepath.Join(t.TempDir(), "env.json")
+	os.WriteFile(bx.EnvFile, []byte(`{"env": {"DB_USERNAME": "root", "DB_PASSWORD": "system", "REDIS_PASSWORD": "shared", "MYSQL_PWD": "system", "APP_DEBUG": "true"}}`), 0o600)
+	bx.Locations.MergeLocalConfig("cal", RepoConfig{Env: map[string]string{"DB_DATABASE": "cal_$PIER_WORKTREE_SLUG"}})
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql", "allow_copy": true}, "redis": true}, nil)
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "own"}, &wt)
+	waitFor(t, events, "worktree.prepare.finished")
+	full, _ := bx.WorktreeEnv(context.Background(), "cal", wt)
+	got := map[string]string{}
+	for _, kv := range full {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	for _, k := range []string{"DB_USERNAME", "DB_PASSWORD", "DB_DATABASE", "MYSQL_PWD"} {
+		if v, ok := got[k]; ok {
+			t.Errorf("%s=%s reaches a worktree with its own server", k, v)
+		}
+	}
+	if got["REDIS_PASSWORD"] == "shared" || got["REDIS_PASSWORD"] == "" || got["APP_DEBUG"] != "true" {
+		t.Fatalf("env = %v", got)
+	}
+	// A worktree without servers keeps them.
+	plain, _ := bx.WorktreeEnv(context.Background(), "cal", Worktree{Name: "plain", Path: filepath.Join(t.TempDir(), "cal-plain")})
+	if !slicesContains(plain, "DB_USERNAME=root") {
+		t.Fatalf("a worktree without servers lost the box's user: %v", plain)
+	}
+}
+
+// An env file the repository tracks (.env.ci) is never rewritten: a commit
+// would take this worktree's ports.
+func TestTrackedEnvFilesStayAsTheRepositoryHasThem(t *testing.T) {
+	bx, do, events, repo := dbBox(t)
+	ci := "DB_HOST=127.0.0.1\nDB_PORT=3306\nREDIS_PORT=6379\n"
+	os.WriteFile(filepath.Join(repo, ".env.ci"), []byte(ci), 0o644)
+	for _, args := range [][]string{{"add", ".env.ci"}, {"commit", "-q", "-m", "ci env"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	snapshotFor(t, bx, key, "8.0.46")
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql", "allow_copy": true}, "redis": true}, nil)
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "ci"}, &wt)
+	waitFor(t, events, "worktree.prepare.finished")
+	if got := readFile(t, filepath.Join(wt.Path, ".env.ci")); got != ci {
+		t.Fatalf(".env.ci = %q", got)
+	}
+	if out, _ := exec.Command("git", "-C", wt.Path, "status", "--porcelain").CombinedOutput(); len(strings.TrimSpace(string(out))) > 0 {
+		t.Fatalf("the worktree has changes to commit: %s", out)
+	}
+}
+
+// Reservations at once (a worktree made while it is prepared again) give a
+// checkout one server of each.
+func TestReservationsAtOnceGiveOneServerOfEach(t *testing.T) {
+	bx, do, _, repo := dbBox(t)
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql"}, "redis": true}, nil)
+	loc, _ := bx.Locations.Get(context.Background(), "cal")
+	wt := Worktree{Name: "cal", Path: repo, Main: true}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			bx.reserveInstances(context.Background(), loc, wt)
+		}()
+	}
+	wg.Wait()
+	if insts := bx.instancesFor(repo); len(insts) != 2 || insts[0].Engine == insts[1].Engine {
+		t.Fatalf("instances = %+v", insts)
+	}
+}
+
+// A worktree removed while its database is being copied leaves nothing
+// behind: the copy stops, no server starts, its port is free.
+func TestAWorktreeRemovedWhileItsDatabaseComesUpLeavesNothingRunning(t *testing.T) {
+	bx, do, events, _ := dbBox(t)
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	snapshotFor(t, bx, key, "8.0.46")
+	copying, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	old := cloneTree
+	cloneTree = func(ctx context.Context, src, dst string, always bool) error {
+		if strings.HasSuffix(dst, filepath.Join(".tmp", "data")) {
+			once.Do(func() { close(copying) })
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-release:
+			}
+		}
+		return old(ctx, src, dst, always)
+	}
+	t.Cleanup(func() { cloneTree = old })
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql", "allow_copy": true}}, nil)
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "brief"}, &wt)
+	select {
+	case <-copying:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the copy never started")
+	}
+	inst := bx.instancesFor(wt.Path)[0]
+	if code := do("DELETE", "/v1/locations/cal/worktrees/brief?force=1", nil, nil); code != 200 {
+		t.Fatalf("remove = %d", code)
+	}
+	close(release)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		_, starting := bx.dbs.cancels.Load(inst.ID)
+		if !starting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the bring-up never ended")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if _, ok := bx.loadInstancesLocked()[inst.ID]; ok {
+		t.Fatal("the record came back")
+	}
+	if _, err := os.Stat(bx.instanceDir(inst.ID)); err == nil {
+		t.Fatal("the copy came back")
+	}
+	if err := portFree(inst.Port); err != nil {
+		t.Fatalf("a server listens for a removed worktree: %v", err)
+	}
+	if u, err := bx.Units.Get(inst.Unit); err == nil && u.State == "running" {
+		t.Fatalf("its unit runs: %+v", u)
+	}
+	select {
+	case e := <-events:
+		if e.Type == "worktree.prepare.finished" {
+			t.Fatalf("a removed worktree's preparation finished: %+v", e)
+		}
+	default:
+	}
+}
+
+// A worktree's archive script runs with its own database still up: only its
+// recipe's services stop first.
+func TestAnArchiveScriptStillReachesTheWorktreesDatabase(t *testing.T) {
+	bx, do, events, _ := dbBox(t)
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	snapshotFor(t, bx, key, "8.0.46")
+	do("PUT", "/v1/locations/cal/base", map[string]any{"db": map[string]any{"engine": "mysql", "allow_copy": true}}, nil)
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "archived"}, &wt)
+	waitFor(t, events, "worktree.prepare.finished")
+	inst := bx.instancesFor(wt.Path)[0]
+	bx.stopServices("cal", "archived")
+	if u, err := bx.Units.Get(inst.Unit); err != nil || u.State != "running" {
+		t.Fatalf("the database stopped before the archive script: %+v %v", u, err)
+	}
+}
+
+// A copy starts from the snapshot root published last, even one the box's
+// copy of the team's base has not seen yet (the one it knew pruned).
+func TestStartingOverCopiesTheTeamsLatestSnapshot(t *testing.T) {
+	bx, do, events, _ := dbBox(t)
+	ctx := context.Background()
+	key, _ := bx.Locations.BaseKey(ctx, "cal")
+	team, publish := useTeam(t)
+	publishDB := func(id string) {
+		// publish starts the project's folder over: the older snapshot is
+		// kept aside and put back, as root's prune would leave it.
+		gens := filepath.Join(team, "projects", key, "db", "gen")
+		kept := filepath.Join(t.TempDir(), "gen")
+		os.Rename(gens, kept)
+		publish(key, nil, `{"base": {"db": {"engine": "mysql", "allow_copy": true}}}`)
+		os.MkdirAll(filepath.Dir(gens), 0o750)
+		os.Rename(kept, gens)
+		data := filepath.Join(gens, id, "data")
+		for _, p := range []string{"mysql.ibd", "shop/orders.ibd"} {
+			os.MkdirAll(filepath.Dir(filepath.Join(data, p)), 0o750)
+			os.WriteFile(filepath.Join(data, p), []byte(id), 0o640)
+		}
+		pubPath := filepath.Join(team, "projects", key, "published.json")
+		var pub teamPublished
+		loadJSON(pubPath, &pub)
+		pub.DB = &teamSnapshot{ID: id, Manifest: snapshotManifest{ID: id, Engine: "mysql", Version: "8.0.46", Created: time.Now().UTC(), Sanitized: true}}
+		raw, _ := json.Marshal(pub)
+		os.WriteFile(pubPath, raw, 0o640)
+	}
+	publishDB("gen-a")
+	var wt Worktree
+	do("POST", "/v1/locations/cal/worktrees", map[string]any{"name": "fresh"}, &wt)
+	if e := waitForEither(t, events, "worktree.prepare.finished", "worktree.prepare.failed"); e.Type != "worktree.prepare.finished" {
+		t.Fatalf("prepare failed: %s", e.Error)
+	}
+	if insts := bx.instancesFor(wt.Path); len(insts) != 1 || insts[0].Snapshot != "gen-a" {
+		t.Fatalf("first copy = %+v", insts)
+	}
+	// Root imports again and prunes the old one, a moment later.
+	os.RemoveAll(filepath.Join(team, "projects", key, "db", "gen", "gen-a"))
+	publishDB("gen-b")
+	if code := do("PUT", "/v1/locations/cal/worktrees/fresh/db", map[string]string{"from": "base"}, nil); code != 202 {
+		t.Fatalf("reset = %d", code)
+	}
+	waitFor(t, events, "worktree.prepare.finished")
+	if insts := bx.instancesFor(wt.Path); len(insts) != 1 || insts[0].Snapshot != "gen-b" {
+		t.Fatalf("after the reset = %+v", insts)
+	}
+}
+
+// Purging a project with its base keeps a base another project of the box
+// (a second clone of the repository) shares.
+func TestPurgingWithTheBaseKeepsOneAnotherProjectShares(t *testing.T) {
+	repo := baseRepo(t)
+	other := filepath.Join(filepath.Dir(repo), "cal-two")
+	for _, args := range [][]string{
+		{"-C", repo, "remote", "add", "origin", "https://github.com/acme/cal.git"},
+		{"clone", "-q", repo, other},
+		{"-C", other, "remote", "set-url", "origin", "https://github.com/acme/cal.git"},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	bx, do, _ := baseBox(t)
+	do("POST", "/v1/locations", map[string]string{"name": "cal", "path": repo}, nil)
+	do("POST", "/v1/locations", map[string]string{"name": "two", "path": other}, nil)
+	do("POST", "/v1/locations/cal/base/files", map[string]string{"path": ".env"}, nil)
+	key, _ := bx.Locations.BaseKey(context.Background(), "cal")
+	if code := do("DELETE", "/v1/locations/two?purge=1&base=1&force=1", nil, nil); code != 200 {
+		t.Fatalf("purge = %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(bx.baseDir(key), "base.json")); err != nil {
+		t.Fatalf("the shared base went: %v", err)
+	}
+}
+
+// waitForEither is waitFor for whichever of two events comes first.
+func waitForEither(t *testing.T, ch <-chan events.Event, one, other string) events.Event {
+	t.Helper()
+	deadline := time.After(20 * time.Second)
+	for {
+		select {
+		case e := <-ch:
+			if e.Type == one || e.Type == other {
+				return e
+			}
+		case <-deadline:
+			t.Fatalf("saw neither %s nor %s", one, other)
+		}
 	}
 }

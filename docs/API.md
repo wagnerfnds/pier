@@ -853,7 +853,8 @@ of its own, started as the box's user on a copy of the project's **snapshot** (a
 the team, 2.15, or the box's own), and `base.redis` an empty Redis of its own. Only the team's config and the box's own
 turn them on: a repository's file or a recipe a setup agent saves never does. They listen on 127.0.0.1 at the last two
 ports of the worktree's block (`PIER_DB_PORT` = `PIER_PORT`+9, `PIER_REDIS_PORT` = +8; a project with them asks for at
-most 8 ports, 400 otherwise), run as managed units (`db-…`, `redis-…`) that stay down when stopped and get minutes to
+most 8 ports, 400 otherwise, and a team's config asking for more gets 8 and a problem in `GET …/base`), run as managed
+units (`db-…`, `redis-…`) that stay down when stopped and get minutes to
 shut down, and appear in `GET …/services` as `db` and `redis` with `kind` `mysql` / `redis` (start, stop and restart
 work); `GET /v1/services` leaves their ports out.
 
@@ -867,14 +868,23 @@ work); `GET /v1/services` leaves their ports out.
   the project's `options` add only server options from a list (`sql_mode`, `character_set_server`,
   `innodb_buffer_pool_size`, `max_connections`…; never an init file or a plugin). Each start sets root to a password
   of the server's own, so nobody else on the box reaches it as root. The snapshot's databases, users and passwords
-  are the copy's: the project's `.env` works in every worktree, only host and port change.
+  are the copy's: the project's `.env` works in every worktree, only host and port change. Path values in its option
+  files are quoted, so a folder's name with `#` or a space stays whole.
+* **The Redis** keeps nothing on disk and asks for a password of its own, made with it and never shown, so nobody else
+  on the box reaches it. Nothing that reaches it can change where it writes or load code: `CONFIG`, `MODULE` and
+  `DEBUG` are off (Redis 7's `enable-protected-configs`, `enable-module-command`, `enable-debug-command`; an older
+  Redis, where `CONFIG SET dir` writes a file anywhere its user can, has them renamed away).
 * **Its address**: everything run in a checkout with servers gets `PIER_DB_HOST`, `PIER_DB_PORT`, `PIER_DB_SOCKET`,
   `PIER_DB_ENGINE`, `PIER_REDIS_PORT`, and `DB_HOST`, `DB_PORT`, `REDIS_HOST`, `REDIS_PORT`, `MYSQL_TCP_PORT`,
   `MYSQL_UNIX_PORT` over what the box's and the project's env say, `DB_SOCKET`, `DB_URL`, `DATABASE_URL` and
-  `REDIS_URL` empty (they would lead elsewhere); never a password. Its env files (`.env`, `.env.*`) get the same
-  `DB_HOST`/`DB_PORT`/`REDIS_HOST`/`REDIS_PORT`, a socket, URL or `MYSQL_ATTR_SSL_CA` emptied, and the project's env
-  keys that name `$PIER_DB_*` or `$PIER_REDIS_*`; never `DB_DATABASE`, a user or a password, so `.env.testing`'s test
-  database is still the test one, in the worktree's own server. Laravel's cached config goes. A recipe that points
+  `REDIS_URL` empty (they would lead elsewhere), and the Redis's own `REDIS_PASSWORD`; never the database's password.
+  The box's and the project's `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `MYSQL_HOST`, `MYSQL_PWD` and
+  `REDIS_USERNAME` are left out there (they were set for another server): the app takes them from its env files, whose
+  users its server has. Its env files (`.env`, `.env.*`, never one git tracks) get the same
+  `DB_HOST`/`DB_PORT`/`REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`, a socket, URL, `REDIS_USERNAME` or
+  `MYSQL_ATTR_SSL_CA` emptied, and the project's env keys that name `$PIER_DB_*` or `$PIER_REDIS_*`; never
+  `DB_DATABASE`, the database's user or password, so `.env.testing`'s test database is still the test one, in the
+  worktree's own server. Laravel's cached config goes. A recipe that points
   them elsewhere is put right after it runs. `connections` in the preparation's `base` says what changed
   (`"file: KEY"`), and `servers` how each server came up: `{engine, port, action (copied, created, started, running,
   failed), snapshot?, snapshot_created?, layer?, reason?, ms?}`.
@@ -889,9 +899,11 @@ work); `GET /v1/services` leaves their ports out.
   while one runs, or when the base gives no servers), which copies the snapshot afresh and runs the recipe (its
   pending migrations). The main checkout, or a worktree made before the base had a database, gets its servers the
   same way. `DELETE …/worktrees/{wt}/db` ends them and deletes their data. Gates `before:db.reset`, `before:db.drop`.
-* Removing a worktree ends its servers and deletes their data; forgetting the project stops them and keeps it;
-  removing it from the disk deletes them, and its base too only with `?base=1` (its secrets exist nowhere else, a
-  snapshot takes hours to make). Servers whose worktree went while pierd was down go when it starts.
+* Removing a worktree ends its servers and deletes their data, after its archive script ran (they stay up for it;
+  its recipe's services stop first), and stops a copy or a start under way; forgetting the project stops them and
+  keeps it; removing it from the disk deletes them, and its base too only with `?base=1` (its secrets exist nowhere
+  else, a snapshot takes hours to make), unless another project of the box shares the base. Servers whose worktree
+  went while pierd was down go when it starts. A copy starts from the snapshot root published last.
 * `GET …/base` adds `db {engine?, redis, server? {program, version, apparmor ("ok" | "needs_rule" | "none"), fix?},
   snapshot? {id, created, version, databases, bytes, sanitized, layer}, instances, problems?}`; `PUT …/base {"db": {…}
   | null, "redis": bool}` sets the box's own (501 on a box without `base.db`).
