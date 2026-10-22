@@ -126,7 +126,10 @@ pierd tools install gh                              # the GitHub CLI, once pierd
   <p><strong>Settings › Projects › Variables and skills</strong>: variables every project gets (agents, terminals, services), each
   with a note on what it is for. Secret-looking values are hidden until revealed; a project's own env wins. Turn on the
   <strong>Pier box</strong> skill (the variables by name and note, never values; the worktree's ports; the project's
-  environment) and <strong>Pier preview</strong> (run the dev server on the worktree's port) so Claude Code and Codex know them.</p>
+  environment) and <strong>Pier preview</strong> (run the dev server on the worktree's port) so Claude Code and Codex know them.
+  <strong>Pier prove</strong> has the agents show their work: a page's screenshot before and after a change, at a
+  desktop's width and a phone's (<code>pierd capture page</code>, in a headless Chromium on the box:
+  <code>npx -y playwright install chromium</code> once), which the app shows under the agent's reply.</p>
 
   <h2 id="projects">9. Bring in projects</h2>
   <ul>
@@ -303,7 +306,9 @@ pierd tools install gh                              # o GitHub CLI, com o pierd 
   cada uma com uma nota do que é. Valores com cara de segredo ficam escondidos até você revelar, e o env do projeto tem
   prioridade. Ligue a skill <strong>Pier box</strong> (as variáveis por nome e nota, nunca o valor; as portas da worktree; o
   ambiente do projeto) e a <strong>Pier preview</strong> (subir o servidor de desenvolvimento na porta da worktree) para o Claude
-  Code e o Codex saberem disso.</p>
+  Code e o Codex saberem disso. A <strong>Pier prove</strong> faz os agentes mostrarem o trabalho: a captura de uma página antes
+  e depois de uma mudança, na largura do computador e do celular (<code>pierd capture page</code>, num Chromium headless na box:
+  <code>npx -y playwright install chromium</code> uma vez), que o app mostra abaixo da resposta do agente.</p>
 
   <h2 id="projetos">9. Trazer os projetos</h2>
   <ul>
