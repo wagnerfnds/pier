@@ -33,12 +33,27 @@ func pids(dir string) int {
 	return len(strings.Fields(string(b)))
 }
 
+// eventually says whether cond holds within 5 s: a stand-in process can take
+// a good part of a second to start on a busy machine (a Mac scanning new
+// executables), longer than a fixed wait allowed.
+func eventually(cond func() bool) bool {
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if cond() {
+			return true
+		}
+	}
+	return cond()
+}
+
 func TestWarmAnswersOnTheWaitingProcessOncePerRecap(t *testing.T) {
 	bin, dir := standIn(t, false)
 	w := &Warm{Bin: bin}
 	w.Prewarm()
 	w.Prewarm() // one waiting is enough
-	time.Sleep(200 * time.Millisecond)
+	if !eventually(func() bool { return pids(dir) >= 1 }) {
+		t.Fatal("no process started")
+	}
+	time.Sleep(100 * time.Millisecond)
 	if n := pids(dir); n != 1 {
 		t.Fatalf("%d processes waiting", n)
 	}
@@ -48,8 +63,7 @@ func TestWarmAnswersOnTheWaitingProcessOncePerRecap(t *testing.T) {
 	}
 	// The next recap gets a fresh process (started after this one answered), not this one again.
 	out, _ = w.Run(context.Background(), "and this")
-	time.Sleep(200 * time.Millisecond)
-	if !strings.HasPrefix(out, "warm ") || pids(dir) != 3 {
+	if !strings.HasPrefix(out, "warm ") || !eventually(func() bool { return pids(dir) == 3 }) {
 		t.Fatalf("out %q, %d processes", out, pids(dir))
 	}
 	w.mu.Lock()
@@ -61,21 +75,24 @@ func TestWarmAnswersOnTheWaitingProcessOncePerRecap(t *testing.T) {
 
 func TestWarmStopsAnUnusedProcess(t *testing.T) {
 	bin, dir := standIn(t, false)
-	w := &Warm{Bin: bin, Idle: 400 * time.Millisecond}
+	// Idle well past how long the stand-in takes to start, so it is stopped
+	// waiting, not before it began.
+	w := &Warm{Bin: bin, Idle: 2 * time.Second}
 	w.Prewarm()
-	time.Sleep(1200 * time.Millisecond)
-	w.mu.Lock()
-	waiting := w.ready != nil
-	w.mu.Unlock()
-	if waiting {
+	if !eventually(func() bool { return pids(dir) == 1 }) {
+		t.Fatal("the process never started")
+	}
+	stopped := eventually(func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.ready == nil
+	})
+	if !stopped {
 		t.Fatal("the idle process is still waiting")
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "pids"))
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
-	if pid == 0 {
-		t.Fatal("the process never started")
-	}
-	if err := syscall.Kill(pid, 0); err == nil {
+	if !eventually(func() bool { return syscall.Kill(pid, 0) != nil }) {
 		t.Fatalf("the idle process %d still runs", pid)
 	}
 }
