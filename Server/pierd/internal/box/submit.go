@@ -99,6 +99,9 @@ type submitParams struct {
 // says it was not sent.
 func submitPrompt(ctx context.Context, t submitTerm, p submitParams, text string) (entered time.Time, err error) {
 	sign := signOf(text)
+	if p.agent == "claude" {
+		declineTip(ctx, t)
+	}
 	if p.quiet {
 		waitQuiet(ctx, t, quietLimit)
 	}
@@ -165,6 +168,32 @@ func submitPrompt(ctx context.Context, t submitTerm, p submitParams, text string
 	}
 	// 5. Still in the box: take it out, so it is not sent later by surprise.
 	return time.Time{}, &NotSubmittedError{Kept: !clearInput(ctx, t, p.agent)}
+}
+
+// autoModeTip is Claude Code's offer (2.1.308, after a turn in auto mode) to
+// teach auto mode about the environment. It holds the input box, so a
+// prompt typed under it never goes in ("the agent didn't take the prompt"),
+// yet it is a tip, not a question the person was asked, and the session
+// reads as done: a prompt sent to the agent declines it first (Esc, its
+// "Not now"; nothing is saved), as the person would to get on with it.
+const autoModeTip = "Teach auto mode about your environment?"
+
+// declineTip presses Esc while Claude Code shows its auto-mode tip, and
+// waits a moment for the tip to go.
+func declineTip(ctx context.Context, t submitTerm) {
+	raw, err := t.screen()
+	if err != nil || !strings.Contains(screenText(raw), autoModeTip) {
+		return
+	}
+	if t.keys("Escape") != nil {
+		return
+	}
+	for deadline := time.Now().Add(clearLimit); time.Now().Before(deadline) && ctx.Err() == nil; {
+		time.Sleep(clearPoll)
+		if raw, err := t.screen(); err == nil && !strings.Contains(screenText(raw), autoModeTip) {
+			return
+		}
+	}
 }
 
 // awaitPaste waits, at most limit, for the box to show all of a paste with
