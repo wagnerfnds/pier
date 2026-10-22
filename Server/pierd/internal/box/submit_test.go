@@ -18,7 +18,8 @@ import (
 // scratch repository: at the trust question, idle, after a paste (a line,
 // three lines, a 1,214-character line, twenty lines), with a new line after
 // the text, while working, with a prompt sent while working, after a turn,
-// and with a slash command typed.
+// and with a slash command typed; and Claude Code 2.1.308's tip to teach
+// auto mode about the environment, after a turn in a chat in auto mode.
 
 func submitScreen(t *testing.T, name string) string {
 	t.Helper()
@@ -157,13 +158,14 @@ type agentTerm struct {
 	flicker   int                // reads after an Enter drawn without the box, a frame halfway
 	stuck     bool               // Ctrl-U and Backspace do nothing
 	spinner   int                // reads that still show the agent working
+	tip       bool               // Claude Code's auto-mode tip holds the box until Esc
 }
 
 func (f *agentTerm) paste(text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent = append(f.sent, "paste")
-	if f.dropPaste {
+	if f.dropPaste || f.tip {
 		return nil
 	}
 	if f.partial {
@@ -203,6 +205,8 @@ func (f *agentTerm) keys(k ...string) error {
 				// Just after pierd stops watching for it.
 				f.lateAt = time.Now().Add(submitWithin + 15*time.Millisecond)
 			}
+		case "Escape":
+			f.tip = false
 		case "C-u":
 			if !f.stuck && len(f.box) > 0 {
 				f.box[len(f.box)-1] = ""
@@ -253,6 +257,9 @@ func (f *agentTerm) screen() (string, error) {
 	switch f.agent {
 	case "claude":
 		rule := "\x1b[38;5;244m" + strings.Repeat("─", 60) + "\n"
+		if f.tip {
+			b.WriteString(rule + "\x1b[1m  " + autoModeTip + "\x1b[0m\n  ❯ 1. Yes\n    2. Not now\n    3. Don't show again\n  Enter to confirm · Esc to cancel\n")
+		}
 		b.WriteString(rule)
 		switch {
 		case len(box) == 0:
@@ -335,6 +342,32 @@ func TestSubmitWhenTheBoxTakesTheEnter(t *testing.T) {
 				t.Errorf("%s: sent %d times", agent, len(f.convo))
 			}
 		}
+	}
+}
+
+// Claude Code 2.1.308 offers, after a turn in auto mode, to teach auto mode
+// about the environment, and the box takes nothing while it shows: a prompt
+// declines it (Esc) and goes in. A screen without it gets no Esc.
+func TestSubmitDeclinesTheAutoModeTip(t *testing.T) {
+	fastSubmit(t)
+	if !strings.Contains(screenText(submitScreen(t, "claude-automode-tip")), autoModeTip) {
+		t.Fatal("the tip is not read off Claude Code's own screen")
+	}
+	f := &agentTerm{agent: "claude", onEnter: always("submit"), tip: true}
+	if _, err := submitPrompt(context.Background(), f, submitParams{agent: "claude"}, pasteLine); err != nil {
+		t.Fatalf("under the tip: %v", err)
+	}
+	if f.count("Escape") != 1 || len(f.convo) != 1 || f.sent[0] != "Escape" {
+		t.Errorf("sent %v, conversation %v", f.sent, f.convo)
+	}
+	plain := &agentTerm{agent: "claude", onEnter: always("submit")}
+	if _, err := submitPrompt(context.Background(), plain, submitParams{agent: "claude"}, pasteLine); err != nil || plain.count("Escape") != 0 {
+		t.Errorf("without the tip: %v, sent %v", err, plain.sent)
+	}
+	// Codex has no such tip: its screen is never read for it.
+	codex := &agentTerm{agent: "codex", onEnter: always("submit")}
+	if _, err := submitPrompt(context.Background(), codex, submitParams{agent: "codex"}, pasteLine); err != nil || codex.count("Escape") != 0 {
+		t.Errorf("codex: %v, sent %v", err, codex.sent)
 	}
 }
 

@@ -1111,7 +1111,9 @@ Answer: `{"sent":true, "queued":false, "duplicate":false, "turn":"name#4", "seq"
 
 * **Submitted, not just typed** (Claude Code and Codex, a prompt with `enter`, not an answer to a waiting agent):
   an Enter that reaches an agent's input box while it is still taking the paste (at the end of a turn, when it redraws)
-  lands in it as a new line, and the prompt stays unsent. So pierd waits for a quiet screen (always for a held prompt,
+  lands in it as a new line, and the prompt stays unsent. Claude Code's tip "Teach auto mode about your environment?"
+  (2.1.308, after a turn in auto mode) holds the box too, with the session reading as done: pierd declines it first
+  (Esc, its "Not now"; nothing is saved). So pierd waits for a quiet screen (always for a held prompt,
   and when the agent shows it is working), reads the input box, pastes, and waits for the box to show all of the prompt:
   its last words (the line the cursor is on), the agent's "[Pasted text #1]" / "[Pasted Content …]", or, drawn in a way
   pierd does not read word for word, more text than the box held, holding still (1.5 s, a second more per 64 KB, at most
