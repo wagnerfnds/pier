@@ -1,0 +1,30 @@
+[
+ {
+  "id": "325b535f9a0b",
+  "session": "sandbox-login-claude-k3",
+  "kind": "before",
+  "caption": "The Sign in button sits off-center on a phone",
+  "name": "login-before.png",
+  "type": "image/png",
+  "width": 1280,
+  "height": 800,
+  "size": 27193,
+  "at": 1792692251000,
+  "thumb": true,
+  "path": "/home/ubuntu/code/sandbox-login/.pier/captures/325b535f9a0b.png"
+ },
+ {
+  "id": "ba9d23c2ffbf",
+  "session": "sandbox-login-claude-k3",
+  "kind": "after",
+  "caption": "Centered, with the error message under the field",
+  "name": "login-after.png",
+  "type": "image/png",
+  "width": 390,
+  "height": 844,
+  "size": 7790,
+  "at": 1792692346000,
+  "thumb": true,
+  "path": "/home/ubuntu/code/sandbox-login/.pier/captures/ba9d23c2ffbf.png"
+ }
+]

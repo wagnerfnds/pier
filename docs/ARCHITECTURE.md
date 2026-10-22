@@ -251,6 +251,23 @@ Its quality targets and the commands that measure them: `docs/CHAT-QUALITY.md`.
   can look into the page (`isInspectable`). On the mock or the demo box the page is drawn in the app under the server's address
   (`loadHTMLString`): nothing is fetched.
 
+- **Captures** (`Captures.swift`, docs/API.md §4.10): what the agent showed of its work with `pierd capture add` (the
+  `pier-prove` skill: a bug captured before the fix, the same steps after it). `ConversationFold` takes a turn's
+  `capture` items out of the steps and makes them one `captures` block after its answer, each capture once;
+  `CaptureGalleryRow` draws it as a strip of tiles ("Antes" amber, "Depois" green on their corner, the caption under
+  each, a recording as a play glyph), and a tap opens `CaptureViewer` full screen over the session
+  (`SessionViewModel.viewer`): pinch or double-tap to zoom (`ZoomableImage`, a UIScrollView), swipe or ← → between
+  them, Compartilhar, Esc or ✕. A call that returned pictures (a browser's screenshot, an image read; `ToolDetail.images`)
+  shows them as smaller tiles in its detail (`ToolImagesRow`), opened the same way. `CaptureLoader` reads a tile's
+  small copy (`thumb`, else the file downsampled off the main thread) and the file for the viewer, through
+  `CaptureCache`: decoded in memory, bytes on disk (Caches/Captures, a hash of box, session and capture; a capture
+  never changes), a recording as a file for `AVPlayer`; the mock and the demo stay in memory. The Inbox's card of a
+  finished turn shows that turn's captures under its reply (`SessionSignals.replyCaptures`, from the tail it reads for
+  the reply anyway; `ConversationFold.lastTurnCaptures`), opened in the same viewer. The Mac panel says "2 capturas" as
+  a line. The mock's finished session has such a turn (its pictures drawn in-app, `MockCaptures`; `CaptureUITests`;
+  `-uiTestInboxCaptures 1` gives its last turn one, for the Inbox), and the showcase's passkeys agent hands over the
+  app's sign-in before and after.
+
 - Startup dialogs no hook announces (Claude Code's "New MCP server found", trust) are read from the screen. The box reports
   the agent as `running` meanwhile. Current Claude Code draws them **without numbers** (a `❯` on the selected option, "Enter
   to confirm" below): `MenuParser.cursorMenu` reads that (fixture `screen_mcp_dialog.json`, captured from 2.1.294) and the

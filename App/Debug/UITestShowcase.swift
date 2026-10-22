@@ -118,6 +118,8 @@ enum UITestShowcase {
             }
             add("tools", ["verb": verb, "done": true, "items": calls])
         }
+        /// What the agent handed over with `pierd capture add` (MockCaptures draws them).
+        mutating func capture(_ ids: [String]) { add("capture", ["captures": ids.map { MockCaptures.ref($0, portuguese: portuguese) }]) }
         private mutating func add(_ kind: String, _ extra: JSON) {
             let o = next()
             var it: JSON = ["id": "cl@\(o).1", "kind": kind, "off": o]
@@ -179,6 +181,10 @@ enum UITestShowcase {
         i.tools("Search", ["ASAuthorizationController", "signIn(password:"])
         i.edit("MobileApp/Auth/AuthViewModel.swift", 92, 40)
         i.edit("MobileApp/Auth/PasskeyCoordinator.swift", 118)
+        i.tools("Run", ["xcrun simctl io booted screenshot signin-before.png", "pierd capture add signin-before.png --before"])
+        i.capture([MockCaptures.passkeyBefore])
+        i.tools("Run", ["xcrun simctl io booted screenshot signin-after.png", "pierd capture add signin-after.png --after"])
+        i.capture([MockCaptures.passkeyAfter])
         i.text(t("Registration and sign-in go through `PasskeyCoordinator` now. Running the auth test plan in the background while I wire the password fallback.",
                  "Cadastro e entrada agora passam pelo `PasskeyCoordinator`. Estou rodando os testes de autenticação em segundo plano enquanto ligo a alternativa com senha."))
         out[passkeys] = i.out

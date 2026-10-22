@@ -76,6 +76,9 @@ func (codexParser) line(c *conv, b []byte) {
 		var out string
 		_ = json.Unmarshal(it.Output, &out)
 		c.codexAnswered(it.CallID, out)
+		// Pictures the agent handed the person (captures.go): the output
+		// as written, a string or the object Codex wraps it in.
+		c.captured(string(it.Output))
 	}
 }
 

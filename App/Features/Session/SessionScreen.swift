@@ -152,6 +152,9 @@ struct SessionScreen: View {
             }
             .environment(model)
         }
+        .fullScreenCover(item: $vm.viewer) { state in
+            CaptureViewer(loader: vm.captureLoader, state: state)
+        }
         .sheet(isPresented: $showDetails) {
             SessionDetailsSheet(vm: vm, title: title, reviewTarget: reviewTarget)
                 .environment(model).environment(router).environment(model.prefs)

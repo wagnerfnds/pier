@@ -22,6 +22,8 @@ struct InboxScreen: View {
     @State private var lastCopied = ""
     /// A box card's Entrar: the sign-in sheet.
     @State private var signIn: SignInRequest?
+    /// A finished turn's captures open full screen (Captures.swift).
+    @State private var viewing: CaptureViewing?
     @FocusState private var replyFocus: String?
     private let store = InboxStore.shared
     private let signals = SessionSignals.shared
@@ -55,6 +57,7 @@ struct InboxScreen: View {
             }
         }
         .background { shortcuts(entries) }
+        .fullScreenCover(item: $viewing) { v in CaptureViewer(loader: v.loader, state: v.state) }
         .sheet(item: $signIn) { r in
             SignInSheet(request: r, openTerminal: { s in router.push(SessionRoute(box: r.box, session: s)) },
                         onDone: { Task { await health.refresh(model: model, force: true) } })
@@ -230,6 +233,7 @@ struct InboxScreen: View {
                 // placeholder, never the previous turn's words (nor next steps written for them).
                 let fresh = signals.replies[i.id]?.since == i.since
                 InboxFinishedCard(entry: i, reply: fresh ? (signals.replyTexts[i.id] ?? signals.replies[i.id]?.text) : nil, replyPending: !fresh,
+                                  captures: fresh ? signals.replyCaptures[i.id] ?? [] : [], showCaptures: { viewing = $0 },
                                   change: signals.changes["\(i.item.box)/\(i.item.session.location ?? "")"],
                                   seen: prefs.isSeen(box: i.item.box, session: i.item.session),
                                   busy: store.busy.contains(i.id), replyFocus: $replyFocus,
@@ -655,6 +659,9 @@ private struct InboxFinishedCard: View {
     let reply: String?
     /// The reply of this turn has not been read yet (a placeholder, not the previous turn's words).
     var replyPending = false
+    /// What the agent handed over in this turn (`pierd capture add`): a strip under the reply, opened full screen.
+    var captures: [CaptureRef] = []
+    var showCaptures: (CaptureViewing) -> Void = { _ in }
     let change: SessionSignals.LineChange?
     /// Looked at already (the session, or the reply opened here): the badge no longer counts it.
     var seen = false
@@ -692,6 +699,15 @@ private struct InboxFinishedCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 InboxCardHeader(entry: entry, trailing: trailing, open: open)
                 replyView
+                if !captures.isEmpty, let client = model.client(for: entry.item.box) {
+                    let loader = CaptureLoader(box: entry.item.box, session: s.name, client: client)
+                    let media = captures.map { CaptureMedia(source: .capture($0)) }
+                    CaptureStrip(loader: loader, media: media, height: 120) { i in
+                        onSeen()
+                        showCaptures(CaptureViewing(loader: loader, state: CaptureViewerState(media: media, start: i)))
+                    }
+                    .accessibilityIdentifier("inbox-captures")
+                }
                 if let since = s.stateSince, !replyPending {
                     NextStepChips(key: NextSteps.Key(box: entry.item.box, session: s.name, since: since), place: s.execPlace, reply: reply,
                                   task: s.title, client: model.client(for: entry.item.box), numbered: true, disabled: busy,

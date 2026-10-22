@@ -29,6 +29,8 @@ final class SessionSignals {
     private(set) var screens: [String: String] = [:]
     /// "box/session" -> the full Markdown of the last reply of the finished turn in `replies`.
     private(set) var replyTexts: [String: String] = [:]
+    /// "box/session" -> what the agent handed over in that turn (`pierd capture add`), shown under its reply.
+    private(set) var replyCaptures: [String: [CaptureRef]] = [:]
     // --- end Inbox ---
 
     @ObservationIgnored weak var model: AppModel?
@@ -143,19 +145,23 @@ final class SessionSignals {
         guard !todo.isEmpty, begin("replies") else { return }
         defer { end("replies") }
         let clients = clients
-        let found: [(String, Date, String?, String?, Bool)] = await withTaskGroup(of: (String, Date, String?, String?, Bool).self) { g in
+        let found: [(String, Date, String?, String?, [CaptureRef], Bool)] = await withTaskGroup(of: (String, Date, String?, String?, [CaptureRef], Bool).self) { g in
             for s in todo {
                 guard let c = clients[s.box] else { continue }
                 let (id, name, since) = (s.id, s.session.name, s.session.stateSince ?? s.session.created)
                 g.addTask {
-                    guard let tail = try? await c.transcriptBefore(session: name, before: 0, limit: 40) else { return (id, since, nil, nil, false) }
-                    return (id, since, LiveActivitySync.lastReply(tail), Self.lastReplyMarkdown(tail), true)
+                    guard let tail = try? await c.transcriptBefore(session: name, before: 0, limit: 40) else { return (id, since, nil, nil, [], false) }
+                    return (id, since, LiveActivitySync.lastReply(tail), Self.lastReplyMarkdown(tail), ConversationFold.lastTurnCaptures(tail.items), true)
                 }
             }
             return await collect(&g)
         }
         // A failed read is tried again on the next tick; an answer (even "no reply") is kept for the turn.
-        for (id, since, text, full, ok) in found where ok { replies[id] = (since, text); replyTexts[id] = full }
+        for (id, since, text, full, captures, ok) in found where ok {
+            replies[id] = (since, text)
+            replyTexts[id] = full
+            replyCaptures[id] = captures.isEmpty ? nil : captures
+        }
     }
 
     /// Which waiting agents show an Allow/Deny menu on screen (12 s), so the board offers to answer it. Oldest first, the

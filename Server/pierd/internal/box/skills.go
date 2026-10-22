@@ -47,6 +47,7 @@ type Skill struct {
 var skillCatalog = []struct{ id, name, description string }{
 	{"pier-box", "Pier box", "The box's variables (what each is for), the worktree's ports and its project's environment: databases, runtime. Use when a task needs a URL, a token, a database or a port of this box."},
 	{"pier-preview", "Pier preview", "Run the worktree's dev server on its own port so the person sees it in the Pier app (and can make a public link). Use when you change anything with a page."},
+	{"pier-prove", "Pier prove", "Show the person your change working: screenshots or a short recording of the running app, before and after, handed to the Pier app with `pierd capture add`. Use whenever you change something a person can see (a page, a screen, an email, a PDF) and when you fix a bug you can reproduce."},
 }
 
 var skillsMu sync.Mutex
@@ -145,6 +146,25 @@ func (b *Box) skillText(id string) string {
 		body.WriteString("3. Record it for the person: `pierd preview set --port $PIER_PORT` (add `--path /login` for the page to open first, and `--user U --password P` for a test login of the app, never a real account). The worktree's Details screen in the Pier app shows it with its public link and the login.\n")
 		body.WriteString("4. Give the person its public link: `pierd preview get` prints it on its `public` line a few seconds after step 3 (https://p-….). Never hand them a localhost, 127.0.0.1 or the box's own address: they are on another device, often on another network, and the link is what opens there, in the Pier app's browser too.\n\n")
 		body.WriteString("If the project defines a service for its dev server (the app's Details lists them), prefer starting it there: it keeps running when your session ends.\n")
+	case "pier-prove":
+		fmt.Fprintf(&body, "# %s\n\n", name)
+		body.WriteString("The person reviews your work in the Pier app, often on their phone, away from the box. A picture of the change working beats a description of it, and a before and after beats an after alone. What you hand over shows with your reply.\n\n")
+		body.WriteString("## Every change a person can see\n\n")
+		body.WriteString("1. Run what you changed: the worktree's dev server on `$PIER_PORT` (the pier-preview skill), the iOS Simulator, or whatever renders it. While the worktree is still being prepared, `pierd prepare wait` first.\n")
+		body.WriteString("2. A bug: reproduce it before you change anything, and capture it: `pierd capture add broken.png --before --caption \"Total ignores the coupon\"`.\n")
+		body.WriteString("3. Make the change, take the same steps again, and capture the result: `pierd capture add fixed.png --after --caption \"Total with the coupon\"`.\n")
+		body.WriteString("4. New work: capture it as it ends up (`--after`), and each state that matters: empty, filled, an error message, a phone's width.\n")
+		body.WriteString("5. In your reply, say what you did to get each picture (the page, the steps) and what you could not show.\n\n")
+		body.WriteString("A caption says what the picture shows, in a few words, as the person would say it. `pierd capture add` takes PNG, JPEG, GIF, WebP, MP4 and MOV up to 25 MB and prints `[pier capture …]` once the person has it; `pierd capture ls` lists what you handed over.\n\n")
+		body.WriteString("## Taking the picture\n\n")
+		body.WriteString("- A page: with a browser MCP server (Playwright's, Chrome DevTools'), save its screenshot to a file and capture the file. Without one: `npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=1500 http://127.0.0.1:$PIER_PORT/the/path shot.png` (once before, `npx playwright install chromium`); a phone's view with `--device \"iPhone 15\"`.\n")
+		body.WriteString("- Signed in: the preview's test login (`pierd preview get`), never a real account.\n")
+		body.WriteString("- The iOS Simulator, on a Mac: `xcrun simctl io booted screenshot shot.png`; a recording: `xcrun simctl io booted recordVideo --codec=h264 run.mp4` started in the background and stopped with `kill -INT` once the steps are done.\n")
+		body.WriteString("- Anything else: render it to a picture (a PDF's page, an email's HTML in the browser).\n\n")
+		body.WriteString("## Rules\n\n")
+		body.WriteString("- Capture the app as a person sees it, never your terminal or the code.\n")
+		body.WriteString("- Only the box's test data: no real customer's name, email or number in a picture.\n")
+		body.WriteString("- No picture is better than a misleading one: when the app does not run, say so in your reply instead.\n")
 	}
 	body.WriteString("\n" + skillMarker + "\n")
 	return body.String()

@@ -121,6 +121,7 @@ func (b *Box) transcript(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return none("Couldn't read " + path + ": " + err.Error())
 	}
+	res.Items = fillCaptures(sess.Dir, sess.Name, res.Items)
 	writeJSON(w, res)
 	return nil
 }

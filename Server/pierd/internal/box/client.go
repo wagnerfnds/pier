@@ -267,6 +267,16 @@ func worktreePath(location, worktree, rest string) string {
 	return "/v1/locations/" + url.PathEscape(location) + "/worktrees/" + url.PathEscape(worktree) + rest
 }
 
+// AddCapture hands the person a picture or recording from a session.
+func (c *Client) AddCapture(ctx context.Context, session string, req CaptureRequest) (out Capture, err error) {
+	return out, c.call(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(session)+"/captures", req, &out)
+}
+
+// Captures are what a session handed over, oldest first.
+func (c *Client) Captures(ctx context.Context, session string) (out []Capture, err error) {
+	return out, c.call(ctx, http.MethodGet, "/v1/sessions/"+url.PathEscape(session)+"/captures", nil, &out)
+}
+
 // Preview is a worktree's preview ({} when none was recorded).
 func (c *Client) Preview(ctx context.Context, location, worktree string) (out Preview, err error) {
 	return out, c.call(ctx, http.MethodGet, worktreePath(location, worktree, "/preview"), nil, &out)

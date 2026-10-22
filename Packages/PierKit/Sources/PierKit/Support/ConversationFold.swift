@@ -6,12 +6,15 @@ public enum ConversationBlock: Sendable, Equatable, Identifiable {
     case fold(id: String, steps: [TranscriptItem], live: Bool)
     /// Two or more edits in a row, shown as one group ("Editou 3 arquivos +113 −37") that opens to each file.
     case edits(id: String, edits: [TranscriptItem])
+    /// What the agent handed over in a turn (`capture` items), as one gallery after its answer.
+    case captures(id: String, captures: [CaptureRef])
 
     public var id: String {
         switch self {
         case .item(let it): it.id
         case .fold(let id, _, _): id
         case .edits(let id, _): id
+        case .captures(let id, _): id
         }
     }
 }
@@ -24,7 +27,8 @@ public enum ConversationFold {
     /// Rules: a `user`, `command` or `report` item starts a turn and is always shown. Within a turn, `edit`,
     /// `artifact`, `question` and `notice` items are shown; `text` items from the answer onward are shown; everything
     /// else (tools, crew, earlier narration) goes into the fold. The answer is the turn's last `text`, or, when several
-    /// texts/edits sit at the end, the longest of them.
+    /// texts/edits sit at the end, the longest of them. The turn's `capture` items, wherever the agent made them, are one
+    /// gallery at its end (`captures`, named after the turn), each capture once.
     public static func blocks(_ items: [TranscriptItem], live: Bool) -> [ConversationBlock] {
         var out: [ConversationBlock] = []
         var turn: [TranscriptItem] = []
@@ -47,7 +51,12 @@ public enum ConversationFold {
             }
             var steps: [TranscriptItem] = []
             var shown: [TranscriptItem] = []
+            var captures: [CaptureRef] = []
             for (i, it) in turn.enumerated() {
+                if it.type == .capture {
+                    for c in it.captures ?? [] where !captures.contains(where: { $0.id == c.id }) { captures.append(c) }
+                    continue
+                }
                 let keep = (answer >= 0 && i >= answer && it.type == .text)
                     || [.edit, .artifact, .question, .notice].contains(it.type)
                 if keep { shown.append(it) } else { steps.append(it) }
@@ -64,6 +73,7 @@ public enum ConversationFold {
                 out.append(.item(it))
             }
             flushEdits()
+            if !captures.isEmpty { out.append(.captures(id: "captures-\(anchor)", captures: captures)) }
             turn = []
         }
         for it in items {
@@ -76,6 +86,17 @@ public enum ConversationFold {
             }
         }
         flush(isLast: true)
+        return out
+    }
+
+    /// What the agent handed over in the conversation's last turn (after the person's last prompt), each once: the
+    /// Inbox shows them with that turn's reply.
+    public static func lastTurnCaptures(_ items: [TranscriptItem]) -> [CaptureRef] {
+        let start = (items.lastIndex { $0.type == .user }).map { $0 + 1 } ?? items.startIndex
+        var out: [CaptureRef] = []
+        for it in items[start...] where it.type == .capture {
+            for c in it.captures ?? [] where !out.contains(where: { $0.id == c.id }) { out.append(c) }
+        }
         return out
     }
 

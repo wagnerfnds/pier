@@ -21,6 +21,7 @@ struct TranscriptRow: View {
         case .notice: NoticeRow(item: item)
         case .artifact: ArtifactRow(item: item)
         case .report: ReportRow(item: item)
+        case .capture: CaptureGalleryRow(vm: vm, id: item.id, captures: item.captures ?? [])
         case .unknown: EmptyView()
         }
     }

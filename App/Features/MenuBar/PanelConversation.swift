@@ -24,6 +24,8 @@ import PierKit
                 rows.append(["id": id, "kind": "meta", "symbol": "chevron.right", "text": summary.isEmpty ? word : "\(word) · \(summary)"])
             case .edits(_, let edits):
                 for it in edits { if let r = row(it) { rows.append(r) } }
+            case .captures(let id, let captures):
+                rows.append(capturesRow(id, count: captures.count))
             }
         }
         // Held on the box until the agent's turn ends (sent while it worked): still the person's words, marked as waiting.
@@ -83,12 +85,20 @@ import PierKit
             var r = meta(it.id, "doc.richtext", it.text ?? it.file ?? S("Página"), tone: "accent")
             if let u = it.url { r["url"] = u }
             return r
+        case .capture:
+            let n = it.captures?.count ?? 0
+            return n == 0 ? nil : capturesRow(it.id, count: n)
         case .report:
             guard let r = it.report else { return nil }
             return meta(it.id, "checkmark.seal", [r.title ?? r.worktree ?? r.kind, r.summary ?? r.answer ?? r.needs].compactMap { $0 }.joined(separator: " · "))
         case .unknown:
             return nil
         }
+    }
+
+    /// What the agent handed over in a turn, as one line: the panel shows no pictures ("Abrir no Pier" does).
+    private static func capturesRow(_ id: String, count: Int) -> [String: Any] {
+        meta(id, "camera.viewfinder", count == 1 ? S("1 captura") : S("\(count) capturas"), tone: "accent")
     }
 
     private static func meta(_ id: String, _ symbol: String, _ text: String, tone: String = "dim") -> [String: Any] {

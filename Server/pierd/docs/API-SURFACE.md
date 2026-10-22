@@ -105,9 +105,13 @@ and Home widgets are shell strings run this way, so the box needs `git`, `gh` an
 | `DELETE /v1/sessions/{name}/queue/{turn}` | `inbox.go` `cancelQueued` | App `cancelHeld()`: ComposerBar |
 | `POST /v1/sessions/{name}/queue/{turn}/send` | `inbox.go` `sendQueued` | App `sendHeldNow()`: ComposerBar |
 | `POST /v1/sessions/{name}/attachments` | `attachments.go` `sessionAttachment` | App `uploadAttachment()`: SessionViewModel |
+| `POST /v1/sessions/{name}/captures` | `captures.go` `addCapture` | `pierd capture add` (the agent, in its session; the `pier-prove` skill) |
+| `GET /v1/sessions/{name}/captures` | `captures.go` `listSessionCaptures` | `pierd capture ls`; App `captures()` |
+| `GET /v1/sessions/{name}/captures/{id}[?thumb=1]` | `captures.go` `getCapture` | App `captureData()`: CaptureLoader (the conversation's gallery and the viewer, Captures.swift) |
 | `GET /v1/sessions/{name}/diff?file=` | `sessiondiff.go` `sessionDiff` | App `fileDiff()`: PullRequestStore |
 | `GET /v1/sessions/{name}/transcript?since=&gen=` / `?before=&limit=` | `transcriptapi.go` `transcript` (items, `signals` incl. background jobs, `crew`) | App `transcript()`/`transcriptBefore()`: SessionViewModel, SessionSignals (signals only, `since=2000000000`), LiveActivitySync; push engine (last reply, background work) |
 | `GET /v1/sessions/{name}/transcript/tool/{id}` | `transcriptapi.go` `toolDetail` | App `toolDetail()`: SessionViewModel |
+| `GET /v1/sessions/{name}/transcript/tool/{id}/image/{n}` | `captures.go` `toolImage` | App `toolImage()`: CaptureLoader (a call's pictures under its detail, ToolDetailViews.swift) |
 
 ## Events
 

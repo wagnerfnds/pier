@@ -23,8 +23,8 @@ import (
 
 // socketBox serves a box on a Unix socket, as pierd serve does for the box's
 // own user, with a location "cal" (a git repository), and returns a client
-// for it.
-func socketBox(t *testing.T) *box.Client {
+// for it. opts set up the box before it serves.
+func socketBox(t *testing.T, opts ...func(*box.Box)) *box.Client {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -41,6 +41,9 @@ func socketBox(t *testing.T) *box.Client {
 	}
 	srv := &wire.Server{Identity: id, Clients: trust.NewStore(filepath.Join(dir, "clients.json")), Pending: pairing.NewPending(filepath.Join(dir, "pairing.json")), Name: "devbox"}
 	bx := &box.Box{Name: "devbox", Locations: box.NewLocations(filepath.Join(dir, "locations.json")), Events: &events.Bus{Sequence: true}, StateDir: dir}
+	for _, opt := range opts {
+		opt(bx)
+	}
 	bx.Mount(srv)
 	// A socket's path is short on every system: not under the test's folder.
 	sockDir, err := os.MkdirTemp("/tmp", "pbc")

@@ -1,0 +1,7 @@
+{
+ "id": "toolu_01Shot",
+ "name": "mcp__playwright__browser_take_screenshot",
+ "command": "{\"filename\":\"login-before.png\"}",
+ "output": "Took a screenshot of the current page\n[image]",
+ "images": 1
+}

@@ -3,9 +3,11 @@ package transcript
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -36,6 +38,10 @@ type ToolDetail struct {
 	Output    string `json:"output,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 	Error     bool   `json:"error,omitempty"`
+	// Images is how many pictures the call returned (a screenshot a
+	// browser took, an image file read): each is read on its own
+	// (DetailImage), and Output says "[image]" where each was.
+	Images int `json:"images,omitempty"`
 	// A call nobody has answered yet.
 	Pending bool `json:"pending,omitempty"`
 	// Live is a background shell whose output is still growing.
@@ -56,6 +62,9 @@ type Hunk struct {
 // ErrNoTool is a call the transcript doesn't hold (any more).
 var ErrNoTool = errors.New("no such tool call in this conversation")
 
+// ErrNoImage is a picture a call's result doesn't have.
+var ErrNoImage = errors.New("that call returned no such picture")
+
 const (
 	// detailWindow is how far back a call is looked for: the end of the
 	// file, where the conversation on screen is.
@@ -67,38 +76,20 @@ const (
 
 // Detail finds one call in a transcript by its ID.
 func Detail(source, path, dir, id string) (ToolDetail, error) {
-	if id == "" || strings.ContainsAny(id, "\"\\\n") {
-		return ToolDetail{}, ErrNoTool
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return ToolDetail{}, err
-	}
-	defer f.Close()
-	if st, err := f.Stat(); err == nil && st.Size() > detailWindow {
-		if _, err := f.Seek(st.Size()-detailWindow, io.SeekStart); err != nil {
-			return ToolDetail{}, err
-		}
-	}
-	r := bufio.NewReaderSize(f, 256<<10)
-	needle := []byte(`"` + id + `"`)
 	d := ToolDetail{ID: id}
 	found, answered := false, false
-	for {
-		line, err := readLine(r)
-		if len(line) > 0 && bytes.Contains(line, needle) {
-			var call, result bool
-			if source == "codex" {
-				call, result = codexDetail(line, id, dir, &d)
-			} else {
-				call, result = claudeDetail(line, id, dir, &d)
-			}
-			found = found || call
-			answered = answered || result
+	err := linesNaming(path, id, func(line []byte) {
+		var call, result bool
+		if source == "codex" {
+			call, result = codexDetail(line, id, dir, &d)
+		} else {
+			call, result = claudeDetail(line, id, dir, &d)
 		}
-		if err != nil {
-			break
-		}
+		found = found || call
+		answered = answered || result
+	})
+	if err != nil {
+		return ToolDetail{}, err
 	}
 	if !found {
 		return ToolDetail{}, ErrNoTool
@@ -106,6 +97,132 @@ func Detail(source, path, dir, id string) (ToolDetail, error) {
 	d.Pending = !answered
 	liveOutput(&d)
 	return d, nil
+}
+
+// linesNaming calls fn with each line of the transcript's end (its last
+// detailWindow) that names the call id.
+func linesNaming(path, id string, fn func(line []byte)) error {
+	if id == "" || strings.ContainsAny(id, "\"\\\n") {
+		return ErrNoTool
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err == nil && st.Size() > detailWindow {
+		if _, err := f.Seek(st.Size()-detailWindow, io.SeekStart); err != nil {
+			return err
+		}
+	}
+	r := bufio.NewReaderSize(f, 256<<10)
+	needle := []byte(`"` + id + `"`)
+	for {
+		line, err := readLine(r)
+		if len(line) > 0 && bytes.Contains(line, needle) {
+			fn(line)
+		}
+		if err != nil {
+			return nil
+		}
+	}
+}
+
+// DetailImage is picture n (from 0) of what call id returned: its media
+// type and bytes. Claude Code keeps them in its record as base64; other
+// agents' calls return none here.
+func DetailImage(source, path, id string, n int) (string, []byte, error) {
+	if source == "codex" || n < 0 {
+		return "", nil, ErrNoImage
+	}
+	var img *claudeImage
+	found := false
+	err := linesNaming(path, id, func(line []byte) {
+		if img != nil {
+			return
+		}
+		blocks, ok := claudeResultBlocks(line, id)
+		if !ok {
+			return
+		}
+		found = true
+		if imgs := imagesIn(blocks); n < len(imgs) {
+			img = &imgs[n]
+		}
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	if !found {
+		return "", nil, ErrNoTool
+	}
+	if img == nil {
+		return "", nil, ErrNoImage
+	}
+	data, err := base64.StdEncoding.DecodeString(img.Source.Data)
+	if err != nil || len(data) == 0 {
+		return "", nil, ErrNoImage
+	}
+	ct := img.Source.MediaType
+	if !strings.HasPrefix(ct, "image/") {
+		ct = http.DetectContentType(data)
+	}
+	return ct, data, nil
+}
+
+// claudeImage is a picture in a tool result's content.
+type claudeImage struct {
+	Type   string `json:"type"`
+	Source struct {
+		Type      string `json:"type"`
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
+	} `json:"source"`
+}
+
+// claudeResultBlocks is the content of call id's result in a line of
+// Claude Code's record, when the line holds it.
+func claudeResultBlocks(line []byte, id string) (json.RawMessage, bool) {
+	var l struct {
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &l) != nil {
+		return nil, false
+	}
+	var blocks []struct {
+		Type      string          `json:"type"`
+		ToolUseID string          `json:"tool_use_id"`
+		Content   json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(l.Message.Content, &blocks) != nil {
+		return nil, false
+	}
+	for _, b := range blocks {
+		if b.Type == "tool_result" && b.ToolUseID == id {
+			return b.Content, true
+		}
+	}
+	return nil, false
+}
+
+// imagesIn are the base64 pictures of a tool result's content.
+func imagesIn(content json.RawMessage) []claudeImage {
+	if len(content) == 0 || content[0] != '[' {
+		return nil
+	}
+	var parts []claudeImage
+	if json.Unmarshal(content, &parts) != nil {
+		return nil
+	}
+	out := parts[:0]
+	for _, p := range parts {
+		if p.Type == "image" && p.Source.Type == "base64" && p.Source.Data != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // readLine reads one line, skipping (not keeping) any longer than
@@ -191,6 +308,7 @@ func claudeDetail(line []byte, id, dir string, d *ToolDetail) (call, result bool
 			result = true
 			d.Error = b.IsError
 			d.Output, d.Truncated = capOutput(resultFull(b.Content))
+			d.Images = len(imagesIn(b.Content))
 			if !b.IsError {
 				d.Hunks = structuredHunks(l.ToolUseResult)
 			}
