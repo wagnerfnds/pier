@@ -44,8 +44,9 @@ import Testing
             "transcript.json": d(TranscriptPage.self), "transcript_poll_empty.json": d(TranscriptPage.self),
             "transcript_before.json": d(TranscriptPage.self), "transcript_reset.json": d(TranscriptPage.self),
             "transcript_question.json": d(TranscriptPage.self), "transcript_answered.json": d(TranscriptPage.self),
-            "transcript_codex.json": d(TranscriptPage.self),
+            "transcript_codex.json": d(TranscriptPage.self), "transcript_captures.json": d(TranscriptPage.self), "captures.json": d([CaptureRef].self),
             "tool_detail_edit.json": d(ToolDetail.self), "tool_detail_run.json": d(ToolDetail.self), "tool_detail_write.json": d(ToolDetail.self),
+            "tool_detail_images.json": d(ToolDetail.self),
             "review.json": d([ReviewItem].self), "review_committed.json": d([ReviewItem].self),
             "touched.json": d(Obj.self), "file_diff.json": d(FileDiff.self), "file_diff_untracked.json": d(FileDiff.self),
             "exec_diff.json": d(ExecResult.self), "exec_diff_untracked.json": d(ExecResult.self), "exec_pr_view.json": d(ExecResult.self),
@@ -215,6 +216,29 @@ import Testing
         #expect(h.lines.first == " def add(a, b):")
         let r: ToolDetail = try Fixture.decode("tool_detail_run.json")
         #expect(r.command?.hasPrefix("ls ") == true && r.output != nil)
+        #expect(r.images == nil)
+        let shot: ToolDetail = try Fixture.decode("tool_detail_images.json")
+        #expect(shot.images == 1 && shot.output?.hasSuffix("[image]") == true)
+    }
+
+    @Test func captures() throws {
+        // What `pierd capture add` handed over, as the box fills it into the conversation and lists it.
+        let page: TranscriptPage = try Fixture.decode("transcript_captures.json")
+        let items = page.items.filter { $0.type == .capture }
+        #expect(items.count == 2)
+        let before = try #require(items.first?.captures?.first)
+        #expect(before.isBefore && !before.isAfter && !before.isVideo)
+        #expect(before.caption == "The Sign in button sits off-center on a phone")
+        #expect(before.type == "image/png" && before.thumb == true)
+        #expect(before.aspect == 1.6)
+        let after = try #require(items.last?.captures?.first)
+        #expect(after.isAfter && after.width == 390 && after.height == 844)
+        let list: [CaptureRef] = try Fixture.decode("captures.json")
+        #expect(list.map(\.id) == [before.id, after.id])
+        #expect(list.first?.name == "login-before.png")
+        // A recording, and one whose size the box could not read.
+        let video = CaptureRef(id: "abcdefabcdef", type: "video/mp4")
+        #expect(video.isVideo && video.aspect == nil)
     }
 
     @Test func reviewAndTouched() throws {

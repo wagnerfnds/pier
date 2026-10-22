@@ -71,6 +71,43 @@ private func it(_ kind: String, _ n: Int, text: String? = nil, verb: String? = n
         #expect(ConversationFold.work(in: steps).helpers == 2)
     }
 
+    @Test func capturesAreOneGalleryAtTheTurnsEnd() {
+        // Captured while working, before the answer: one gallery after it, each capture once; another turn has its own.
+        func cap(_ n: Int, _ ids: [String]) -> TranscriptItem {
+            TranscriptItem(kind: "capture", id: "cl@\(n).1", off: Int64(n), captures: ids.map { CaptureRef(id: $0) })
+        }
+        let items = [
+            it("user", 1, text: "fix it and show me"),
+            it("tools", 2, calls: 1), cap(3, ["aaaaaaaaaaaa"]),
+            it("edit", 4),
+            it("tools", 5, calls: 1), cap(6, ["bbbbbbbbbbbb", "aaaaaaaaaaaa"]),
+            it("text", 7, text: "Fixed; before and after below."),
+            it("user", 8, text: "and on a phone?"),
+            it("tools", 9, calls: 1), cap(10, ["cccccccccccc"]),
+        ]
+        let b = ConversationFold.blocks(items, live: true)
+        #expect(b.map(\.id) == ["cl@1.1", "fold-after-cl@1.1", "cl@4.1", "cl@7.1", "captures-cl@1.1", "cl@8.1", "fold-after-cl@8.1", "captures-cl@8.1"])
+        guard case .captures(_, let first) = b[4], case .captures(_, let second) = b[7] else { Issue.record("expected galleries"); return }
+        #expect(first.map(\.id) == ["aaaaaaaaaaaa", "bbbbbbbbbbbb"])
+        #expect(second.map(\.id) == ["cccccccccccc"])
+        // The captures' items never fall into the fold.
+        guard case .fold(_, let steps, _) = b[1] else { return }
+        #expect(!steps.contains { $0.type == .capture })
+    }
+
+    @Test func theLastTurnsCapturesForTheInbox() {
+        func cap(_ n: Int, _ ids: [String]) -> TranscriptItem {
+            TranscriptItem(kind: "capture", id: "cl@\(n).1", off: Int64(n), captures: ids.map { CaptureRef(id: $0) })
+        }
+        let items = [
+            it("user", 1, text: "first"), cap(2, ["aaaaaaaaaaaa"]), it("text", 3, text: "done"),
+            it("user", 4, text: "second"), cap(5, ["bbbbbbbbbbbb"]), it("edit", 6), cap(7, ["cccccccccccc", "bbbbbbbbbbbb"]), it("text", 8, text: "done again"),
+        ]
+        #expect(ConversationFold.lastTurnCaptures(items).map(\.id) == ["bbbbbbbbbbbb", "cccccccccccc"])
+        #expect(ConversationFold.lastTurnCaptures(Array(items.prefix(4))).isEmpty, "a turn with none has none, whatever came before")
+        #expect(ConversationFold.lastTurnCaptures([cap(1, ["dddddddddddd"])]).map(\.id) == ["dddddddddddd"], "a page that starts mid-turn")
+    }
+
     @Test func commandsAndReportsStartTurns() {
         let items = [it("command", 1, text: "/cost"), it("text", 2, text: "x"), it("report", 3), it("tools", 4, calls: 1)]
         let b = ConversationFold.blocks(items, live: false)

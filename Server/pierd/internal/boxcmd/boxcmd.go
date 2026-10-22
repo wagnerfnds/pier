@@ -57,6 +57,8 @@ var usageSections = []struct {
 		{"pierd prepare start [LOC/WORKTREE] [--with agent|script]", "Prepare it now (again)"},
 		{"pierd prepare done [LOC/WORKTREE] [--failed REASON]", "A setup agent says it is done, or why it could not finish"},
 		{"pierd preview get|set [LOC/WORKTREE] [--port N] [--path /login] [--user U --password P] [--note T]", "The page a person opens to see the worktree, with a test\nlogin; a port gets a public link"},
+		{"pierd capture add FILE [--before|--after] [--caption TEXT] [--session NAME]", "Hand the person a screenshot or a recording of your work:\nthe Pier app shows it with your reply"},
+		{"pierd capture ls [--session NAME] [--json]", "What the session handed over"},
 	}},
 	{"Agent sessions", [][2]string{
 		{"pierd sessions [--json]", "List sessions"},
@@ -106,7 +108,7 @@ var Commands = map[string]int{
 	"locations": 1, "location": 2, "worktree": 2, "services": 1, "service": 2,
 	"sessions": 1, "session": 2, "task": 2, "exec": 1,
 	"info": 1, "stats": 1, "emit": 1, "events": 1,
-	"prepare": 2, "preview": 2, "base": 2, "db": 2,
+	"prepare": 2, "preview": 2, "base": 2, "db": 2, "capture": 2,
 }
 
 // Run executes args, which start with the command words, against c.
@@ -150,6 +152,8 @@ func Run(ctx context.Context, c *box.Client, args []string, out io.Writer) error
 		return prepareCmd(ctx, c, strings.TrimPrefix(cmd, "prepare "), rest, out)
 	case "preview get", "preview set":
 		return previewCmd(ctx, c, strings.TrimPrefix(cmd, "preview "), rest, out)
+	case "capture add", "capture ls":
+		return captureCmd(ctx, c, strings.TrimPrefix(cmd, "capture "), rest, out)
 	case "service list", "service start", "service stop", "service restart", "service log":
 		return service(ctx, c, strings.TrimPrefix(cmd, "service "), rest, out)
 	case "services":

@@ -20,9 +20,10 @@ import (
 )
 
 // Item is one entry in the conversation. Kind is user, text, tools, edit,
-// crew, command, notice, artifact, question, report, agent-message or
-// ping; the fields each kind uses are as in app/src/lib/transcript.ts. An
-// app that doesn't know a kind draws nothing for it.
+// crew, command, notice, artifact, question, report, capture,
+// agent-message or ping; the fields each kind uses are as in
+// app/src/lib/transcript.ts. An app that doesn't know a kind draws nothing
+// for it.
 type Item struct {
 	Kind    string     `json:"kind"`
 	ID      string     `json:"id"`
@@ -69,6 +70,9 @@ type Item struct {
 	// An agent-message or ping item (peer.go): a message from another
 	// agent or from Claude Code, not the person.
 	Msg *Message `json:"msg,omitempty"`
+	// A capture item (captures.go): the pictures and recordings the agent
+	// handed the person with one call.
+	Captures []CaptureRef `json:"captures,omitempty"`
 	// MidTurn: a prompt the person typed while the agent worked.
 	MidTurn bool `json:"midTurn,omitempty"`
 
@@ -226,6 +230,8 @@ type conv struct {
 	// askCalls are the questions still waiting for their answer, by call
 	// → absolute index of their item (questions.go).
 	askCalls map[string]int
+	// captures are the captures already shown, by ID (captures.go).
+	captures map[string]bool
 }
 
 // id names an item by where its line starts, and its place among the

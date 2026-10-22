@@ -51,6 +51,16 @@
         }
       }
     },
+    "%1$lld de %2$lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld of %2$lld"
+          }
+        }
+      }
+    },
     "%@" : {
       "localizations" : {
         "en" : {
@@ -477,6 +487,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld / 128 KB"
+          }
+        }
+      }
+    },
+    "%lld capturas" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld captures"
           }
         }
       }
@@ -1085,6 +1105,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 search"
+          }
+        }
+      }
+    },
+    "1 captura" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 capture"
           }
         }
       }
@@ -1755,6 +1785,16 @@
         }
       }
     },
+    "Abre em tela cheia" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens full screen"
+          }
+        }
+      }
+    },
     "Abre o Inbox" : {
       "localizations" : {
         "en" : {
@@ -2391,6 +2431,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Attach a photo or file (or drag it here)"
+          }
+        }
+      }
+    },
+    "Antes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before"
           }
         }
       }
@@ -3371,6 +3421,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Searched"
+          }
+        }
+      }
+    },
+    "Captura" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capture"
           }
         }
       }
@@ -4381,6 +4441,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Demo"
+          }
+        }
+      }
+    },
+    "Depois" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "After"
           }
         }
       }
@@ -6377,6 +6447,16 @@
         }
       }
     },
+    "Gravação" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recording"
+          }
+        }
+      }
+    },
     "Gravação de tela permitida." : {
       "localizations" : {
         "en" : {
@@ -7749,6 +7829,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minimal"
+          }
+        }
+      }
+    },
+    "Não deu para abrir a captura" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't open the capture"
           }
         }
       }

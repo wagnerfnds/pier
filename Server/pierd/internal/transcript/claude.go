@@ -163,6 +163,8 @@ func (claudeParser) line(c *conv, b []byte) {
 			claudeResultSignal(c, bl.ToolUseID, text, at)
 			c.published(bl.ToolUseID, b, text, bl.IsError, at)
 			c.claudeAnswered(bl.ToolUseID, b, text, bl.IsError)
+			// Pictures the agent handed the person (captures.go).
+			c.captured(text)
 			// A rejected call with words for the agent (a plan sent back
 			// with "Tell Claude what to change") reads as what the person
 			// said.

@@ -43,6 +43,10 @@ public protocol PierBoxClient: Sendable {
     func turns(session: String, limit: Int) async throws -> [Turn]
     func waitForSession(_ session: String, states: [AgentState], after: Date?, timeout: Duration) async throws -> WaitResult
     func uploadAttachment(session: String, name: String, data: Data) async throws -> Attachment
+    /// What the session's agent handed over with `pierd capture add`, oldest first (capability `captures`).
+    func captures(session: String) async throws -> [CaptureRef]                        // GET /v1/sessions/{n}/captures
+    /// One capture's file, or its small copy (`thumb`, when `CaptureRef.thumb`; the file itself otherwise).
+    func captureData(session: String, id: String, thumb: Bool) async throws -> Data    // GET /v1/sessions/{n}/captures/{id}
     /// A terminal on the session (capability `tty`): its output as it comes, and a way to type and resize.
     func terminal(session: String, cols: Int, rows: Int, history: Int?) -> TerminalStream   // POST /v1/sessions/{n}/tty
 
@@ -56,6 +60,8 @@ public protocol PierBoxClient: Sendable {
     func transcript(session: String, since: Int, gen: String?) async throws -> TranscriptPage
     func transcriptBefore(session: String, before: Int64, limit: Int) async throws -> TranscriptPage
     func toolDetail(session: String, id: String) async throws -> ToolDetail
+    /// Picture `index` (from 0) of what a call returned (`ToolDetail.images` says how many).
+    func toolImage(session: String, id: String, index: Int) async throws -> Data      // GET …/transcript/tool/{id}/image/{n}
 
     // 7 Events
     /// NDJSON events with automatic reconnect and resume by the highest `seq` seen.

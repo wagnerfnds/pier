@@ -214,6 +214,12 @@ public final class BoxAPI: PierBoxClient, Sendable {
         return try decode(try await call(.post, sessionPath(session, "/attachments"), body: B(name: name, data: data.base64EncodedString())).data)
     }
 
+    public func captures(session: String) async throws -> [CaptureRef] { try await get(sessionPath(session, "/captures")) }
+
+    public func captureData(session: String, id: String, thumb: Bool) async throws -> Data {
+        try await call(.get, Self.url(sessionPath(session, "/captures/\(Self.seg(id))"), [("thumb", thumb ? "1" : nil)])).data
+    }
+
     // MARK: 5 needs you
 
     public func answerQuestions(session: String, tool: String, answers: [QuestionAnswer]) async throws -> [String] {
@@ -244,6 +250,10 @@ public final class BoxAPI: PierBoxClient, Sendable {
 
     public func toolDetail(session: String, id: String) async throws -> ToolDetail {
         try await get(sessionPath(session, "/transcript/tool/\(Self.seg(id))"))
+    }
+
+    public func toolImage(session: String, id: String, index: Int) async throws -> Data {
+        try await call(.get, sessionPath(session, "/transcript/tool/\(Self.seg(id))/image/\(max(0, index))")).data
     }
 
     // MARK: 7 events

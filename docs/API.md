@@ -641,7 +641,9 @@ status agrees (`claude auth status --json`, `codex login status`, `gh auth statu
   removes one. `pier-box` tells the agents about the worktree's ports, the project's environment and the box's
   variables, by name and note (never values), and that the worktree's preparation may still run beside them: read
   and change code meanwhile, run `pierd prepare wait` before running the app or its tests (2.6.1); `pier-preview` how
-  to run the dev server on `$PIER_PORT` for the app and record it with `pierd preview set` (2.12.1).
+  to run the dev server on `$PIER_PORT` for the app and record it with `pierd preview set` (2.12.1); `pier-prove` to
+show a change working with `pierd capture add`: a bug reproduced and captured before the fix, the same steps after it,
+each picture with a caption, test logins and test data only (4.10).
   They are written to every Claude Code account's `skills/<id>/SKILL.md` and to `~/.agents/skills/<id>/SKILL.md`
   (Codex), rewritten when the variables or the accounts change. A skill of the same name without pierd's marker is the
   person's and is never touched. Event `skills.changed`.
@@ -1211,6 +1213,24 @@ otherwise); the file is saved inside the session's worktree under a timestamped 
 `path` in the next prompt, one per line after the text. Before a session exists (a new task with photos) use the
 worktree form: `POST /v1/locations/{loc}/worktrees/{wt}/attachments`.
 
+### 4.10 Captures: what the agent shows of its work (capability `captures`)
+
+The other way round from 4.9: a picture or a short recording the agent hands the person to show its work (the page it
+changed, before and after; a recording of the app on a simulator). The agent runs `pierd capture add FILE [--before|
+--after] [--caption TEXT]` in its session (the `pier-prove` skill tells it when and how, 2.11), which posts here and
+prints the capture's marker, `[pier capture <id>]`. That line, in the agent's own record, makes a `capture` item where
+it happened in the conversation (6.2); the box fills in what each capture is as it sends the item.
+
+* `POST /v1/sessions/{name}/captures {name?, data: "<base64>", kind?: "before"|"after", caption?}` ≤ 25 MB →
+  `{id, session, kind?, caption?, name?, type, width?, height?, size, at (ms), thumb?, path}`. Pictures (PNG, JPEG,
+  GIF, WebP) and recordings (MP4, QuickTime), by what the bytes are (415 otherwise). The file is kept in the session's
+  worktree (or a chat's folder) under `.pier/captures/` (mode 0600, git never sees it: `.git/info/exclude`), with a
+  640-pixel JPEG copy of a larger picture (`thumb`); `width`/`height` when the box can read them. At most 100 per
+  session (409 after). Event `capture.added {session, id, kind, path}`.
+* `GET /v1/sessions/{name}/captures` → that list, oldest first: the session's own only.
+* `GET /v1/sessions/{name}/captures/{id}[?thumb=1]` → the file (or its small copy) with its `Content-Type`; Range
+  requests work. 404 for another session's or one gone with the worktree.
+
 ---
 
 ## 5. "Needs you": permissions and questions
@@ -1362,6 +1382,7 @@ of its source line, used to page older items).
 | `question` | `tool`, `questions[]`, `answers?`, `done?`, `error?` | 5.4 |
 | `notice` | `notice` (`api_error\|limit\|rate_limit\|auth\|billing\|hook\|interrupted\|stop_failure\|exited`), `level?` (`error\|warning\|info`), `text`, `resets?` (ms) | banner |
 | `artifact` | `text` (title), `url?`, `file?`, `description?`, `done?`, `error?`, `updated?`, `tool?` | a published claude.ai page |
+| `capture` | `captures: [{id, kind?, caption?, type?, width?, height?, size?, at?, thumb?}]` | what the agent handed over in one call (4.10); the app shows a turn's captures as one gallery under its answer. An ID the box does not keep for this session is left out (and an item left with none) |
 | `agent-message`, `ping` | `msg: {from: {id, name, kind}, intent?, status?, title?, summary?, body?, ...}` | a message from another agent or from Claude Code, not the person |
 
 Unknown kinds draw nothing (PierKit decodes `kind` tolerantly; it also still knows a `report` kind pierd does not
@@ -1410,10 +1431,14 @@ whether a finished turn still has work running (the app and pierd's push say "in
 ### 6.6 One call's detail: `GET /v1/sessions/{name}/transcript/tool/{id}`
 
 `{id, name, command?, file?, pattern?, old?, new?, hunks?: [{oldStart, oldLines, newStart, newLines, lines: [" x",
-"-y", "+z"]}], output?, truncated?, error?, pending?, live?}` (note the camelCase hunk keys). `{id}` is a
+"-y", "+z"]}], output?, truncated?, error?, pending?, live?, images?}` (note the camelCase hunk keys). `{id}` is a
 `tools.items[].id`, an `edit.tool`, a `question.tool` or a `signals.background[].tool`. For an edit, `hunks` is that
 single edit's patch, numbered by the file's own lines. `output` is head and tail when long. 404 "that step is no
 longer in the conversation" once it left the window. Fetch only when a row is expanded.
+
+`images` (capability `captures`) is how many pictures the call returned (a browser's screenshot, an image file read),
+which `output` shows as `[image]`: `GET /v1/sessions/{name}/transcript/tool/{id}/image/{n}` (n from 0) answers each
+with its `Content-Type`. Claude Code keeps them in its record; Codex's calls have none here.
 
 ---
 
@@ -1473,7 +1498,8 @@ after a removal from the disk), `clone.started|finished|failed` (2.8), `settings
 the login), `mcp.changed {names, removed?}` (2.14), `config.changed {location, setup_agent?}` (`setup_agent` for the
 consent to setup agents, 2.6.1),
 `service.started|stopped|failed`, `file.written {location, worktree, path, file, size}` (a save through `PUT
-.../file`, 2.7; `path` is the worktree's folder, `file` the saved file relative to it).
+.../file`, 2.7; `path` is the worktree's folder, `file` the saved file relative to it), `capture.added {session, id,
+kind, path}` (4.10).
 
 **Box**: `client.paired`, `client.revoked {name, fingerprint}`, `pairing.invited`, `agents.found`.
 
@@ -1688,9 +1714,9 @@ against a live box with `pierctl selftest` and against captured fixtures (`Tests
 | Locations | `locations()`, `worktreeStatuses(location:)`, `branches(location:)`, `createWorktree(location:_:)`, `removeWorktree(location:worktree:force:deleteBranch:)` → `WorktreeRemoval` (`.removed` / `.archiving`) |
 | Files | `files(location:worktree:path:)` → `DirListing`, `file(location:worktree:path:statOnly:)` → `WorktreeFile`, `writeFile(location:worktree:path:_:)` → `WorktreeFile` (2.7) |
 | Agents | `createTask(_:)`, `startSession(_:)`, `installableAgents()` |
-| Sessions | `sessions()`, `screen(session:history:)`, `draft(session:)`, `send(session:_:)`, `keys(session:_:)`, `interrupt(session:)`, `kill(session:)`, `rename(session:title:)`, `controls(session:)`, `setMode(session:mode:)`, `heldPrompts`, `cancelHeld`, `sendHeldNow`, `turns`, `waitForSession`, `uploadAttachment`, `terminal(session:cols:rows:history:)` → `TerminalStream` (4.8) |
+| Sessions | `sessions()`, `screen(session:history:)`, `draft(session:)`, `send(session:_:)`, `keys(session:_:)`, `interrupt(session:)`, `kill(session:)`, `rename(session:title:)`, `controls(session:)`, `setMode(session:mode:)`, `heldPrompts`, `cancelHeld`, `sendHeldNow`, `turns`, `waitForSession`, `uploadAttachment`, `captures(session:)`, `captureData(session:id:thumb:)` (4.10), `terminal(session:cols:rows:history:)` → `TerminalStream` (4.8) |
 | Needs you | `answerQuestions(session:tool:answers:)` |
-| Transcript | `transcript(session:since:gen:)`, `transcriptBefore(session:before:limit:)`, `toolDetail(session:id:)` |
+| Transcript | `transcript(session:since:gen:)`, `transcriptBefore(session:before:limit:)`, `toolDetail(session:id:)`, `toolImage(session:id:index:)` (6.6) |
 | Events | `events(since:)` → `AsyncThrowingStream<PierEvent, Error>` |
 | Review | `review(all:)`, `touched(location:worktree:)`, `fileDiff(session:file:)`, `exec(location:command:timeout:)` |
 | Connection | `reset()` |
@@ -1722,7 +1748,7 @@ with defaults and a tolerant decoder (missing keys, `null` lists).
 | `Models/ProjectModels.swift` | `GitHubRepos`, `GitHubRepo`, `CloneRequest`, `ProjectClone`, `ProjectDisk`, `ProjectPurge`, `WorktreeServiceDetail` (2.8; called through `BoxAPI+Projects.swift`) |
 | `Models/SessionModels.swift` | `Session`, `Ask`, `TaskRequest`, `TaskResult`, `SessionRequest`, `SendResult`, `InterruptResult`, `SessionControls`, `HeldPrompt`, `Turn`, `WaitResult`, `Draft`, `Attachment` |
 | `Models/QuestionModels.swift` | `Question`, `QuestionOption`, `QuestionAnswer` |
-| `Models/TranscriptModels.swift` | `TranscriptPage`, `TranscriptItem`, `CrewMember`, `ArtifactRef`, `Signals`, `ToolDetail` |
+| `Models/TranscriptModels.swift` | `TranscriptPage`, `TranscriptItem`, `CrewMember`, `ArtifactRef`, `CaptureRef` (4.10), `Signals`, `ToolDetail` |
 | `Models/ReviewModels.swift` | `ReviewItem`, `ReviewFile`, `ReviewCommit`, `TouchedFile`, `FileDiff`, `ExecResult`, `PullRequest` |
 | `Models/Common.swift` | `AgentState` (with `.unknown(String)`), `SendRequest`, `ControlKey`, `PierEvent`, `BoxError` (`kind`, and `kept` with `.notSubmitted`), `WorktreeRemoval`, `RFC3339`, `JSONDecoder.pier` |
 | `JSON.swift` | `JSONValue`, `typealias JSON = [String: JSONValue]`, `PierJSON` (shared coders) |

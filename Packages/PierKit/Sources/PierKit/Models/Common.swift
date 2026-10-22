@@ -40,7 +40,7 @@ public enum AgentState: RawRepresentable, Codable, Hashable, Sendable {
 extension TranscriptItem {
     /// The tolerant view of `kind`.
     public enum Kind: RawRepresentable, Hashable, Sendable {
-        case user, text, tools, edit, crew, command, notice, artifact, question, report
+        case user, text, tools, edit, crew, command, notice, artifact, question, report, capture
         case unknown(String)
 
         public init(rawValue: String) {
@@ -55,6 +55,7 @@ extension TranscriptItem {
             case "artifact": self = .artifact
             case "question": self = .question
             case "report": self = .report
+            case "capture": self = .capture
             default: self = .unknown(rawValue)
             }
         }
@@ -71,6 +72,7 @@ extension TranscriptItem {
             case .artifact: "artifact"
             case .question: "question"
             case .report: "report"
+            case .capture: "capture"
             case .unknown(let s): s
             }
         }

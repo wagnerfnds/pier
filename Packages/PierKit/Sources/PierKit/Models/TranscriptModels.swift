@@ -141,8 +141,10 @@ public struct TranscriptItem: Codable, Sendable, Identifiable, Hashable {
     public let uuid: String?
     public let parent: String?
     public let pending: Bool?
+    /// A `capture` item's pictures and recordings, as the box filled them in (docs/API.md §4.10).
+    public let captures: [CaptureRef]?
 
-    public init(kind: String, id: String, off: Int64? = nil, text: String? = nil, verb: String? = nil, items: [TranscriptItem.Call]? = nil, done: Bool? = nil, file: String? = nil, added: Int? = nil, removed: Int? = nil, names: [String]? = nil, tool: String? = nil, notice: String? = nil, level: String? = nil, resets: Int64? = nil, command: String? = nil, args: String? = nil, markdown: Bool? = nil, error: Bool? = nil, url: String? = nil, description: String? = nil, updated: Bool? = nil, questions: [Question]? = nil, answers: [String]? = nil, report: TranscriptItem.Report? = nil, uuid: String? = nil, parent: String? = nil, pending: Bool? = nil) {
+    public init(kind: String, id: String, off: Int64? = nil, text: String? = nil, verb: String? = nil, items: [TranscriptItem.Call]? = nil, done: Bool? = nil, file: String? = nil, added: Int? = nil, removed: Int? = nil, names: [String]? = nil, tool: String? = nil, notice: String? = nil, level: String? = nil, resets: Int64? = nil, command: String? = nil, args: String? = nil, markdown: Bool? = nil, error: Bool? = nil, url: String? = nil, description: String? = nil, updated: Bool? = nil, questions: [Question]? = nil, answers: [String]? = nil, report: TranscriptItem.Report? = nil, uuid: String? = nil, parent: String? = nil, pending: Bool? = nil, captures: [CaptureRef]? = nil) {
         self.kind = kind
         self.id = id
         self.off = off
@@ -171,6 +173,7 @@ public struct TranscriptItem: Codable, Sendable, Identifiable, Hashable {
         self.uuid = uuid
         self.parent = parent
         self.pending = pending
+        self.captures = captures
     }
 
     enum CodingKeys: String, CodingKey {
@@ -202,6 +205,7 @@ public struct TranscriptItem: Codable, Sendable, Identifiable, Hashable {
         case uuid
         case parent
         case pending
+        case captures
     }
 
     public init(from decoder: Decoder) throws {
@@ -234,6 +238,7 @@ public struct TranscriptItem: Codable, Sendable, Identifiable, Hashable {
         self.uuid = try c.decodeIfPresent(String.self, forKey: .uuid)
         self.parent = try c.decodeIfPresent(String.self, forKey: .parent)
         self.pending = try c.decodeIfPresent(Bool.self, forKey: .pending)
+        self.captures = try c.decodeIfPresent([CaptureRef].self, forKey: .captures)
     }
 }
 
@@ -323,6 +328,76 @@ public struct ArtifactRef: Codable, Sendable, Hashable, Identifiable {
     }
 
     public var id: String { url }
+}
+
+/// A picture or recording an agent handed the person with `pierd capture add` (docs/API.md §4.10): in a `capture`
+/// item, and in `GET /v1/sessions/{n}/captures`. Its file comes from `PierBoxClient.captureData`.
+public struct CaptureRef: Codable, Sendable, Hashable, Identifiable {
+    public let id: String
+    /// `before` (how it was, or what was wrong), `after` (the result) or nil.
+    public let kind: String?
+    public let caption: String?
+    /// The file's name as the agent had it (the list's only).
+    public let name: String?
+    /// Its media type: `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `video/mp4`, `video/quicktime`.
+    public let type: String?
+    public let width: Int?
+    public let height: Int?
+    public let size: Int?
+    /// When it was handed over (Unix ms).
+    public let at: Int64?
+    /// The box keeps a small copy (`thumb: true` on `captureData`).
+    public let thumb: Bool?
+
+    public init(id: String, kind: String? = nil, caption: String? = nil, name: String? = nil, type: String? = nil, width: Int? = nil, height: Int? = nil, size: Int? = nil, at: Int64? = nil, thumb: Bool? = nil) {
+        self.id = id
+        self.kind = kind
+        self.caption = caption
+        self.name = name
+        self.type = type
+        self.width = width
+        self.height = height
+        self.size = size
+        self.at = at
+        self.thumb = thumb
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case caption
+        case name
+        case type
+        case width
+        case height
+        case size
+        case at
+        case thumb
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        self.caption = try c.decodeIfPresent(String.self, forKey: .caption)
+        self.name = try c.decodeIfPresent(String.self, forKey: .name)
+        self.type = try c.decodeIfPresent(String.self, forKey: .type)
+        self.width = try c.decodeIfPresent(Int.self, forKey: .width)
+        self.height = try c.decodeIfPresent(Int.self, forKey: .height)
+        self.size = try c.decodeIfPresent(Int.self, forKey: .size)
+        self.at = try c.decodeIfPresent(Int64.self, forKey: .at)
+        self.thumb = try c.decodeIfPresent(Bool.self, forKey: .thumb)
+    }
+
+    /// A recording, not a picture.
+    public var isVideo: Bool { type?.hasPrefix("video/") == true }
+    public var isBefore: Bool { kind == "before" }
+    public var isAfter: Bool { kind == "after" }
+    /// Width over height, when the box read them.
+    public var aspect: Double? {
+        guard let w = width, let h = height, w > 0, h > 0 else { return nil }
+        return Double(w) / Double(h)
+    }
 }
 
 extension Signals {
@@ -621,8 +696,11 @@ public struct ToolDetail: Codable, Sendable, Hashable {
     public let error: Bool?
     public let pending: Bool?
     public let live: Bool?
+    /// How many pictures the call returned (a browser's screenshot, an image read): each through
+    /// `PierBoxClient.toolImage`; `output` says "[image]" where each was.
+    public let images: Int?
 
-    public init(id: String, name: String = "", command: String? = nil, file: String? = nil, pattern: String? = nil, old: String? = nil, new: String? = nil, output: String? = nil, hunks: [ToolDetail.Hunk]? = nil, truncated: Bool? = nil, error: Bool? = nil, pending: Bool? = nil, live: Bool? = nil) {
+    public init(id: String, name: String = "", command: String? = nil, file: String? = nil, pattern: String? = nil, old: String? = nil, new: String? = nil, output: String? = nil, hunks: [ToolDetail.Hunk]? = nil, truncated: Bool? = nil, error: Bool? = nil, pending: Bool? = nil, live: Bool? = nil, images: Int? = nil) {
         self.id = id
         self.name = name
         self.command = command
@@ -636,6 +714,7 @@ public struct ToolDetail: Codable, Sendable, Hashable {
         self.error = error
         self.pending = pending
         self.live = live
+        self.images = images
     }
 
     enum CodingKeys: String, CodingKey {
@@ -652,6 +731,7 @@ public struct ToolDetail: Codable, Sendable, Hashable {
         case error
         case pending
         case live
+        case images
     }
 
     public init(from decoder: Decoder) throws {
@@ -669,5 +749,6 @@ public struct ToolDetail: Codable, Sendable, Hashable {
         self.error = try c.decodeIfPresent(Bool.self, forKey: .error)
         self.pending = try c.decodeIfPresent(Bool.self, forKey: .pending)
         self.live = try c.decodeIfPresent(Bool.self, forKey: .live)
+        self.images = try c.decodeIfPresent(Int.self, forKey: .images)
     }
 }

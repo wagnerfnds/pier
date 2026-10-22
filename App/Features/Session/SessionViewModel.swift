@@ -46,6 +46,10 @@ final class SessionViewModel {
     var gone = false
     var expanded: Set<String> = []
     var details: [String: DetailState] = [:]
+    /// The pictures open full screen over the conversation (a turn's captures, a call's screenshots; Captures.swift).
+    var viewer: CaptureViewerState?
+    /// Where this session's pictures are read from (through `CaptureCache`).
+    var captureLoader: CaptureLoader { CaptureLoader(box: box, session: name, client: client) }
     /// "Rodando pnpm test…": what the agent is doing right now, read from its screen while it works.
     var step: String?
 

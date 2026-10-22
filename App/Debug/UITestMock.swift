@@ -48,6 +48,8 @@ final class MockBox: PierTransport, @unchecked Sendable {
     private var off = 1000
 
     static let finishedSession = "sandbox-subtract-claude-6s1"
+    /// The call in the finished session that took a browser's screenshot (its detail has a picture).
+    static let screenshotTool = "toolu_mock_shot"
     static let waitingSession = "sandbox-claude-w9q"
     static let runningSession = "acme-web-claude-a1b"
     /// `-uiTestChats 1` adds a chat: an agent tied to no project, in its own folder under ~/pier/chats (no location).
@@ -173,6 +175,10 @@ final class MockBox: PierTransport, @unchecked Sendable {
             ]
         }
         transcripts[Self.finishedSession] = longConversation()
+        // `-uiTestInboxCaptures 1`: the finished turn hands over a capture too, for its Inbox card (CaptureUITests).
+        if UserDefaults.standard.bool(forKey: "uiTestInboxCaptures") {
+            transcripts[Self.finishedSession, default: []].append(item("capture", extra: ["captures": [MockCaptures.ref(MockCaptures.signInAfter)]]))
+        }
         transcripts[Self.waitingSession] = [
             item("user", text: "Create a probe directory for the build check"),
             item("text", text: "I'll create `probe_dir` with an empty `x.txt` so the build step has something to find."),
@@ -323,6 +329,17 @@ final class MockBox: PierTransport, @unchecked Sendable {
                 out.append(it)
             }
         }
+        // The agent shows its work (`pierd capture add`): before and after, as a gallery under its answer. Early in the
+        // conversation, so its last two turns (the ones the other tests read) stay as they were.
+        out.append(item("user", text: "The Sign in button is off-center on phones. Fix it and show me."))
+        out.append(item("tools", extra: ["verb": "Run", "done": true, "items": [
+            ["id": Self.screenshotTool, "verb": "Run", "target": "browser_take_screenshot", "at": 1_791_408_804_607]]]))
+        out.append(tools("Run", "pierd capture add login-before.png --before"))
+        out.append(item("capture", extra: ["captures": [MockCaptures.ref(MockCaptures.signInBefore)]]))
+        out.append(edit("static/login.css", added: 2, removed: 3))
+        out.append(tools("Run", "pierd capture add login-after.png --after"))
+        out.append(item("capture", extra: ["captures": [MockCaptures.ref(MockCaptures.signInAfter)]]))
+        out.append(item("text", text: "Centered the **Sign in** button: the form's column had a fixed left margin. Before and after are below."))
         out.append(item("user", text: "Show me how you would type this in TypeScript, and the shell command to run the tests."))
         out.append(tools("Read", "calc.ts"))
         out.append(edit("calc.ts", added: 12, removed: 1))
@@ -779,7 +796,19 @@ final class MockBox: PierTransport, @unchecked Sendable {
                     "command": "cd /home/ubuntu/code/sandbox; scripts/verificar.sh 41710 > /tmp/v.log 2>&1", "state": "running", "since": since]]]
             }
             return (200, Self.json(page))
+        case (.get, "transcript") where p.count == 8 && p[6] == "image":
+            return (200, MockCaptures.png("page"))
+        case (.get, "transcript") where p.count == 6 && p[5] == Self.screenshotTool:
+            return (200, Self.json(["id": Self.screenshotTool, "name": "mcp__playwright__browser_take_screenshot", "command": #"{"filename":"login.png"}"#,
+                                    "output": "Took a screenshot of the current page\n[image]", "images": 1]))
         case (.get, "transcript") where p.count == 6: return (200, Self.fixture(MockFixtures.toolDetail))
+        case (.get, "captures") where p.count == 4:
+            // What the session handed over: the captures its record names, as pierd lists them.
+            let refs = (transcripts[name] ?? []).filter { $0["kind"] as? String == "capture" }.flatMap { ($0["captures"] as? [JSON]) ?? [] }
+            return (200, Self.json(refs.map { r in r.merging(["session": name, "name": "\(r["id"] ?? "capture").png"]) { a, _ in a } }))
+        case (.get, "captures") where p.count == 5:
+            guard MockCaptures.specs[p[4]] != nil else { return (404, Self.json(["error": "no such capture in this session", "code": "not_found"])) }
+            return (200, MockCaptures.png(p[4], portuguese: UITestShowcase.enabled && UITestShowcase.portuguese))
         case (.get, "screen") where name == Self.mcpSession && !mcpAnswered:
             return (200, Self.json(["screen": Self.mcpScreen]))
         case (.get, "screen") where name == Self.mcpAskSession && mcpAskEnabled == nil:

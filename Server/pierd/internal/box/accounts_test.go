@@ -132,10 +132,14 @@ func TestBoxVariablesAndSkills(t *testing.T) {
 	}
 
 	var skills []Skill
-	for _, id := range []string{"pier-box", "pier-preview"} {
+	for _, id := range []string{"pier-box", "pier-preview", "pier-prove"} {
 		if status := call(t, c, "PUT", "/v1/skills/"+id, "", nil, &skills); status != 200 {
 			t.Fatalf("install %s = %d", id, status)
 		}
+	}
+	prove, err := os.ReadFile(filepath.Join(home, ".agents", "skills", "pier-prove", "SKILL.md"))
+	if err != nil || !strings.Contains(string(prove), "name: pier-prove") || !strings.Contains(string(prove), "pierd capture add") || !strings.Contains(string(prove), "--before") {
+		t.Errorf("pier-prove = %s %v", prove, err)
 	}
 	claudeSkill, err := os.ReadFile(filepath.Join(home, ".claude", "skills", "pier-box", "SKILL.md"))
 	if err != nil {

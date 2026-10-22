@@ -113,6 +113,7 @@ struct ToolDetailView: View {
                 if let o = d.old, !o.isEmpty { DiffBlock(text: o, sign: "-") }
                 if let n = d.new, !n.isEmpty { DiffBlock(text: n, sign: "+") }
             }
+            if let n = d.images, n > 0 { ToolImagesRow(vm: vm, tool: d.id, count: n) }
             if let out = d.output, !out.isEmpty, d.hunks == nil {
                 CodeBlock(text: out, language: S("saída"), color: d.error == true ? Theme.red : Theme.textDim, maxLines: 18)
             }

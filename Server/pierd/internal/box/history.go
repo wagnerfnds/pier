@@ -31,6 +31,7 @@ func olderPage(w http.ResponseWriter, r *http.Request, agent, path, dir string) 
 	if err != nil {
 		return err
 	}
+	res.Items = fillCaptures(dir, r.PathValue("name"), res.Items)
 	writeJSON(w, res)
 	return nil
 }
