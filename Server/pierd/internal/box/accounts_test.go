@@ -138,7 +138,7 @@ func TestBoxVariablesAndSkills(t *testing.T) {
 		}
 	}
 	prove, err := os.ReadFile(filepath.Join(home, ".agents", "skills", "pier-prove", "SKILL.md"))
-	if err != nil || !strings.Contains(string(prove), "name: pier-prove") || !strings.Contains(string(prove), "pierd capture add") || !strings.Contains(string(prove), "--before") {
+	if err != nil || !strings.Contains(string(prove), "name: pier-prove") || !strings.Contains(string(prove), "pierd capture page /checkout --before") || !strings.Contains(string(prove), "ask the person first") {
 		t.Errorf("pier-prove = %s %v", prove, err)
 	}
 	claudeSkill, err := os.ReadFile(filepath.Join(home, ".claude", "skills", "pier-box", "SKILL.md"))
