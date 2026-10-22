@@ -37,6 +37,10 @@ first screen has a demo with sample projects and agents.
   the raw terminal one tap away.
 - **Chats with no project.** Start Claude Code or Codex in a folder of its own to ask something, talk an idea through
   or plan something that does not exist yet (`⇧⌘N`).
+- **Agents show their work.** With the `pier-prove` skill on, an agent captures what it changed — a page before and
+  after a fix, at a desktop's width and a phone's (`pierd capture page`), or a simulator recording — and the pictures
+  show as a gallery under its reply and on its Inbox card, full screen with a tap. A step's own screenshots (a browser
+  MCP's) show in its detail.
 - **Review and ship.** Changed files and diffs, commit / push / open a PR with an AI-written message, and a full
   **pull request** screen: checks, reviews, conversation, diffs, merge, comment, approve — or bring someone's PR into a
   worktree and continue it with an agent.
