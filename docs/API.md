@@ -1230,6 +1230,10 @@ it happened in the conversation (6.2); the box fills in what each capture is as 
   640-pixel JPEG copy of a larger picture (`thumb`); `width`/`height` when the box can read them. At most 100 per
   session (409 after). Event `capture.added {session, id, kind, path}`.
 * `GET /v1/sessions/{name}/captures` → that list, oldest first: the session's own only.
+* An agent's sandbox can keep `pierd` off its socket: Codex's does (connect: operation not permitted) unless the
+  account's config turns on `sandbox_workspace_write.network_access`, which opens the network to every command. pierd
+  then says so, and Codex asks the person to run the command outside its sandbox, as for `pierd prepare wait` and
+  `pierd preview set`.
 * `GET /v1/sessions/{name}/captures/{id}[?thumb=1]` → the file (or its small copy) with its `Content-Type`; Range
   requests work. 404 for another session's or one gone with the worktree.
 
