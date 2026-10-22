@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"pier/pierd/internal/trust"
@@ -37,5 +39,30 @@ func TestBoxNameSetting(t *testing.T) {
 	}
 	if got := b.name(); got != "pier-maria" {
 		t.Fatalf("name %q", got)
+	}
+}
+
+// A socket the command may not reach (an agent's sandbox: Codex's says
+// EPERM; a socket without permission, EACCES, stands in for it here) says
+// what to do, not only the dial's words.
+func TestBoxCommandSaysWhenItCannotReachTheSocket(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reaches any socket")
+	}
+	dir, err := os.MkdirTemp("/tmp", "pbs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	b := boxHome{dir: dir}
+	ln, err := net.Listen("unix", b.socket())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	os.Chmod(b.socket(), 0)
+	err = runLocal(b, []string{"capture", "ls", "--session", "s"})
+	if err == nil || !strings.Contains(err.Error(), "A sandbox keeps this command from pierd's socket") || !strings.Contains(err.Error(), b.socket()) {
+		t.Fatalf("err = %v", err)
 	}
 }

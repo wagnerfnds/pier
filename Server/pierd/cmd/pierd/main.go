@@ -535,7 +535,14 @@ func runLocal(b boxHome, args []string) error {
 	if _, err := os.Stat(b.socket()); err != nil {
 		return errors.New("pierd serve is not running on this box; start it with pierd install")
 	}
-	return boxcmd.Run(ctx, box.NewClient(box.NewLocal(b.socket())), args, os.Stdout)
+	err := boxcmd.Run(ctx, box.NewClient(box.NewLocal(b.socket())), args, os.Stdout)
+	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		// An agent's sandbox keeps its commands off sockets (Codex's, unless
+		// its network access is on; Claude Code's, unless the socket is
+		// allowed): say what to do instead of the dial's words alone.
+		return fmt.Errorf("%w\nA sandbox keeps this command from pierd's socket (%s): run it outside the sandbox, asking the person if your tool needs to", err, b.socket())
+	}
+	return err
 }
 
 func pair(b boxHome, args []string) error {

@@ -255,8 +255,10 @@ lays it under their own, its recipe between the repository's and their box's.
 ## Captures
 
 An agent shows the person its work from its session: `pierd capture add FILE [--before|--after] [--caption TEXT]`
-hands over a screenshot of the page it changed (before and after a fix) or a recording of the app, and `pierd capture
-ls` lists what it handed over. pierd keeps each file in the worktree's `.pier/captures` (the box user's alone; git
+hands over a screenshot of the page it changed (before and after a fix) or a recording of the app; `pierd capture page
+/login [--phone]` takes the page's screenshot itself, in a headless Chromium the box has (Playwright's download, or a
+system Chromium or Chrome; `PIER_BROWSER` names another), on the worktree's port; and `pierd capture ls` lists what
+it handed over. pierd keeps each file in the worktree's `.pier/captures` (the box user's alone; git
 never sees it), with a small copy of a large picture, and the app shows them under the agent's reply. The line the
 command prints ends with the capture's marker (`[pier capture ID]`): in the agent's own record, it is what puts the
 capture in that turn of the conversation. The `pier-prove` skill, turned on in the app (Variáveis e skills), tells the
@@ -313,7 +315,7 @@ contract in the app's `docs/PUSH.md`.
 then `pierd client GET /v1/sessions`), and the box commands over the local socket: `locations`,
 `location add|rm|config`, `worktree new|rm`, `services`, `service list|start|stop|restart`, `sessions`,
 `session new|send|screen|rename|wait|turns|kill`, `task new`, `prepare status|wait|start|done`, `preview get|set`,
-`capture add|ls`,
+`capture add|page|ls`,
 `base status|add|rm|carry|apply`, `db status|reset|drop|enable|disable|apparmor`, `exec`, `stats`, `info`, `emit`,
 `events`. Run in a worktree's session, `prepare` and `preview` take that worktree
 when none is named.

@@ -642,8 +642,9 @@ status agrees (`claude auth status --json`, `codex login status`, `gh auth statu
   variables, by name and note (never values), and that the worktree's preparation may still run beside them: read
   and change code meanwhile, run `pierd prepare wait` before running the app or its tests (2.6.1); `pier-preview` how
   to run the dev server on `$PIER_PORT` for the app and record it with `pierd preview set` (2.12.1); `pier-prove` to
-show a change working with `pierd capture add`: a bug reproduced and captured before the fix, the same steps after it,
-each picture with a caption, test logins and test data only (4.10).
+show a change working with `pierd capture page` (a page's screenshot in one go) or `pierd capture add` (any picture or
+recording): a bug reproduced and captured before the fix, the same steps after it, each with a caption, test logins
+and test data only, and the person asked before system packages are installed for the browser (4.10).
   They are written to every Claude Code account's `skills/<id>/SKILL.md` and to `~/.agents/skills/<id>/SKILL.md`
   (Codex), rewritten when the variables or the accounts change. A skill of the same name without pierd's marker is the
   person's and is never touched. Event `skills.changed`.
@@ -1217,8 +1218,9 @@ worktree form: `POST /v1/locations/{loc}/worktrees/{wt}/attachments`.
 
 The other way round from 4.9: a picture or a short recording the agent hands the person to show its work (the page it
 changed, before and after; a recording of the app on a simulator). The agent runs `pierd capture add FILE [--before|
---after] [--caption TEXT]` in its session (the `pier-prove` skill tells it when and how, 2.11), which posts here and
-prints the capture's marker, `[pier capture <id>]`. That line, in the agent's own record, makes a `capture` item where
+--after] [--caption TEXT]` in its session, or `pierd capture page /PATH [--phone] …` to take a page's screenshot in a
+headless Chromium on the box first (the `pier-prove` skill tells it when and how, 2.11); either posts here and prints
+the capture's marker, `[pier capture <id>]`. That line, in the agent's own record, makes a `capture` item where
 it happened in the conversation (6.2); the box fills in what each capture is as it sends the item.
 
 * `POST /v1/sessions/{name}/captures {name?, data: "<base64>", kind?: "before"|"after", caption?}` ≤ 25 MB →
@@ -1228,6 +1230,10 @@ it happened in the conversation (6.2); the box fills in what each capture is as 
   640-pixel JPEG copy of a larger picture (`thumb`); `width`/`height` when the box can read them. At most 100 per
   session (409 after). Event `capture.added {session, id, kind, path}`.
 * `GET /v1/sessions/{name}/captures` → that list, oldest first: the session's own only.
+* An agent's sandbox can keep `pierd` off its socket: Codex's does (connect: operation not permitted) unless the
+  account's config turns on `sandbox_workspace_write.network_access`, which opens the network to every command. pierd
+  then says so, and Codex asks the person to run the command outside its sandbox, as for `pierd prepare wait` and
+  `pierd preview set`.
 * `GET /v1/sessions/{name}/captures/{id}[?thumb=1]` → the file (or its small copy) with its `Content-Type`; Range
   requests work. 404 for another session's or one gone with the worktree.
 

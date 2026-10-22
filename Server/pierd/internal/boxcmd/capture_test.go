@@ -72,6 +72,30 @@ func TestCaptureThroughTheLocalSocket(t *testing.T) {
 	if ls := runOK(t, c, "capture", "ls"); !strings.Contains(ls, m[1]) || !strings.Contains(ls, "Login centered") {
 		t.Errorf("ls = %q", ls)
 	}
+	// A page: the box's browser (here a stand-in) at a phone's width, on the worktree's port.
+	browser, argsFile := fakeBrowser(t, "chromium")
+	t.Setenv("PIER_BROWSER", browser)
+	t.Setenv("PIER_PORT", "41999")
+	out = runOK(t, c, "capture", "page", "/login", "--phone", "--after", "--caption", "Login on a phone")
+	if !strings.Contains(out, "login-phone.png (after): Login on a phone [pier capture ") || !strings.Contains(out, filepath.Join(wt.Path, ".pier", "captures")) {
+		t.Fatalf("page printed %q", out)
+	}
+	if args, _ := os.ReadFile(argsFile); !strings.Contains(string(args), "http://127.0.0.1:41999/login\n") || !strings.Contains(string(args), "--window-size=390,844\n") {
+		t.Errorf("the browser got %s", args)
+	}
+	// A taller window for a long page, still a phone's.
+	runOK(t, c, "capture", "page", "/plans", "--phone", "--size", "390x1900")
+	if args, _ := os.ReadFile(argsFile); !strings.Contains(string(args), "--window-size=390,1900\n") || !strings.Contains(string(args), "iPhone") {
+		t.Errorf("--size: the browser got %s", args)
+	}
+	if err := Run(context.Background(), c, []string{"capture", "page", "/plans", "--size", "tall"}, &bytes.Buffer{}); err == nil {
+		t.Error("--size tall was taken")
+	}
+	json.Unmarshal([]byte(runOK(t, c, "capture", "ls", "--json")), &list)
+	if len(list) != 3 || list[1].Name != "login-phone.png" || list[1].Type != "image/png" || list[2].Name != "plans-phone.png" {
+		t.Errorf("after page, ls = %+v", list)
+	}
+
 	for _, bad := range [][]string{
 		{"capture", "add", shot, "--before", "--after"},
 		{"capture", "add"},
